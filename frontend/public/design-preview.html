@@ -1,0 +1,677 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>HolyHub — Design System Preview</title>
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,300..900;1,9..144,300..900&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet">
+<style>
+:root {
+  --sienna:    #8B5E3C;
+  --sienna-dk: #6B4529;
+  --sienna-lt: #C4875A;
+  --gold:      #D4A853;
+  --gold-lt:   #F0CC80;
+  --bg:        #F7F4F0;
+  --bg-warm:   #EDE9E2;
+  --surface:   #FFFFFF;
+  --text:      #1C1917;
+  --text-2:    #6B6560;
+  --text-3:    #9C9590;
+  --border:    #E4DED6;
+  --green:     #2D6A4F;
+  --green-lt:  #D1FAE5;
+  --amber:     #F59E0B;
+
+  --font-serif: 'Fraunces', Georgia, serif;
+  --font-sans:  'Plus Jakarta Sans', system-ui, sans-serif;
+
+  --radius-sm: 6px;
+  --radius-md: 10px;
+  --radius-lg: 16px;
+  --radius-full: 9999px;
+}
+
+*, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+
+body {
+  font-family: var(--font-sans);
+  background: var(--bg);
+  color: var(--text);
+  line-height: 1.5;
+}
+
+/* ── Dark mode ── */
+body.dark {
+  --bg:      #1A1714;
+  --bg-warm: #231F1B;
+  --surface: #2A2520;
+  --text:    #F0EDE8;
+  --text-2:  #A09890;
+  --text-3:  #6B6460;
+  --border:  #3A342E;
+  --sienna:  #C4875A;
+}
+
+/* ── Layout ── */
+.preview-wrap { max-width: 1100px; margin: 0 auto; padding: 40px 24px; }
+.section { margin-bottom: 64px; }
+.section-label {
+  font-size: 11px;
+  font-weight: 700;
+  letter-spacing: 0.12em;
+  text-transform: uppercase;
+  color: var(--text-3);
+  margin-bottom: 20px;
+}
+
+/* ── Dark mode toggle ── */
+.dm-toggle {
+  position: fixed;
+  top: 20px; right: 24px;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 8px 16px;
+  font-family: var(--font-sans);
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--text);
+  cursor: pointer;
+  z-index: 100;
+  box-shadow: 0 2px 8px rgba(0,0,0,.08);
+}
+
+/* ── Wordmark ── */
+.wordmark {
+  font-family: var(--font-serif);
+  font-size: 36px;
+  font-weight: 700;
+  font-optical-sizing: auto;
+  color: var(--sienna);
+  letter-spacing: -0.02em;
+  margin-bottom: 4px;
+}
+.tagline { font-size: 15px; color: var(--text-2); }
+
+/* ── Font specimens ── */
+.specimen-row { display: grid; grid-template-columns: 1fr 1fr; gap: 24px; margin-bottom: 24px; }
+.specimen-block {
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  padding: 28px;
+}
+.spec-meta { font-size: 11px; font-weight: 700; letter-spacing: 0.1em; text-transform: uppercase; color: var(--text-3); margin-bottom: 12px; }
+.spec-display { font-family: var(--font-serif); font-size: 28px; font-weight: 600; color: var(--text); line-height: 1.2; margin-bottom: 8px; }
+.spec-display-italic { font-family: var(--font-serif); font-size: 22px; font-style: italic; color: var(--sienna); }
+.spec-body { font-family: var(--font-sans); font-size: 15px; color: var(--text); line-height: 1.6; }
+.spec-ui { font-family: var(--font-sans); font-size: 13px; font-weight: 600; color: var(--text-2); }
+.spec-data { font-family: var(--font-sans); font-size: 13px; font-weight: 500; font-variant-numeric: tabular-nums; color: var(--text); }
+
+/* ── Palette ── */
+.palette-row { display: flex; gap: 12px; flex-wrap: wrap; margin-bottom: 32px; }
+.swatch {
+  display: flex; flex-direction: column;
+  border-radius: var(--radius-md);
+  overflow: hidden;
+  min-width: 100px;
+  border: 1px solid var(--border);
+  background: var(--surface);
+}
+.swatch-color { height: 64px; }
+.swatch-label { padding: 8px 10px; }
+.swatch-name { font-size: 12px; font-weight: 600; color: var(--text); }
+.swatch-hex { font-size: 11px; color: var(--text-3); font-family: monospace; }
+
+/* ── UI components ── */
+.comp-row { display: flex; gap: 12px; flex-wrap: wrap; align-items: center; margin-bottom: 16px; }
+
+.btn {
+  font-family: var(--font-sans);
+  font-size: 14px;
+  font-weight: 600;
+  border: none;
+  border-radius: var(--radius-full);
+  padding: 10px 20px;
+  cursor: pointer;
+  display: inline-flex; align-items: center; gap: 6px;
+}
+.btn-primary { background: var(--sienna); color: #fff; }
+.btn-primary:hover { background: var(--sienna-dk); }
+.btn-secondary { background: var(--bg-warm); color: var(--sienna); border: 1.5px solid var(--sienna); }
+.btn-ghost { background: transparent; color: var(--text-2); border: 1.5px solid var(--border); }
+.btn-gold { background: var(--gold); color: var(--text); }
+
+.pill {
+  font-family: var(--font-sans);
+  font-size: 12px; font-weight: 600;
+  border-radius: var(--radius-full);
+  padding: 4px 12px;
+  display: inline-block;
+}
+.pill-quality { background: #EEE8F0; color: #5B3E7A; }
+.pill-lang    { background: #FEF3C7; color: #92400E; }
+.pill-culture { background: var(--green-lt); color: var(--green); }
+.pill-active  { background: var(--sienna); color: white; }
+
+.sort-chip {
+  font-family: var(--font-sans);
+  font-size: 12px; font-weight: 600;
+  border-radius: var(--radius-full);
+  padding: 5px 14px;
+  border: 1.5px solid var(--border);
+  background: var(--surface);
+  color: var(--text-2);
+  cursor: pointer;
+}
+.sort-chip.active { background: var(--sienna); color: white; border-color: var(--sienna); }
+
+/* ── Church card (list panel style) ── */
+.church-card {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  display: flex;
+  flex-direction: row;
+  transition: box-shadow 0.2s;
+  text-decoration: none;
+  color: inherit;
+  position: relative;
+}
+.church-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,.1); }
+.church-card.active { box-shadow: 0 0 0 2px var(--sienna); }
+
+.card-accent {
+  width: 5px;
+  flex-shrink: 0;
+  background: var(--sienna);
+}
+.card-accent.baptist   { background: #7C3AED; }
+.card-accent.catholic  { background: #1D4ED8; }
+.card-accent.episcopal { background: #B45309; }
+.card-accent.methodist { background: #0891B2; }
+.card-accent.nondenominational { background: var(--sienna); }
+
+.card-body { padding: 14px 16px; flex: 1; }
+.card-name {
+  font-family: var(--font-serif);
+  font-size: 16px;
+  font-weight: 600;
+  font-optical-sizing: auto;
+  color: var(--text);
+  margin-bottom: 2px;
+  line-height: 1.3;
+}
+.card-denom { font-size: 12px; color: var(--text-3); margin-bottom: 8px; font-weight: 500; }
+.card-meta { display: flex; align-items: center; gap: 8px; font-size: 13px; flex-wrap: wrap; }
+.card-stars { color: var(--gold); letter-spacing: 1px; font-size: 12px; }
+.card-rating { font-weight: 700; color: var(--text); }
+.card-reviews { color: var(--text-3); }
+.card-dist { color: var(--sienna); font-weight: 600; font-size: 12px; margin-left: auto; }
+.card-tags { display: flex; gap: 5px; flex-wrap: wrap; margin-top: 8px; }
+
+/* ── Split pane mockup ── */
+.split-mockup {
+  background: var(--bg);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+  display: flex;
+  height: 480px;
+}
+.split-list {
+  width: 380px;
+  flex-shrink: 0;
+  overflow-y: auto;
+  border-right: 1px solid var(--border);
+  background: var(--bg);
+  padding: 12px;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.split-map {
+  flex: 1;
+  background: #E8E4DC;
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  overflow: hidden;
+}
+.map-placeholder {
+  width: 100%; height: 100%;
+  background: linear-gradient(160deg, #D6D0C4 0%, #C8C2B6 50%, #BEB8AC 100%);
+  position: relative;
+}
+/* fake map grid lines */
+.map-placeholder::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.25) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.25) 1px, transparent 1px);
+  background-size: 40px 40px;
+}
+/* fake roads */
+.map-placeholder::after {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(45deg, transparent 40%, rgba(255,255,255,.5) 40%, rgba(255,255,255,.5) 42%, transparent 42%),
+    linear-gradient(-30deg, transparent 55%, rgba(255,255,255,.4) 55%, rgba(255,255,255,.4) 57%, transparent 57%),
+    linear-gradient(90deg, transparent 30%, rgba(255,255,255,.45) 30%, rgba(255,255,255,.45) 32%, transparent 32%);
+}
+.map-pins { position: absolute; inset: 0; pointer-events: none; }
+
+/* custom pins */
+.map-pin {
+  position: absolute;
+  width: 28px; height: 28px;
+}
+.map-pin svg { width: 28px; height: 28px; filter: drop-shadow(0 2px 4px rgba(0,0,0,.3)); }
+.map-pin.active svg .pin-body { fill: var(--gold); }
+
+/* ── Search bar mockup ── */
+.search-top-mockup {
+  background: var(--bg);
+  border-bottom: 1px solid var(--border);
+  padding: 14px 16px 10px;
+}
+.search-top-mockup .wordmark { font-size: 20px; margin-bottom: 8px; }
+.search-row { display: flex; gap: 8px; margin-bottom: 10px; }
+.search-input {
+  flex: 1;
+  background: var(--surface);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 8px 16px;
+  font-family: var(--font-sans);
+  font-size: 14px;
+  color: var(--text);
+  outline: none;
+}
+.search-input:focus { border-color: var(--sienna); }
+
+/* ── Detail mockup ── */
+.detail-mockup {
+  background: var(--surface);
+  border-radius: var(--radius-lg);
+  overflow: hidden;
+  border: 1px solid var(--border);
+}
+.detail-map-strip {
+  height: 180px;
+  background: linear-gradient(160deg, #D6D0C4 0%, #C8C2B6 100%);
+  position: relative;
+}
+.detail-map-strip::before {
+  content: '';
+  position: absolute; inset: 0;
+  background-image:
+    linear-gradient(rgba(255,255,255,.2) 1px, transparent 1px),
+    linear-gradient(90deg, rgba(255,255,255,.2) 1px, transparent 1px);
+  background-size: 30px 30px;
+}
+.detail-pin {
+  position: absolute;
+  top: 50%; left: 50%;
+  transform: translate(-50%, -100%);
+  filter: drop-shadow(0 3px 6px rgba(0,0,0,.3));
+}
+.detail-body { padding: 24px; }
+.detail-name {
+  font-family: var(--font-serif);
+  font-size: 26px;
+  font-weight: 700;
+  font-optical-sizing: auto;
+  color: var(--text);
+  margin-bottom: 4px;
+  line-height: 1.2;
+}
+.detail-denom { font-size: 13px; color: var(--text-3); font-weight: 500; margin-bottom: 4px; }
+.detail-addr { font-size: 13px; color: var(--text-2); margin-bottom: 12px; }
+.detail-meta { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 16px; }
+.detail-stars { color: var(--gold); font-size: 14px; }
+.detail-rating { font-size: 15px; font-weight: 700; }
+.detail-g-rating { font-size: 13px; color: var(--text-2); }
+.detail-wheelchair { font-size: 13px; background: var(--green-lt); color: var(--green); padding: 3px 10px; border-radius: var(--radius-full); font-weight: 600; }
+
+.detail-links { display: flex; gap: 8px; margin-bottom: 20px; }
+.detail-link {
+  background: var(--bg-warm);
+  border: 1.5px solid var(--border);
+  border-radius: var(--radius-full);
+  padding: 7px 14px;
+  font-size: 13px;
+  font-weight: 600;
+  color: var(--sienna);
+  cursor: pointer;
+}
+
+.editorial-text {
+  font-size: 14px;
+  color: var(--text-2);
+  line-height: 1.6;
+  border-left: 3px solid var(--gold);
+  padding-left: 12px;
+  margin-bottom: 20px;
+  font-style: italic;
+}
+
+.dim-section { margin-bottom: 20px; }
+.dim-title { font-size: 12px; font-weight: 700; text-transform: uppercase; letter-spacing: 0.08em; color: var(--text-3); margin-bottom: 10px; }
+.dim-row { display: flex; align-items: center; gap: 10px; margin-bottom: 7px; }
+.dim-label { font-size: 13px; color: var(--text-2); width: 130px; flex-shrink: 0; }
+.dim-bar-bg { flex: 1; background: var(--bg-warm); border-radius: var(--radius-full); height: 6px; overflow: hidden; }
+.dim-bar-fill { height: 100%; background: linear-gradient(90deg, var(--sienna), var(--gold)); border-radius: var(--radius-full); }
+.dim-val { font-size: 12px; font-weight: 700; color: var(--sienna); width: 24px; text-align: right; font-variant-numeric: tabular-nums; }
+
+/* google review card */
+.g-review {
+  background: var(--bg);
+  border-radius: var(--radius-md);
+  padding: 12px 14px;
+  margin-bottom: 8px;
+  border: 1px solid var(--border);
+}
+.g-review-stars { color: var(--gold); font-size: 12px; margin-bottom: 4px; }
+.g-review-text { font-size: 13px; color: var(--text); line-height: 1.5; margin-bottom: 6px; }
+.g-review-meta { font-size: 11px; color: var(--text-3); }
+
+/* tags section */
+.tags-section { margin-top: 32px; }
+.h2 {
+  font-family: var(--font-serif);
+  font-size: 20px;
+  font-weight: 600;
+  font-optical-sizing: auto;
+  color: var(--text);
+  margin-bottom: 16px;
+}
+
+/* pin SVG */
+.pin-svg { display: block; }
+</style>
+</head>
+<body>
+
+<button class="dm-toggle" onclick="document.body.classList.toggle('dark')">☀ / ☾ Dark mode</button>
+
+<div class="preview-wrap">
+
+  <!-- ── Wordmark ── -->
+  <div class="section">
+    <p class="section-label">Brand</p>
+    <div class="wordmark">HolyHub</div>
+    <p class="tagline">Find your church — rated on what actually matters.</p>
+  </div>
+
+  <!-- ── Typography ── -->
+  <div class="section">
+    <p class="section-label">Typography</p>
+    <div class="specimen-row">
+      <div class="specimen-block">
+        <p class="spec-meta">Fraunces · Display / Church Names</p>
+        <div class="spec-display">Brooklyn Tabernacle</div>
+        <div class="spec-display-italic">St. Ann &amp; the Holy Trinity</div>
+      </div>
+      <div class="specimen-block">
+        <p class="spec-meta">Plus Jakarta Sans · Body / UI</p>
+        <p class="spec-body">A welcoming community church in the heart of Brooklyn, known for its vibrant worship and strong family programs. Open to all denominations.</p>
+        <br>
+        <p class="spec-ui">Non-denominational · 0.3 mi · ★ 4.6 (18 reviews)</p>
+        <br>
+        <p class="spec-data">Worship energy &nbsp;&nbsp; 4.8 &nbsp;&nbsp; Community warmth &nbsp;&nbsp; 4.5</p>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Color palette ── -->
+  <div class="section">
+    <p class="section-label">Color Palette</p>
+    <div class="palette-row">
+      <div class="swatch">
+        <div class="swatch-color" style="background:#8B5E3C"></div>
+        <div class="swatch-label"><div class="swatch-name">Sienna</div><div class="swatch-hex">#8B5E3C</div></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#D4A853"></div>
+        <div class="swatch-label"><div class="swatch-name">Gold</div><div class="swatch-hex">#D4A853</div></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#F7F4F0"></div>
+        <div class="swatch-label"><div class="swatch-name">Warm White</div><div class="swatch-hex">#F7F4F0</div></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#1C1917"></div>
+        <div class="swatch-label"><div class="swatch-name">Near Black</div><div class="swatch-hex">#1C1917</div></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#2D6A4F"></div>
+        <div class="swatch-label"><div class="swatch-name">Forest</div><div class="swatch-hex">#2D6A4F</div></div>
+      </div>
+      <div class="swatch">
+        <div class="swatch-color" style="background:#6B6560"></div>
+        <div class="swatch-label"><div class="swatch-name">Warm Gray</div><div class="swatch-hex">#6B6560</div></div>
+      </div>
+    </div>
+
+    <p class="section-label" style="margin-top:20px">Components</p>
+    <div class="comp-row">
+      <button class="btn btn-primary">Search</button>
+      <button class="btn btn-secondary">Load more</button>
+      <button class="btn btn-ghost">← Back</button>
+      <button class="btn btn-gold">Get directions</button>
+    </div>
+    <div class="comp-row" style="margin-top:8px">
+      <span class="pill pill-quality">Vibrant worship</span>
+      <span class="pill pill-quality pill-active">Strong community</span>
+      <span class="pill pill-lang">Spanish</span>
+      <span class="pill pill-culture">Hispanic/Latino</span>
+      <span class="pill pill-culture" style="background:#FEE2E2;color:#991B1B">African American</span>
+    </div>
+    <div class="comp-row" style="margin-top:8px">
+      <span class="sort-chip active">📍 Nearest</span>
+      <span class="sort-chip">★ Rating</span>
+      <span class="sort-chip">💬 Reviews</span>
+    </div>
+  </div>
+
+  <!-- ── Split-pane mockup ── -->
+  <div class="section">
+    <p class="section-label">Search — Split Pane</p>
+    <div class="split-mockup">
+      <!-- list panel -->
+      <div class="split-list">
+        <div style="padding: 4px 0 8px;">
+          <div class="wordmark" style="font-size:18px; margin-bottom:6px;">HolyHub</div>
+          <div class="search-row">
+            <input class="search-input" value="Brooklyn" readonly>
+            <input class="search-input" style="max-width:60px" value="NY" readonly>
+            <button class="btn btn-primary" style="padding:8px 16px; font-size:13px; border-radius:999px;">Search</button>
+          </div>
+          <div style="display:flex; gap:6px; margin-bottom:6px;">
+            <span class="sort-chip active">📍 Nearest</span>
+            <span class="sort-chip">★ Rating</span>
+          </div>
+          <div style="display:flex; gap:5px; flex-wrap:wrap;">
+            <span class="pill pill-quality">Vibrant worship</span>
+            <span class="pill pill-quality">Deep sermons</span>
+            <span class="pill pill-culture">Hispanic/Latino</span>
+          </div>
+        </div>
+
+        <!-- card 1 - hovered/active -->
+        <div class="church-card active">
+          <div class="card-accent nondenominational"></div>
+          <div class="card-body">
+            <div class="card-name">Brooklyn Tabernacle</div>
+            <div class="card-denom">Non-denominational</div>
+            <div class="card-meta">
+              <span class="card-stars">★★★★★</span>
+              <span class="card-rating">4.8</span>
+              <span class="card-reviews">(18 reviews)</span>
+              <span class="card-dist">📍 0.3 mi</span>
+            </div>
+            <div class="card-tags">
+              <span class="pill pill-quality" style="font-size:11px; padding:2px 8px;">Vibrant worship</span>
+              <span class="pill pill-quality" style="font-size:11px; padding:2px 8px;">Kids programs</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- card 2 -->
+        <div class="church-card">
+          <div class="card-accent episcopal"></div>
+          <div class="card-body">
+            <div class="card-name">St. Ann &amp; the Holy Trinity</div>
+            <div class="card-denom">Episcopal</div>
+            <div class="card-meta">
+              <span class="card-stars">★★★★☆</span>
+              <span class="card-rating">4.0</span>
+              <span class="card-reviews">(4 reviews)</span>
+              <span class="card-dist">📍 0.8 mi</span>
+            </div>
+            <div class="card-tags">
+              <span class="pill pill-quality" style="font-size:11px; padding:2px 8px;">Deep sermons</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- card 3 -->
+        <div class="church-card">
+          <div class="card-accent baptist"></div>
+          <div class="card-body">
+            <div class="card-name">Concord Baptist Church of Christ</div>
+            <div class="card-denom">Baptist</div>
+            <div class="card-meta">
+              <span class="card-stars">★★★★☆</span>
+              <span class="card-rating">4.2</span>
+              <span class="card-reviews">(11 reviews)</span>
+              <span class="card-dist">📍 1.1 mi</span>
+            </div>
+            <div class="card-tags">
+              <span class="pill pill-culture" style="font-size:11px; padding:2px 8px;">African American</span>
+              <span class="pill pill-quality" style="font-size:11px; padding:2px 8px;">Strong community</span>
+            </div>
+          </div>
+        </div>
+
+        <!-- card 4 -->
+        <div class="church-card">
+          <div class="card-accent" style="background:#B45309"></div>
+          <div class="card-body">
+            <div class="card-name">Iglesia Cristiana La Hermosa</div>
+            <div class="card-denom">Pentecostal</div>
+            <div class="card-meta">
+              <span class="card-stars">★★★★★</span>
+              <span class="card-rating">4.6</span>
+              <span class="card-reviews">(7 reviews)</span>
+              <span class="card-dist">📍 1.4 mi</span>
+            </div>
+            <div class="card-tags">
+              <span class="pill pill-lang" style="font-size:11px; padding:2px 8px;">Spanish</span>
+              <span class="pill pill-culture" style="font-size:11px; padding:2px 8px;">Hispanic/Latino</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <!-- map panel -->
+      <div class="split-map">
+        <div class="map-placeholder">
+          <!-- active pin (gold) -->
+          <div class="map-pin" style="top:35%;left:48%;position:absolute;">
+            <svg viewBox="0 0 28 36" class="pin-svg">
+              <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="#D4A853"/>
+              <circle cx="14" cy="14" r="6" fill="white"/>
+            </svg>
+          </div>
+          <!-- regular pins (sienna) -->
+          <div class="map-pin" style="top:50%;left:55%;position:absolute;">
+            <svg viewBox="0 0 28 36" class="pin-svg">
+              <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="#8B5E3C"/>
+              <circle cx="14" cy="14" r="6" fill="white"/>
+            </svg>
+          </div>
+          <div class="map-pin" style="top:42%;left:62%;position:absolute;">
+            <svg viewBox="0 0 28 36" class="pin-svg">
+              <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="#8B5E3C"/>
+              <circle cx="14" cy="14" r="6" fill="white"/>
+            </svg>
+          </div>
+          <div class="map-pin" style="top:58%;left:44%;position:absolute;">
+            <svg viewBox="0 0 28 36" class="pin-svg">
+              <path d="M14 0C6.268 0 0 6.268 0 14c0 9.333 14 22 14 22S28 23.333 28 14C28 6.268 21.732 0 14 0z" fill="#8B5E3C"/>
+              <circle cx="14" cy="14" r="6" fill="white"/>
+            </svg>
+          </div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- ── Detail page mockup ── -->
+  <div class="section">
+    <p class="section-label">Church Detail Page</p>
+    <div class="detail-mockup">
+      <div class="detail-map-strip">
+        <div class="detail-pin">
+          <svg viewBox="0 0 36 46" width="36" height="46">
+            <path d="M18 0C8.059 0 0 8.059 0 18c0 12 18 28 18 28S36 30 36 18C36 8.059 27.941 0 18 0z" fill="#8B5E3C"/>
+            <circle cx="18" cy="18" r="8" fill="white"/>
+          </svg>
+        </div>
+      </div>
+      <div class="detail-body">
+        <div class="detail-name">Brooklyn Tabernacle</div>
+        <div class="detail-denom">Non-denominational</div>
+        <div class="detail-addr">17 Smith St, Brooklyn, NY 11201</div>
+        <div class="detail-meta">
+          <span class="detail-stars">★★★★★</span>
+          <span class="detail-rating">4.8</span>
+          <span class="detail-g-rating">⭐ 4.6 Google (1,240)</span>
+          <span class="detail-wheelchair">♿ Accessible</span>
+        </div>
+        <div class="detail-links">
+          <span class="detail-link">🌐 Website</span>
+          <span class="detail-link">📞 (718) 290-2000</span>
+          <span class="detail-link">📍 Directions</span>
+        </div>
+        <div class="editorial-text">
+          A renowned Pentecostal church in downtown Brooklyn, famous for its Grammy Award-winning choir and services open to all walks of life.
+        </div>
+
+        <div class="dim-section">
+          <div class="dim-title">Dimension Ratings</div>
+          <div class="dim-row"><span class="dim-label">Worship energy</span><div class="dim-bar-bg"><div class="dim-bar-fill" style="width:96%"></div></div><span class="dim-val">4.8</span></div>
+          <div class="dim-row"><span class="dim-label">Community warmth</span><div class="dim-bar-bg"><div class="dim-bar-fill" style="width:90%"></div></div><span class="dim-val">4.5</span></div>
+          <div class="dim-row"><span class="dim-label">Sermon depth</span><div class="dim-bar-bg"><div class="dim-bar-fill" style="width:86%"></div></div><span class="dim-val">4.3</span></div>
+          <div class="dim-row"><span class="dim-label">Children's programs</span><div class="dim-bar-bg"><div class="dim-bar-fill" style="width:92%"></div></div><span class="dim-val">4.6</span></div>
+          <div class="dim-row"><span class="dim-label">Facilities</span><div class="dim-bar-bg"><div class="dim-bar-fill" style="width:88%"></div></div><span class="dim-val">4.4</span></div>
+        </div>
+
+        <div class="h2">Google Reviews</div>
+        <div class="g-review">
+          <div class="g-review-stars">★★★★★</div>
+          <div class="g-review-text">"The choir alone is worth the trip. I've never felt more welcomed walking into a church for the first time. Highly recommend for anyone new to Brooklyn."</div>
+          <div class="g-review-meta">Sarah M. · 2 weeks ago</div>
+        </div>
+        <div class="g-review">
+          <div class="g-review-stars">★★★★☆</div>
+          <div class="g-review-text">"Amazing energy every Sunday. Services can run long but nobody minds. The children's ministry is exceptional."</div>
+          <div class="g-review-meta">James T. · 1 month ago</div>
+        </div>
+      </div>
+    </div>
+  </div>
+
+</div>
+
+</body>
+</html>
