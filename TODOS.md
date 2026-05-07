@@ -239,3 +239,18 @@ python -m backend.scrapers.run_pipeline --all           # full pipeline
 - [ ] **Church leader profile claiming** — Church can claim listing, add official description, respond to reviews. Requires auth layer first. Phase 3+.
 - [ ] **Optional auth / user profiles** — Let reviewers optionally sign in to claim their reviews. No breaking change to anonymous reviews. Effort: L (CC: ~M).
 - [ ] **Multi-city support** — Search any US city. Requires real crowdsourced data, not seed data. Phase 3+.
+
+---
+
+## Website pipeline follow-ups (deferred from /plan-eng-review 2026-05-06)
+
+- [ ] **Migrate to Supabase + pgvector when SQLite hurts** — Today the website pipeline + embeddings live in baked SQLite (vectors stored as BLOB in `church_embeddings`). Triggers to revisit: (a) >50k churches in DB, (b) need for filter-aware vector queries (WHERE + cosine), (c) need for cross-Fly-machine write consistency. The BLOB column maps cleanly to `vector(1536)` in pgvector — migration is mostly schema + a one-time copy. Why captured now: future-you will see "why are vectors in SQLite?" and need the WHY, not just the trigger. Depends on: real scale or feature pressure that doesn't exist yet.
+- [ ] **sqlite-vec migration if staying on SQLite past 50k** — If migration to hosted DB doesn't happen but church count grows past ~50k, swap numpy in-memory matmul for sqlite-vec (`.so` extension loaded by sqlite3.enable_load_extension). Numpy matmul is fine at 5k, gets wasteful past 50k. Cost: one new native dep in Docker image. Depends on: scale or pain that doesn't exist yet.
+- [ ] **Eval gating in CI for prompt versions** — Block merges that bump `PROMPT_VERSION` if golden-set per-field precision drops >10%. Prevents silent prompt regressions, which are the #1 LLM-product failure mode. Setup: GitHub Action runs `python -m evals.website_extraction.run --baseline=PRIOR_PROMPT_VERSION` and fails on regression threshold. Depends on: eval harness existing (M1 deliverable) and at least one prior prompt version baseline.
+
+---
+
+## Phase 2 candidates (deferred from /plan-ceo-review 2026-05-06, SELECTIVE EXPANSION)
+
+- [ ] **Sermon transcript embeddings (Phase 2 differentiation move)** — Many churches publish sermon audio (RSS, podcasts, embedded video). Pipeline: Whisper transcribe → embed → rank by what the pastor actually preaches, not what the beliefs page says. No other church directory can do this. Effort: M (~3-5 days for 10-church v1). Cost: Whisper API ~$0.006/min audio (~$3 for 50 sermons of 10 minutes each). Risks: transcription quality varies; copyright/licensing brief needed before going broad; some churches will object — provide opt-out. Depends on: M3 of the website pipeline shipped, eval suite working, and a real signal that users want sermon-style matching (interview a few users post-launch). Trigger to revisit: after v1 ships and query logs show users asking sermon-style questions.
+- [ ] **Public API + dataset publication** — `GET /api/v1/churches` rate-limited public endpoint with auth keys. Static dataset download (CSV/parquet of tags + embeddings, license TBD). Researchers, journalists, denomination orgs build on it; backlinks + SEO; dataset citations build credibility. Effort: S (~1 day for endpoint, ~0.5 day for dataset packaging + license). Risks: premature exposure when data quality is poor damages brand; abuse without rate limits. Depends on: eval suite showing >0.85 precision on high-impact fields AND >60% of churches with non-empty extractions. Trigger to revisit: when both conditions met, after M3.

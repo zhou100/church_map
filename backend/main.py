@@ -1,3 +1,7 @@
+from backend.env_loader import load_env_local
+
+load_env_local()
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from backend import deps
