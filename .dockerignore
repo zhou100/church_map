@@ -10,3 +10,7 @@ venv
 dedup_report.csv
 holyhub.db-shm
 holyhub.db-wal
+env.local
+env.*.local
+tests
+evals

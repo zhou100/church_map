@@ -8,8 +8,10 @@ import os
 logging.basicConfig(level=logging.INFO)
 
 class Database:
-    def __init__(self, db_path: str = 'holyhub.db'):
-        self.db_path = db_path
+    def __init__(self, db_path: str | None = None):
+        # Honor DATABASE_PATH env var so production (Fly volume at /data) and
+        # local dev (./holyhub.db) share the same code path.
+        self.db_path = db_path or os.environ.get('DATABASE_PATH', 'holyhub.db')
         self.connection = None
         self._initialize_database()
 
