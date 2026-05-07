@@ -13,6 +13,39 @@ function Stars({ rating }) {
   return <span className="stars">{'★'.repeat(full)}{'☆'.repeat(5 - full)}</span>
 }
 
+function AboutSection({ summary, tags }) {
+  const vibe = tags?.vibe_tags || []
+  const programs = tags?.programs || []
+  const langs = tags?.service_languages || []
+  if (!summary && !vibe.length && !programs.length && !langs.length) return null
+  return (
+    <div className="about-section">
+      {summary && <p className="about-summary">{summary}</p>}
+      {vibe.length > 0 && (
+        <div className="about-tags">
+          {vibe.map(t => <span key={t} className="vibe-chip">{t}</span>)}
+        </div>
+      )}
+      {(programs.length > 0 || langs.length > 0) && (
+        <dl className="about-meta">
+          {langs.length > 0 && (
+            <>
+              <dt>Languages</dt>
+              <dd>{langs.join(', ')}</dd>
+            </>
+          )}
+          {programs.length > 0 && (
+            <>
+              <dt>Programs</dt>
+              <dd>{programs.join(' · ')}</dd>
+            </>
+          )}
+        </dl>
+      )}
+    </div>
+  )
+}
+
 function ReviewCard({ review }) {
   const full = Math.round(review.rating || 0)
   return (
@@ -185,6 +218,10 @@ export default function ChurchDetail() {
                     </a>
                   )}
                 </div>
+              )}
+
+              {(church.website_summary || church.extracted_tags) && (
+                <AboutSection summary={church.website_summary} tags={church.extracted_tags} />
               )}
 
               {enrichData?.hours?.length > 0 && (

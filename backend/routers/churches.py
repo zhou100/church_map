@@ -22,6 +22,8 @@ _DIM_QUERY = """
         c.phone,
         c.language,
         c.cultural_background,
+        c.website_summary,
+        c.extracted_tags,
         c.latitude,
         c.longitude,
         ROUND(AVG(r.rating), 1)               AS avg_rating,
@@ -35,6 +37,19 @@ _DIM_QUERY = """
     FROM Churches c
     LEFT JOIN Reviews r ON c.church_id = r.church_id
 """
+
+
+def _safe_keys(row, key: str):
+    """Return row[key] if the row has that column, else None.
+
+    sqlite3.Row exposes columns via mapping access but raises IndexError on
+    unknown keys. The /similar query has a different column set than _DIM_QUERY,
+    so we tolerate either shape.
+    """
+    try:
+        return row[key]
+    except (IndexError, KeyError):
+        return None
 
 
 def _row_to_church(row, include_dims: bool = False) -> dict:
@@ -63,6 +78,8 @@ def _row_to_church(row, include_dims: bool = False) -> dict:
         "language": row["language"] or None,
         "cultural_background": row["cultural_background"] or None,
         "tags": compute_tags(dims, row["review_count"] or 0),
+        "website_summary": _safe_keys(row, "website_summary") or None,
+        "extracted_tags": (json.loads(_safe_keys(row, "extracted_tags")) if _safe_keys(row, "extracted_tags") else None),
     }
     if include_dims:
         church["dimensions"] = {k: (round(v, 2) if v is not None else None) for k, v in dims.items()}
