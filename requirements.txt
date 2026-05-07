@@ -6,3 +6,6 @@ reverse_geocoder
 tqdm
 pytest
 httpx
+trafilatura
+lxml_html_clean
+numpy

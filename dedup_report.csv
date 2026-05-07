@@ -1,0 +1,115 @@
+keep_id,keep_name,drop_id,drop_name,city,state,score,keep_source,drop_source
+98639,Sacred Heart Convent,120885,Sacred Heart Convent,,IA,100.0,osm,osm
+128853,Dodge Community Church,128851,Dover Community Church,,OR,90.9090909090909,osm,osm
+128933,First Christian Church,128970,First Christian Church,,OR,100.0,osm,osm
+117791,The Church of Jesus Christ of Latter-day Saints,128862,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+117791,The Church of Jesus Christ of Latter-day Saints,128928,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+117791,The Church of Jesus Christ of Latter-day Saints,128947,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+117791,The Church of Jesus Christ of Latter-day Saints,128960,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+117791,The Church of Jesus Christ of Latter-day Saints,128972,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+117791,The Church of Jesus Christ of Latter-day Saints,128974,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128862,The Church of Jesus Christ of Latter-day Saints,128928,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128862,The Church of Jesus Christ of Latter-day Saints,128947,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128862,The Church of Jesus Christ of Latter-day Saints,128960,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128862,The Church of Jesus Christ of Latter-day Saints,128972,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128862,The Church of Jesus Christ of Latter-day Saints,128974,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128928,The Church of Jesus Christ of Latter-day Saints,128947,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128928,The Church of Jesus Christ of Latter-day Saints,128960,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128928,The Church of Jesus Christ of Latter-day Saints,128972,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128928,The Church of Jesus Christ of Latter-day Saints,128974,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128947,The Church of Jesus Christ of Latter-day Saints,128960,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128947,The Church of Jesus Christ of Latter-day Saints,128972,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128947,The Church of Jesus Christ of Latter-day Saints,128974,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128960,The Church of Jesus Christ of Latter-day Saints,128972,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128960,The Church of Jesus Christ of Latter-day Saints,128974,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128972,The Church of Jesus Christ of Latter-day Saints,128974,The Church of Jesus Christ of Latter-day Saints,,OR,100.0,osm,osm
+128963,Valley Baptist Church,128966,Valley Baptist Church,,OR,100.0,osm,osm
+108963,Sisters of Divine Providence Convent,108964,Sisters of Divine Providence Convent,,PA,100.0,osm,osm
+108963,Sisters of Divine Providence Convent,108970,Sisters of Divine Providence Convent,,PA,100.0,osm,osm
+108964,Sisters of Divine Providence Convent,108970,Sisters of Divine Providence Convent,,PA,100.0,osm,osm
+118038,The Church of Jesus Christ of Latter-day Saints,118048,The Church of Jesus Christ of Latter-day Saints,afton,WY,100.0,osm,osm
+47636,Pentecostal Church of God in Christ,47849,Pentecostal Temple Church of God In Christ,amarillo,TX,90.9090909090909,osm,osm
+70307,Johnsons Chapel,70308,Johnsons Chapel,benson,NC,100.0,osm,osm
+78054,Canaan I,78053,Canaan II,campbell,CA,94.11764705882352,osm,osm
+78054,Canaan I,78052,Canaan III,campbell,CA,88.88888888888889,osm,osm
+78053,Canaan II,78052,Canaan III,campbell,CA,94.73684210526316,osm,osm
+93764,Calvary Chapel Cherry Creek,93757,Calvery Chapel Cherry Creek,centennial,CO,96.2962962962963,osm,osm
+31708,Bethany Lutheran Church,31691,Bethel Lutheran Church,dallas,TX,88.88888888888889,osm,osm
+93474,Iglesia Del Dios Vivo,93640,Iglesia Del Dios Vivo,denver,CO,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93024,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93030,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93045,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93046,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93062,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93063,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93012,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93024,The Church of Jesus Christ of Latter-day Saints,93030,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93024,The Church of Jesus Christ of Latter-day Saints,93045,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93024,The Church of Jesus Christ of Latter-day Saints,93046,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93024,The Church of Jesus Christ of Latter-day Saints,93062,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93024,The Church of Jesus Christ of Latter-day Saints,93063,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93024,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93030,The Church of Jesus Christ of Latter-day Saints,93045,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93030,The Church of Jesus Christ of Latter-day Saints,93046,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93030,The Church of Jesus Christ of Latter-day Saints,93062,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93030,The Church of Jesus Christ of Latter-day Saints,93063,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93030,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93045,The Church of Jesus Christ of Latter-day Saints,93046,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93045,The Church of Jesus Christ of Latter-day Saints,93062,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93045,The Church of Jesus Christ of Latter-day Saints,93063,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93045,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93046,The Church of Jesus Christ of Latter-day Saints,93062,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93046,The Church of Jesus Christ of Latter-day Saints,93063,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93046,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93062,The Church of Jesus Christ of Latter-day Saints,93063,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93062,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+93063,The Church of Jesus Christ of Latter-day Saints,93064,The Church of Jesus Christ of Latter-day Saints,eagle mountain,UT,100.0,osm,osm
+85765,Gloria Dei Lutheran Chruch,85764,Gloria Dei Lutheran Church,elizabethtown,KY,96.15384615384616,osm,osm
+124924,First United Methodist Church,124938,First United Methodist Church,erie,PA,100.0,osm,osm
+124966,Holy Trinity Catholic Church,125238,Holy Trinity Catholic Church,erie,PA,100.0,osm,osm
+125005,Morning Star Baptist Church,125016,Morning Star Baptist Church,erie,PA,100.0,osm,osm
+125143,Saint Andrew Catholic Church,125094,Saint Ann Catholic Church,erie,PA,90.56603773584906,osm,osm
+125101,Saint Joseph Catholic Church,124952,Saint Jude Catholic Church,erie,PA,88.88888888888889,osm,osm
+124952,Saint Jude Catholic Church,125048,Saint Luke Catholic Church,erie,PA,92.3076923076923,osm,osm
+124959,Saint Mark's Episcopal Church,124941,Saint Mary's Episcopal Church,erie,PA,96.55172413793103,osm,osm
+25295,The Church of Jesus Christ of Latter-day Saints,25515,The Church of Jesus Christ of Latter-day Saints,fontana,CA,100.0,osm,osm
+50896,Evangelical Temple Assembly of God Church,51511,Evangelical Temple Assembly of God Church,fort smith,AR,100.0,osm,osm
+15140,First United Methodist Church,17744,First United Methodist Church,gulfport,MS,100.0,osm,osm
+73978,Five Forks Baptist Church,74414,Five Forks Baptist Church,hillsborough,NC,100.0,osm,osm
+75281,Parkers Chapel Baptist Church,76204,Parkers Chapel Baptist Church,jackson,NC,100.0,osm,osm
+22306,Destiny Chuch of Jacksonville,22155,Destiny Church of Jacksonville,jacksonville,FL,98.30508474576271,osm,osm
+115698,Calvary Baptist Church,127115,Calvary Baptist Church,lancaster,,100.0,osm,osm
+55764,United Methodist Neighborhood Centers of Memphis,55765,United Methodist Neighborhood Centers of Memphis,memphis,,100.0,osm,osm
+55764,United Methodist Neighborhood Centers of Memphis,55773,United Methodist Neighborhood Centers of Memphis,memphis,,100.0,osm,osm
+55765,United Methodist Neighborhood Centers of Memphis,55773,United Methodist Neighborhood Centers of Memphis,memphis,,100.0,osm,osm
+110402,Perry Valley Presbyterian Church,113326,Perry Valley Presbyterian Church,millerstown,PA,100.0,osm,osm
+115150,Viznitz וויזניץ,115157,Viznitz וויזניץ,monsey,NY,100.0,osm,osm
+67097,Pleasant Ridge Baptist Church,71392,Pleasant View Baptist Church,morganton,NC,91.22807017543859,osm,osm
+76133,Saint Paul Catholic Church,75873,Saint Pauls Catholic Church,new bern,,98.11320754716981,osm,osm
+6455,Life Challenge,6456,Life Challenge,odessa,TX,100.0,osm,osm
+96274,Apostolic Life Center,96580,Apostolic Life Center,omaha,NE,100.0,osm,osm
+96186,Omaha Chin Christian Church,96246,Omaha Chinese Christian Church,omaha,NE,94.73684210526316,osm,osm
+124573,Oneida United Church,124694,Oneida Zion United Church,oneida,,88.88888888888889,osm,osm
+4243,Crosspointe Baptist Church,4510,Crosspointe Baptist Church,pinellas park,FL,100.0,osm,osm
+73316,Pinnacle United Methodist Church,74484,Pinnacle United Methodist Church,pinnacle,NC,100.0,osm,osm
+112464,Christ Community Church office,113597,Christ Community Church service,piscataway,NJ,88.52459016393442,osm,osm
+74374,Camp Springs United Methodist,74373,Camp Springs United Methodist Church,reidsville,NC,89.23076923076923,osm,osm
+46430,The Church of Jesus Christ of Latter-day Saints,46825,The Church of Jesus Christ of Latter-day Saints,ridgecrest,CA,100.0,osm,osm
+77119,Saint Joseph Catholic Church,77079,Saint Rose Catholic Church,sacramento,CA,92.5925925925926,osm,osm
+77013,Saint Mary Catholic Church,77225,Saint Paul Catholic Church,sacramento,CA,88.46153846153845,osm,osm
+77013,Saint Mary Catholic Church,77079,Saint Rose Catholic Church,sacramento,CA,88.46153846153845,osm,osm
+2102,House of Prayer,7044,House of Prayer,san antonio,TX,100.0,osm,osm
+93032,The Church of Jesus Christ of Latter-day Saints,93065,The Church of Jesus Christ of Latter-day Saints,saratoga springs,UT,100.0,osm,osm
+93032,The Church of Jesus Christ of Latter-day Saints,93066,The Church of Jesus Christ of Latter-day Saints,saratoga springs,UT,100.0,osm,osm
+93032,The Church of Jesus Christ of Latter-day Saints,93067,The Church of Jesus Christ of Latter-day Saints,saratoga springs,UT,100.0,osm,osm
+93065,The Church of Jesus Christ of Latter-day Saints,93066,The Church of Jesus Christ of Latter-day Saints,saratoga springs,UT,100.0,osm,osm
+93065,The Church of Jesus Christ of Latter-day Saints,93067,The Church of Jesus Christ of Latter-day Saints,saratoga springs,UT,100.0,osm,osm
+93066,The Church of Jesus Christ of Latter-day Saints,93067,The Church of Jesus Christ of Latter-day Saints,saratoga springs,UT,100.0,osm,osm
+75369,Trinity Episcopal Church,76167,Trinity Episcopal Church,scotland neck,NC,100.0,osm,osm
+25625,The Church of Jesus Christ of Latter-day Saints,25626,The Church of Jesus Christ of Latter-day Saints,simi valley,CA,100.0,osm,osm
+124611,Springfield Baptist Church,124689,Springfield Baptist Church,springfield,,100.0,osm,osm
+98811,Calvary Church,98816,Calvary Church,springfield,IL,100.0,osm,osm
+95711,Faith Baptist Church,95710,First Baptist Church,tecumseh,NE,90.0,osm,osm
+118019,The Church of Jesus Christ of Latter-day Saints,118024,The Church of Jesus Christ of Latter-day Saints,twin falls,ID,100.0,osm,osm
+118019,The Church of Jesus Christ of Latter-day Saints,118025,The Church of Jesus Christ of Latter-day Saints,twin falls,ID,100.0,osm,osm
+118024,The Church of Jesus Christ of Latter-day Saints,118025,The Church of Jesus Christ of Latter-day Saints,twin falls,ID,100.0,osm,osm
