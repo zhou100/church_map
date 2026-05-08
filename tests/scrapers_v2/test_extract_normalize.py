@@ -1,5 +1,18 @@
 """Normalization + schema validation for the v3 extraction prompt."""
-from backend.scrapers_v2.extract import _parse_json_object, normalize_extraction
+from backend.scrapers_v2.extract import (
+    ExtractionError,
+    TransientExtractionError,
+    _parse_json_object,
+    normalize_extraction,
+)
+
+
+def test_error_classes_distinct():
+    # Transient and terminal must be different exception classes so the
+    # extract loop can route them correctly: transient leaves artifacts
+    # pending for retry, terminal marks them error.
+    assert not issubclass(TransientExtractionError, ExtractionError)
+    assert not issubclass(ExtractionError, TransientExtractionError)
 
 
 SOURCE = (

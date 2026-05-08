@@ -6,6 +6,11 @@ name: crawl
 # Schedules are intentionally offset from the top of the hour so we don't
 # pile on with everyone else's crons. fetch every 4h, extract twice daily,
 # tag once daily.
+#
+# Ordering: extract `needs: [fetch]` and tag `needs: [extract]` so a manual
+# `stage=all` dispatch runs the three sequentially. Scheduled crons hit a
+# single stage at a time; `always()` lets the downstream job run even when
+# its upstream is skipped (because the upstream's `if:` evaluated false).
 
 on:
   schedule:
@@ -29,8 +34,8 @@ jobs:
   fetch:
     if: |
       github.event.schedule == '17 */4 * * *' ||
-      github.event_name == 'workflow_dispatch' &&
-      (github.event.inputs.stage == 'fetch' || github.event.inputs.stage == 'all')
+      (github.event_name == 'workflow_dispatch' &&
+       (github.event.inputs.stage == 'fetch' || github.event.inputs.stage == 'all'))
     runs-on: ubuntu-latest
     steps:
       - name: POST /api/admin/crawl/fetch
@@ -44,10 +49,13 @@ jobs:
             "$BACKEND_URL/api/admin/crawl/fetch?batch=$BATCH"
 
   extract:
+    needs: [fetch]
     if: |
-      github.event.schedule == '37 6,18 * * *' ||
-      github.event_name == 'workflow_dispatch' &&
-      (github.event.inputs.stage == 'extract' || github.event.inputs.stage == 'all')
+      always() && (
+        github.event.schedule == '37 6,18 * * *' ||
+        (github.event_name == 'workflow_dispatch' &&
+         (github.event.inputs.stage == 'extract' || github.event.inputs.stage == 'all'))
+      )
     runs-on: ubuntu-latest
     steps:
       - name: POST /api/admin/crawl/extract
@@ -61,10 +69,13 @@ jobs:
             "$BACKEND_URL/api/admin/crawl/extract?batch=$BATCH"
 
   tag:
+    needs: [extract]
     if: |
-      github.event.schedule == '47 7 * * *' ||
-      github.event_name == 'workflow_dispatch' &&
-      (github.event.inputs.stage == 'tag' || github.event.inputs.stage == 'all')
+      always() && (
+        github.event.schedule == '47 7 * * *' ||
+        (github.event_name == 'workflow_dispatch' &&
+         (github.event.inputs.stage == 'tag' || github.event.inputs.stage == 'all'))
+      )
     runs-on: ubuntu-latest
     steps:
       - name: POST /api/admin/crawl/tag

@@ -42,7 +42,15 @@ RETRYABLE_STATUS = {408, 429, 500, 502, 503, 504}
 
 
 class ExtractionError(Exception):
-    pass
+    """Terminal extraction error: bad JSON, schema mismatch, response shape.
+    These are about the model's output, not the upstream connection — retrying
+    won't help, so artifacts get marked 'error'."""
+
+
+class TransientExtractionError(Exception):
+    """Recoverable extraction error: upstream timeouts/5xx/429 after retries,
+    missing API key, network failures. Artifacts stay 'pending' so the next
+    cron run picks them up once the underlying issue clears."""
 
 
 def _truncate(text: str, limit: int = MAX_INPUT_CHARS) -> str:
@@ -96,7 +104,8 @@ async def call_llm(
 ) -> dict[str, Any]:
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
-        raise ExtractionError("OPENROUTER_API_KEY not set")
+        # Treat as transient: ops can fix the env var and the next run picks up.
+        raise TransientExtractionError("OPENROUTER_API_KEY not set")
 
     payload = {
         "model": MODEL,
@@ -137,9 +146,13 @@ async def call_llm(
             if r.status_code in RETRYABLE_STATUS:
                 last_err = f"upstream-{r.status_code}"
                 continue
-            # Non-retryable (auth, bad request, etc.)
-            raise ExtractionError(f"OpenRouter HTTP {r.status_code}: {r.text[:200]}")
-        raise ExtractionError(f"upstream gave up after retries: {last_err}")
+            # Non-retryable (auth, bad request, etc.) — treat as transient
+            # because it's almost always a config or quota issue ops can fix
+            # without resetting per-artifact state.
+            raise TransientExtractionError(
+                f"OpenRouter HTTP {r.status_code}: {r.text[:200]}"
+            )
+        raise TransientExtractionError(f"upstream gave up after retries: {last_err}")
     finally:
         if owns_client:
             await client.aclose()
@@ -234,15 +247,23 @@ async def extract_for_church(
 
     try:
         raw = await call_llm(text, api_key=api_key, client=client)
+    except TransientExtractionError as e:
+        # Leave artifacts as 'pending' so the next cron run retries them
+        # automatically once OpenRouter recovers / API key is restored.
+        # Just bump the church-level status so /status visibility shows it.
+        log.warning("extract transient failure church=%s: %s", church_id, e)
+        await repo.mark_church_extract_error(church_id, f"transient:{type(e).__name__}")
+        return False
     except ExtractionError as e:
         detail = str(e)[:4000]
         await repo.mark_artifacts_status(artifact_ids, status="error", error_detail=detail)
         await repo.mark_church_extract_error(church_id, f"error:{type(e).__name__}")
         return False
     except Exception as e:
+        # Unknown failure mode — keep artifacts retryable, log loudly.
+        log.exception("extract unexpected failure church=%s: %s", church_id, e)
         detail = f"unexpected:{type(e).__name__}:{str(e)[:200]}"
-        await repo.mark_artifacts_status(artifact_ids, status="error", error_detail=detail)
-        await repo.mark_church_extract_error(church_id, "error:unexpected")
+        await repo.mark_church_extract_error(church_id, f"transient:unexpected:{detail[:100]}")
         return False
 
     norm = normalize_extraction(raw, text)

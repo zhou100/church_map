@@ -38,12 +38,23 @@ def require_crawl_token(x_crawl_token: str = Header(default="")) -> None:
 
 
 async def _run_stage(stage: str, batch_size: int, runner) -> dict:
-    """Wrap a stage runner in a crawl_runs row + try/except."""
+    """Wrap a stage runner in a crawl_runs row + try/except.
+
+    Important: psycopg's pool.connection() context rolls back on exception
+    exit by default. If we wrote the error row inside the same `async with`
+    and then raised, the row would vanish and `/status` would never show the
+    failed invocation. So we commit the start_run on entry, commit the
+    finish_run before raising, and only then convert to HTTPException.
+    """
     async with pool.acquire() as con:
         repo = CrawlRepository(con)
         run_id = await repo.start_run(
             stage, batch_size, triggered_by="github-actions"
         )
+        # Commit so the run row exists even if the runner crashes before
+        # finish_run runs (e.g., OOM, SIGTERM during a long batch).
+        await con.commit()
+        error_payload: tuple[str, str] | None = None
         try:
             counts = await runner(repo, run_id)
             status = "ok" if counts["rows_error"] == 0 else "partial"
@@ -54,6 +65,7 @@ async def _run_stage(stage: str, batch_size: int, runner) -> dict:
                 rows_ok=counts["rows_ok"],
                 rows_error=counts["rows_error"],
             )
+            await con.commit()
             return {"run_id": run_id, "stage": stage, "status": status, **counts}
         except Exception as e:
             log.exception("%s stage failed: %s", stage, e)
@@ -65,7 +77,15 @@ async def _run_stage(stage: str, batch_size: int, runner) -> dict:
                 rows_error=0,
                 error=f"{type(e).__name__}: {str(e)[:500]}",
             )
-            raise HTTPException(status_code=500, detail=f"{stage} failed: {type(e).__name__}")
+            await con.commit()
+            error_payload = (stage, type(e).__name__)
+
+    # Out of the connection context — safe to raise without losing the row.
+    if error_payload is not None:
+        raise HTTPException(
+            status_code=500,
+            detail=f"{error_payload[0]} failed: {error_payload[1]}",
+        )
 
 
 @router.post("/fetch", dependencies=[Depends(require_crawl_token)])
