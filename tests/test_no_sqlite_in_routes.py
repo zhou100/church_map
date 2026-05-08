@@ -27,8 +27,14 @@ ROUTE_FILES = [
     REPO / "backend" / "routers" / "churches.py",
     REPO / "backend" / "routers" / "reviews.py",
     REPO / "backend" / "routers" / "auth.py",
+    REPO / "backend" / "routers" / "admin.py",
     REPO / "backend" / "db" / "pool.py",
     REPO / "backend" / "db" / "repository.py",
+    REPO / "backend" / "scrapers_v2" / "fetch.py",
+    REPO / "backend" / "scrapers_v2" / "extract.py",
+    REPO / "backend" / "scrapers_v2" / "tag.py",
+    REPO / "backend" / "scrapers_v2" / "r2.py",
+    REPO / "backend" / "scrapers_v2" / "robots.py",
 ]
 
 # `?` placeholder pattern: a `?` followed by `,` or `)` after optional
