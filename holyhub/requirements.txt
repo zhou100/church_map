@@ -1,6 +1,0 @@
-# Application dependencies
-streamlit==1.36.0
-sqlite3==2.6.0
-bcrypt==4.1.2
-cryptography==42.0.5
-python-dotenv==1.0.0
