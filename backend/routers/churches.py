@@ -1,196 +1,150 @@
-import json
-import sqlite3
+"""
+Churches router. All SQL goes through ChurchRepository against the async
+Postgres pool. The /enrich endpoint stays public because the frontend calls
+it on every detail page load, but the enrichment work itself runs on a
+sync psycopg connection (see backend.enrichment) wrapped in
+asyncio.to_thread to avoid blocking the event loop.
+"""
+from __future__ import annotations
 
-from fastapi import APIRouter, Depends, HTTPException
-from holyhub.database import Database
-from backend.deps import get_db
-from backend.utils import compute_tags
+import asyncio
+import json
+import os
+
+from fastapi import APIRouter, HTTPException
+from psycopg.rows import dict_row
+
 from backend import enrichment
+from backend.db import pool
+from backend.db.repository import ChurchRepository, _normalize_extracted_tags
+from backend.utils import compute_tags
 
 router = APIRouter()
 
-_DIM_QUERY = """
-    SELECT
-        c.church_id AS id,
-        c.name,
-        c.address,
-        c.city,
-        c.state,
-        c.denomination,
-        c.service_times,
-        c.website,
-        c.phone,
-        c.language,
-        c.cultural_background,
-        c.website_summary,
-        c.extracted_tags,
-        c.latitude,
-        c.longitude,
-        ROUND(AVG(r.rating), 1)               AS avg_rating,
-        COUNT(r.review_id)                    AS review_count,
-        AVG(r.worship_energy)                 AS avg_worship_energy,
-        AVG(r.community_warmth)               AS avg_community_warmth,
-        AVG(r.sermon_depth)                   AS avg_sermon_depth,
-        AVG(r.childrens_programs)             AS avg_childrens_programs,
-        AVG(r.theological_openness)           AS avg_theological_openness,
-        AVG(r.facilities)                     AS avg_facilities
-    FROM Churches c
-    LEFT JOIN Reviews r ON c.church_id = r.church_id
-"""
 
-
-def _safe_keys(row, key: str):
-    """Return row[key] if the row has that column, else None.
-
-    sqlite3.Row exposes columns via mapping access but raises IndexError on
-    unknown keys. The /similar query has a different column set than _DIM_QUERY,
-    so we tolerate either shape.
-    """
-    try:
-        return row[key]
-    except (IndexError, KeyError):
-        return None
-
-
-def _row_to_church(row, include_dims: bool = False) -> dict:
+def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
     dims = {
-        "worship_energy": row["avg_worship_energy"],
-        "community_warmth": row["avg_community_warmth"],
-        "sermon_depth": row["avg_sermon_depth"],
-        "childrens_programs": row["avg_childrens_programs"],
-        "theological_openness": row["avg_theological_openness"],
-        "facilities": row["avg_facilities"],
+        "worship_energy": row.get("avg_worship_energy"),
+        "community_warmth": row.get("avg_community_warmth"),
+        "sermon_depth": row.get("avg_sermon_depth"),
+        "childrens_programs": row.get("avg_childrens_programs"),
+        "theological_openness": row.get("avg_theological_openness"),
+        "facilities": row.get("avg_facilities"),
     }
     church = {
         "id": row["id"],
         "name": row["name"],
-        "address": row["address"],
-        "city": row["city"],
-        "state": row["state"],
-        "denomination": row["denomination"],
-        "service_times": row["service_times"],
-        "latitude": row["latitude"],
-        "longitude": row["longitude"],
-        "avg_rating": row["avg_rating"],
-        "review_count": row["review_count"],
-        "website": row["website"] or None,
-        "phone": row["phone"] or None,
-        "language": row["language"] or None,
-        "cultural_background": row["cultural_background"] or None,
-        "tags": compute_tags(dims, row["review_count"] or 0),
-        "website_summary": _safe_keys(row, "website_summary") or None,
-        "extracted_tags": (json.loads(_safe_keys(row, "extracted_tags")) if _safe_keys(row, "extracted_tags") else None),
+        "address": row.get("address"),
+        "city": row.get("city"),
+        "state": row.get("state"),
+        "denomination": row.get("denomination"),
+        "service_times": row.get("service_times"),
+        "latitude": row.get("latitude"),
+        "longitude": row.get("longitude"),
+        "avg_rating": row.get("avg_rating"),
+        "review_count": row.get("review_count") or 0,
+        "website": row.get("website") or None,
+        "phone": row.get("phone") or None,
+        "language": row.get("language") or None,
+        "cultural_background": row.get("cultural_background") or None,
+        "tags": compute_tags(dims, row.get("review_count") or 0),
+        "website_summary": row.get("website_summary") or None,
+        "extracted_tags": _normalize_extracted_tags(row.get("extracted_tags")),
     }
     if include_dims:
-        church["dimensions"] = {k: (round(v, 2) if v is not None else None) for k, v in dims.items()}
+        church["dimensions"] = {
+            k: (round(v, 2) if v is not None else None) for k, v in dims.items()
+        }
     return church
 
 
 @router.get("/churches")
-def list_churches(
+async def list_churches(
     city: str = "",
     state: str = "",
     zip_code: str = "",
     limit: int = 50,
     offset: int = 0,
-    db: Database = Depends(get_db),
 ):
-    if zip_code:
-        query = _DIM_QUERY + "WHERE c.zip_code = ? GROUP BY c.church_id LIMIT ? OFFSET ?"
-        rows = db.execute_query(query, (zip_code, limit, offset))
-    else:
-        query = (
-            _DIM_QUERY
-            + "WHERE LOWER(c.city) = LOWER(?) AND LOWER(c.state) = LOWER(?)"
-            + " GROUP BY c.church_id ORDER BY review_count DESC LIMIT ? OFFSET ?"
-        )
-        rows = db.execute_query(query, (city, state, limit, offset))
-    return [_row_to_church(row) for row in rows]
-
-
-@router.get("/churches/{church_id}/similar")
-def get_similar_churches(church_id: int, db: Database = Depends(get_db)):
-    target = db.execute_query(_DIM_QUERY + "WHERE c.church_id = ? GROUP BY c.church_id", (church_id,))
-    if not target:
-        raise HTTPException(status_code=404, detail="Church not found")
-    query = """
-        SELECT
-            c.church_id AS id, c.name, c.address, c.city, c.state,
-            c.denomination, c.service_times, c.website, c.phone,
-            c.language, c.cultural_background,
-            c.latitude, c.longitude,
-            ROUND(AVG(r.rating), 1)               AS avg_rating,
-            COUNT(r.review_id)                    AS review_count,
-            AVG(r.worship_energy)                 AS avg_worship_energy,
-            AVG(r.community_warmth)               AS avg_community_warmth,
-            AVG(r.sermon_depth)                   AS avg_sermon_depth,
-            AVG(r.childrens_programs)             AS avg_childrens_programs,
-            AVG(r.theological_openness)           AS avg_theological_openness,
-            AVG(r.facilities)                     AS avg_facilities,
-            (
-                (COALESCE(AVG(r.worship_energy),       0) - COALESCE(t.we,  0)) *
-                (COALESCE(AVG(r.worship_energy),       0) - COALESCE(t.we,  0))
-              + (COALESCE(AVG(r.community_warmth),     0) - COALESCE(t.cw,  0)) *
-                (COALESCE(AVG(r.community_warmth),     0) - COALESCE(t.cw,  0))
-              + (COALESCE(AVG(r.sermon_depth),         0) - COALESCE(t.sd,  0)) *
-                (COALESCE(AVG(r.sermon_depth),         0) - COALESCE(t.sd,  0))
-              + (COALESCE(AVG(r.childrens_programs),   0) - COALESCE(t.cp,  0)) *
-                (COALESCE(AVG(r.childrens_programs),   0) - COALESCE(t.cp,  0))
-              + (COALESCE(AVG(r.theological_openness), 0) - COALESCE(t.to_, 0)) *
-                (COALESCE(AVG(r.theological_openness), 0) - COALESCE(t.to_, 0))
-              + (COALESCE(AVG(r.facilities),           0) - COALESCE(t.fac, 0)) *
-                (COALESCE(AVG(r.facilities),           0) - COALESCE(t.fac, 0))
-            ) AS dist_sq
-        FROM Churches c
-        JOIN Reviews r ON c.church_id = r.church_id
-        JOIN (
-            SELECT
-                COALESCE(AVG(worship_energy),       0) AS we,
-                COALESCE(AVG(community_warmth),     0) AS cw,
-                COALESCE(AVG(sermon_depth),         0) AS sd,
-                COALESCE(AVG(childrens_programs),   0) AS cp,
-                COALESCE(AVG(theological_openness), 0) AS to_,
-                COALESCE(AVG(facilities),           0) AS fac
-            FROM Reviews WHERE church_id = ?
-        ) t
-        WHERE c.church_id != ?
-        GROUP BY c.church_id
-        ORDER BY dist_sq ASC
-        LIMIT 3
-    """
-    rows = db.execute_query(query, (church_id, church_id))
-    return [_row_to_church(row) for row in rows]
+    async with pool.acquire() as con:
+        repo = ChurchRepository(con)
+        if zip_code:
+            rows = await repo.list_by_zip(zip_code, limit, offset)
+        else:
+            rows = await repo.list_by_city_state(city, state, limit, offset)
+    return [_row_to_church(r) for r in rows]
 
 
 @router.get("/churches/{church_id}")
-def get_church(church_id: int, db: Database = Depends(get_db)):
-    query = _DIM_QUERY + "WHERE c.church_id = ? GROUP BY c.church_id"
-    rows = db.execute_query(query, (church_id,))
-    if not rows:
+async def get_church(church_id: int):
+    async with pool.acquire() as con:
+        repo = ChurchRepository(con)
+        row = await repo.get(church_id)
+    if not row:
         raise HTTPException(status_code=404, detail="Church not found")
-    return _row_to_church(rows[0], include_dims=True)
+    return _row_to_church(row, include_dims=True)
+
+
+@router.get("/churches/{church_id}/similar")
+async def get_similar_churches(church_id: int):
+    async with pool.acquire() as con:
+        repo = ChurchRepository(con)
+        target = await repo.get(church_id)
+        if not target:
+            raise HTTPException(status_code=404, detail="Church not found")
+        rows = await repo.similar(church_id, k=3)
+    return [_row_to_church(r) for r in rows]
+
+
+def _enrich_sync(church_id: int) -> dict | None:
+    """
+    Sync wrapper around backend.enrichment.enrich. Opens its own short-lived
+    psycopg connection because enrichment.enrich is sync (it calls requests
+    against Google Places) and pool acquisition for blocking work would
+    starve the async pool. Cap is 3000 calls/month; this path is rare.
+    """
+    import psycopg
+
+    dsn = os.environ.get("DATABASE_URL")
+    if not dsn:
+        return None
+    with psycopg.connect(dsn) as con:
+        return enrichment.enrich(church_id, con)
 
 
 @router.post("/churches/{church_id}/enrich")
-def enrich_church(church_id: int, db: Database = Depends(get_db)):
+async def enrich_church(church_id: int):
     """Trigger Google Places enrichment for a church. Idempotent and cap-safe."""
-    con = sqlite3.connect(db.db_path)
-    con.row_factory = sqlite3.Row
-    try:
-        result = enrichment.enrich(church_id, con)
-    finally:
-        con.close()
-    if result is None:
-        # Either already enriched with no data, cap reached, or no API key
-        row = db.execute_query(
-            "SELECT google_photos, google_hours FROM Churches WHERE church_id = ?",
-            (church_id,)
-        )
-        if not row:
-            raise HTTPException(status_code=404, detail="Church not found")
-        r = row[0]
-        return {
-            "photos": json.loads(r["google_photos"]) if r["google_photos"] else [],
-            "hours": json.loads(r["google_hours"]) if r["google_hours"] else [],
-        }
-    return result
+    result = await asyncio.to_thread(_enrich_sync, church_id)
+    if result is not None:
+        return result
+
+    # Cache hit with no fresh data, cap reached, or no API key. Return what
+    # is already stored so the frontend can render existing photos/hours
+    # without an extra round-trip.
+    async with pool.acquire() as con:
+        async with con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                "SELECT google_photos, google_hours FROM churches WHERE church_id = %s",
+                (church_id,),
+            )
+            row = await cur.fetchone()
+    if not row:
+        raise HTTPException(status_code=404, detail="Church not found")
+
+    def _coerce(v):
+        if v is None:
+            return []
+        if isinstance(v, list):
+            return v
+        if isinstance(v, str):
+            try:
+                return json.loads(v)
+            except json.JSONDecodeError:
+                return []
+        return []
+
+    return {
+        "photos": _coerce(row["google_photos"]),
+        "hours": _coerce(row["google_hours"]),
+    }
