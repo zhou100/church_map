@@ -93,14 +93,45 @@ def test_extract_normalize_clamps_stance_and_lists():
         "service_languages": ["English", "", "Spanish"],
         "programs": "not a list",
         "vibe_tags": ["family", " ", "warm"],
-        "summary": "  hi  ",
+        "community_summary": "  hi  ",
+        "theology_summary": "",
+        "worship_style": "rock-band",            # invalid bucket → null
+        "worship_style_detail": "",
+        "pull_quote": "",
+        "statement_of_faith": [],
     })
     assert norm["denomination"] == "Baptist"
     assert norm["theological_stance"] is None
     assert norm["service_languages"] == ["English", "Spanish"]
     assert norm["programs"] == []
     assert norm["vibe_tags"] == ["family", "warm"]
-    assert norm["summary"] == "hi"
+    assert norm["community_summary"] == "hi"
+    assert norm["worship_style"] is None
+
+
+def test_extract_normalize_handles_legacy_summary_alias():
+    """Old prompt versions returned 'summary'; falls through to community_summary."""
+    norm = website_extract._normalize({"summary": "legacy text"})
+    assert norm["community_summary"] == "legacy text"
+
+
+def test_extract_normalize_clamps_long_fields():
+    long_text = "x" * 500
+    norm = website_extract._normalize({
+        "community_summary": long_text,
+        "theology_summary":  long_text,
+        "worship_style":     "liturgical",
+        "worship_style_detail": long_text,
+        "pull_quote":        long_text,
+        "statement_of_faith": ["y" * 500] * 12,
+    })
+    assert len(norm["community_summary"]) <= 240
+    assert len(norm["theology_summary"]) <= 240
+    assert len(norm["worship_style_detail"]) <= 160
+    assert len(norm["pull_quote"]) <= 240
+    assert len(norm["statement_of_faith"]) <= 8
+    assert all(len(b) <= 160 for b in norm["statement_of_faith"])
+    assert norm["worship_style"] == "liturgical"
 
 
 def test_extract_persist_writes_columns(db):
@@ -111,7 +142,12 @@ def test_extract_persist_writes_columns(db):
         "service_languages": ["English"],
         "programs": ["youth group"],
         "vibe_tags": ["liturgical"],
-        "summary": "A liturgical Anglican parish.",
+        "community_summary": "A liturgical Anglican parish.",
+        "theology_summary": "Trinitarian, sacramental.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Choral evensong on Sundays.",
+        "pull_quote": "All are welcome at the Lord's table.",
+        "statement_of_faith": ["Scripture is authoritative", "Salvation by grace"],
     }
     website_extract._persist(db, cid, norm)
     row = db.execute(
@@ -122,6 +158,11 @@ def test_extract_persist_writes_columns(db):
     tags = json.loads(row[1])
     assert tags["theological_stance"] == "moderate"
     assert tags["vibe_tags"] == ["liturgical"]
+    assert tags["theology_summary"] == "Trinitarian, sacramental."
+    assert tags["worship_style"] == "liturgical"
+    assert tags["worship_style_detail"] == "Choral evensong on Sundays."
+    assert tags["pull_quote"] == "All are welcome at the Lord's table."
+    assert tags["statement_of_faith"] == ["Scripture is authoritative", "Salvation by grace"]
     assert row[2] == "ok"
     assert row[3] == "Anglican"
     assert row[4] == website_extract.PROMPT_VERSION
@@ -135,7 +176,7 @@ def test_extract_call_llm_routes_to_openrouter():
         captured["headers"] = dict(request.headers)
         captured["body"] = json.loads(request.content.decode())
         return httpx.Response(200, json={
-            "choices": [{"message": {"content": '{"denomination":"X","theological_stance":null,"service_languages":[],"programs":[],"vibe_tags":[],"summary":"s"}'}}]
+            "choices": [{"message": {"content": '{"denomination":"X","theological_stance":null,"service_languages":[],"programs":[],"vibe_tags":[],"community_summary":"s","theology_summary":"","worship_style":null,"worship_style_detail":"","pull_quote":"","statement_of_faith":[]}'}}]
         })
 
     transport = httpx.MockTransport(handler)

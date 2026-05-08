@@ -50,6 +50,22 @@ def _score_one(expected: dict, got: dict) -> dict[str, bool]:
     if "vibe_tags_must_include_any" in expected:
         gn = " ".join(_norms(got.get("vibe_tags", [])))
         scores["vibe_tags"] = any(_norm(x) in gn for x in expected["vibe_tags_must_include_any"])
+    if "worship_style" in expected:
+        scores["worship_style"] = expected["worship_style"] == got.get("worship_style")
+    if "community_summary_must_include_any" in expected:
+        gn = _norm(got.get("community_summary"))
+        scores["community_summary"] = any(_norm(x) in gn for x in expected["community_summary_must_include_any"])
+    if "theology_summary_must_include_any" in expected:
+        gn = _norm(got.get("theology_summary"))
+        scores["theology_summary"] = any(_norm(x) in gn for x in expected["theology_summary_must_include_any"])
+    if "worship_style_detail_must_include_any" in expected:
+        gn = _norm(got.get("worship_style_detail"))
+        scores["worship_style_detail"] = any(_norm(x) in gn for x in expected["worship_style_detail_must_include_any"])
+    if "pull_quote_must_include_any" in expected:
+        gn = _norm(got.get("pull_quote"))
+        scores["pull_quote"] = any(_norm(x) in gn for x in expected["pull_quote_must_include_any"])
+    if "statement_of_faith_min" in expected:
+        scores["statement_of_faith"] = len(got.get("statement_of_faith") or []) >= expected["statement_of_faith_min"]
     return scores
 
 
