@@ -9,3 +9,5 @@ httpx
 trafilatura
 lxml_html_clean
 numpy
+psycopg[binary,pool]>=3.2
+pgvector>=0.3.6

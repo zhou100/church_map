@@ -1,0 +1,36 @@
+# Render blueprint for ChurchMap backend.
+# Apply via the Render dashboard or `render blueprint deploy`.
+#
+# Required environment variables (set in Render dashboard, not here):
+#   DATABASE_URL          Supabase Postgres URL on port 6543 (transaction pooler)
+#   GOOGLE_CLIENT_ID      Google Identity Services client ID
+#   GOOGLE_PLACES_KEY     Google Places API key
+#   ENV                   Set to "production" so dev-only CORS origins are dropped
+#
+# Optional:
+#   READ_ONLY=1           Locks all write endpoints behind 503; used during cutover
+#   DB_POOL_MAX           psycopg pool max size (default 10)
+
+services:
+  - type: web
+    name: churchmap-api
+    runtime: docker
+    plan: starter           # $7/mo, no idle sleep — required for sub-second cold path
+    region: oregon
+    healthCheckPath: /api/health
+    autoDeploy: true
+    envVars:
+      - key: ENV
+        value: production
+      - key: PORT
+        value: "8000"
+      - key: DATABASE_URL
+        sync: false         # set in dashboard, never committed
+      - key: GOOGLE_CLIENT_ID
+        sync: false
+      - key: GOOGLE_PLACES_KEY
+        sync: false
+      - key: READ_ONLY
+        value: "0"
+      - key: DB_POOL_MAX
+        value: "10"

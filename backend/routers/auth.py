@@ -1,26 +1,19 @@
-import os
-import sqlite3
-import httpx
-from fastapi import APIRouter, HTTPException, Depends
+"""
+Auth router. The single endpoint /api/auth/verify accepts a Google ID token,
+verifies it via tokeninfo, upserts the user row, and returns the canonical
+user record. Token verification logic lives in backend.auth so reviews
+router shares the same code path.
+"""
+from __future__ import annotations
+
+from fastapi import APIRouter
 from pydantic import BaseModel
-from backend.deps import get_db, Database
+
+from backend.auth import verify_google_token
+from backend.db import pool
+from backend.db.repository import UserRepository
 
 router = APIRouter()
-GOOGLE_CLIENT_ID = os.getenv("GOOGLE_CLIENT_ID", "")
-
-
-async def verify_google_token(token: str) -> dict:
-    async with httpx.AsyncClient() as client:
-        r = await client.get(
-            "https://oauth2.googleapis.com/tokeninfo",
-            params={"id_token": token},
-        )
-    if r.status_code != 200:
-        raise HTTPException(401, "Invalid Google token")
-    info = r.json()
-    if GOOGLE_CLIENT_ID and info.get("aud") != GOOGLE_CLIENT_ID:
-        raise HTTPException(401, "Token audience mismatch")
-    return info
 
 
 class TokenBody(BaseModel):
@@ -28,28 +21,14 @@ class TokenBody(BaseModel):
 
 
 @router.post("/auth/verify")
-async def auth_verify(body: TokenBody, db: Database = Depends(get_db)):
+async def auth_verify(body: TokenBody):
     info = await verify_google_token(body.token)
-    google_id = info["sub"]
-    email = info.get("email", "")
-    name = info.get("name", "")
-    avatar_url = info.get("picture", "")
-
-    con = sqlite3.connect(db.db_path)
-    con.row_factory = sqlite3.Row
-    try:
-        con.execute(
-            """INSERT INTO Users (google_id, email, name, avatar_url)
-               VALUES (?, ?, ?, ?)
-               ON CONFLICT(google_id) DO UPDATE SET
-                 email=excluded.email, name=excluded.name, avatar_url=excluded.avatar_url""",
-            (google_id, email, name, avatar_url),
-        )
-        con.commit()
-        row = con.execute(
-            "SELECT user_id, name, email, avatar_url FROM Users WHERE google_id=?",
-            (google_id,),
-        ).fetchone()
-        return dict(row)
-    finally:
-        con.close()
+    async with pool.acquire() as con:
+        async with con.transaction():
+            user = await UserRepository(con).upsert(
+                google_id=info["sub"],
+                email=info.get("email", ""),
+                name=info.get("name", ""),
+                avatar_url=info.get("picture", ""),
+            )
+    return user
