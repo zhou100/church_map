@@ -190,34 +190,48 @@ async def fetch_church(
         nonlocal written
         outcome = await _fetch_one_page(client, r2, rp, url, kind)
 
-        # Patch r2_key to use real church_id, write to R2 if new content.
+        # Storage step. If we have content, push to R2 (idempotent via HEAD).
+        # If R2 is misconfigured or transiently fails, record this attempt as
+        # a fetch error with content_hash=None so:
+        #   1. The unique (church_id, url, content_hash) index does not lock
+        #      out a future retry of the same body.
+        #   2. churches_due_for_fetch (which only counts http_status=200) does
+        #      not treat the church as "fresh" for 30 days.
+        # Without this, a transient R2 outage during fetch would silently
+        # strand the church until manual DB cleanup.
         r2_key: str | None = None
+        http_status = outcome.http_status
+        fetch_error = outcome.error
+        content_hash = outcome.content_hash
         if outcome.content_hash and outcome.raw_bytes:
-            r2_key = r2mod.r2_key_for(church_id, outcome.content_hash)
+            target_key = r2mod.r2_key_for(church_id, outcome.content_hash)
             try:
-                if not r2.head(r2_key):
-                    r2.put_html(r2_key, outcome.raw_bytes)
+                if not r2.head(target_key):
+                    r2.put_html(target_key, outcome.raw_bytes)
+                r2_key = target_key
             except r2mod.R2Error as e:
                 log.warning("R2 PUT failed for church=%s url=%s: %s", church_id, url, e)
-                # Fall through and record artifact without r2_key — extract
-                # stage will skip it.
+                # Demote: don't record a "fresh" 200 artifact we can't extract.
+                http_status = 0
+                fetch_error = f"r2-failed:{type(e).__name__}"
+                content_hash = None
                 r2_key = None
 
         await repo.insert_artifact(
             church_id=church_id,
             url=outcome.url,
             kind=outcome.kind,
-            http_status=outcome.http_status,
-            fetch_error=outcome.error,
+            http_status=http_status,
+            fetch_error=fetch_error,
             robots_allowed=outcome.robots_allowed,
-            content_hash=outcome.content_hash,
+            content_hash=content_hash,
             r2_key=r2_key,
             bytes_raw=len(outcome.raw_bytes) if outcome.raw_bytes else None,
             bytes_text=len(outcome.text) if outcome.text else None,
             crawl_run_id=crawl_run_id,
         )
         written += 1
-        return outcome.raw_bytes
+        return outcome.raw_bytes if r2_key else None
 
     home_body = await _do(base, "homepage")
     await asyncio.sleep(PER_DOMAIN_DELAY_S)

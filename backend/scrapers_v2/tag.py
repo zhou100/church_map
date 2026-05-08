@@ -72,12 +72,17 @@ def detect(name: str, denomination: str | None) -> tuple[str | None, str | None]
 
 
 async def run_tag_batch(repo: CrawlRepository, *, batch_size: int, force: bool = False) -> dict:
+    # name_tagged_at is the watermark. Incremental runs select rows where it
+    # is NULL; once we touch a row (match or no-match), we stamp the column
+    # so the next batch advances to fresh churches. Without this, batches
+    # keep re-selecting the same unmatched rows until they fill the limit.
     if force:
         sql = "SELECT church_id, name, denomination FROM churches LIMIT %s"
     else:
         sql = """
             SELECT church_id, name, denomination FROM churches
-             WHERE language IS NULL AND cultural_background IS NULL
+             WHERE name_tagged_at IS NULL
+             ORDER BY church_id
              LIMIT %s
         """
 
@@ -92,10 +97,19 @@ async def run_tag_batch(repo: CrawlRepository, *, batch_size: int, force: bool =
         rows_processed += 1
         lang, culture = detect(row["name"], row["denomination"])
         if not lang and not culture:
+            # Stamp the watermark even on no-match so we don't reselect.
+            # In force mode we additionally clear stale tags from prior runs.
             if force:
                 async with repo.con.cursor() as cur:
                     await cur.execute(
-                        "UPDATE churches SET language=NULL, cultural_background=NULL WHERE church_id=%s",
+                        "UPDATE churches SET language=NULL, cultural_background=NULL, "
+                        "name_tagged_at=NOW() WHERE church_id=%s",
+                        (row["church_id"],),
+                    )
+            else:
+                async with repo.con.cursor() as cur:
+                    await cur.execute(
+                        "UPDATE churches SET name_tagged_at=NOW() WHERE church_id=%s",
                         (row["church_id"],),
                     )
             continue
@@ -103,7 +117,8 @@ async def run_tag_batch(repo: CrawlRepository, *, batch_size: int, force: bool =
         write_lang = None if lang == "English" else lang
         async with repo.con.cursor() as cur:
             await cur.execute(
-                "UPDATE churches SET language=%s, cultural_background=%s WHERE church_id=%s",
+                "UPDATE churches SET language=%s, cultural_background=%s, "
+                "name_tagged_at=NOW() WHERE church_id=%s",
                 (write_lang, culture, row["church_id"]),
             )
         rows_ok += 1

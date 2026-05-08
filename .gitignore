@@ -58,3 +58,4 @@ htmlcov/
 
 # Claude / gstack tooling
 .claude/
+.codex

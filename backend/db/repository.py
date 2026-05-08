@@ -372,28 +372,39 @@ class CrawlRepository:
     # ----- fetch stage -----------------------------------------------------
 
     async def churches_due_for_fetch(
-        self, limit: int, fresh_days: int
+        self, limit: int, fresh_days: int, *, failure_backoff_hours: int = 48
     ) -> list[dict]:
-        # Churches with a website that either have never had a successful
-        # homepage fetch, or whose last successful homepage fetch is older
-        # than fresh_days. NULLS FIRST so brand-new churches go first.
+        # Two CTEs: latest_ok tracks the freshness window for successful
+        # homepage fetches (skip for fresh_days). latest_attempt tracks ANY
+        # homepage attempt — successful or not — so a church that timed out
+        # / robots-disallowed / 5xx'd doesn't get retried every 4 hours.
+        # Without this backoff, a few hundred permanently-broken sites would
+        # consume every batch and starve never-tried churches.
         sql = """
-            WITH latest AS (
+            WITH latest_ok AS (
                 SELECT church_id, MAX(fetched_at) AS last_ok
                   FROM raw_crawl_artifacts
                  WHERE kind = 'homepage' AND http_status = 200
                  GROUP BY church_id
+            ),
+            latest_attempt AS (
+                SELECT church_id, MAX(fetched_at) AS last_try
+                  FROM raw_crawl_artifacts
+                 WHERE kind = 'homepage'
+                 GROUP BY church_id
             )
             SELECT c.church_id, c.website
               FROM churches c
-              LEFT JOIN latest l ON l.church_id = c.church_id
+              LEFT JOIN latest_ok      l ON l.church_id = c.church_id
+              LEFT JOIN latest_attempt a ON a.church_id = c.church_id
              WHERE c.website IS NOT NULL AND c.website <> ''
                AND (l.last_ok IS NULL OR l.last_ok < NOW() - (%s || ' days')::interval)
-             ORDER BY l.last_ok ASC NULLS FIRST
+               AND (a.last_try IS NULL OR a.last_try < NOW() - (%s || ' hours')::interval)
+             ORDER BY a.last_try ASC NULLS FIRST
              LIMIT %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, (str(fresh_days), limit))
+            await cur.execute(sql, (str(fresh_days), str(failure_backoff_hours), limit))
             return await cur.fetchall()
 
     async def insert_artifact(

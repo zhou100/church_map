@@ -73,4 +73,8 @@ CREATE TABLE IF NOT EXISTS robots_cache (
 ALTER TABLE churches
     ADD COLUMN IF NOT EXISTS extracted_model           TEXT,
     ADD COLUMN IF NOT EXISTS extracted_confidence      JSONB,
-    ADD COLUMN IF NOT EXISTS extracted_source_snippets JSONB;
+    ADD COLUMN IF NOT EXISTS extracted_source_snippets JSONB,
+    -- Tag-stage watermark. Without this, the daily incremental tag run
+    -- keeps reselecting the same unmatched churches (rules update language
+    -- only on hits) and never advances to the rest of the dataset.
+    ADD COLUMN IF NOT EXISTS name_tagged_at            TIMESTAMPTZ;
