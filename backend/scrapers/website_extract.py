@@ -7,14 +7,24 @@ google/gemini-2.5-flash via OpenRouter for a structured JSON object:
       "denomination": str | null,
       "theological_stance": "traditional" | "moderate" | "progressive" | null,
       "service_languages": [str],
-      "programs": [str],          # ministries/groups offered
-      "vibe_tags": [str],         # 3-7 short tags
-      "summary": str              # 1-2 sentences, 60-200 chars
+      "programs": [str],
+      "vibe_tags": [str],
+      "community_summary": str,         # 1-2 sentences on who they are
+      "theology_summary": str,          # 1-2 sentences on what they teach
+      "worship_style": "liturgical" | "traditional-hymns" | "blended" |
+                       "contemporary" | "charismatic" | null,
+      "worship_style_detail": str,      # 1 short sentence with specifics
+      "pull_quote": str,                # verbatim quote from source, <=200 chars
+      "statement_of_faith": [str]       # 3-8 doctrinal bullets, only if site lists them
     }
 
-The prompt version is captured so re-runs after a prompt change can be
-tracked and gated by an eval. Bump PROMPT_VERSION whenever the prompt or
-schema changes.
+community_summary stays in the Churches.website_summary column (it's the
+lead text rendered in the panel). All other fields ride along inside the
+extracted_tags JSON object — flexible schema, no migration required when
+fields are added or removed.
+
+Bump PROMPT_VERSION whenever the prompt or schema changes so the eval
+harness can baseline against prior versions.
 """
 from __future__ import annotations
 
@@ -29,7 +39,9 @@ import httpx
 
 log = logging.getLogger(__name__)
 
-PROMPT_VERSION = "2026-05-06.v1"
+PROMPT_VERSION = "2026-05-07.v2"
+
+WORSHIP_STYLES = {"liturgical", "traditional-hymns", "blended", "contemporary", "charismatic"}
 OPENROUTER_URL = "https://openrouter.ai/api/v1/chat/completions"
 MODEL = "google/gemini-2.5-flash"
 MAX_INPUT_CHARS = 18_000   # truncate concatenated text — Flash handles it cheaply but we cap for cost predictability
@@ -45,18 +57,28 @@ Return STRICT JSON matching this schema (no prose, no markdown):
   "service_languages": string[],
   "programs": string[],
   "vibe_tags": string[],
-  "summary": string
+  "community_summary": string,
+  "theology_summary": string,
+  "worship_style": "liturgical" | "traditional-hymns" | "blended" | "contemporary" | "charismatic" | null,
+  "worship_style_detail": string,
+  "pull_quote": string,
+  "statement_of_faith": string[]
 }
 
 Field rules:
 - denomination: specific affiliation if explicitly stated (e.g., "Southern Baptist", "PCA", "ELCA", "Roman Catholic", "Non-denominational"). Null if not clear from text.
 - theological_stance: one of three buckets, inferred only from explicit doctrinal/social-issue language. Null if no signal.
-- service_languages: ISO-style language names actually used in services (e.g., ["English"], ["English", "Spanish"]). Empty list if unclear.
+- service_languages: language names used in services (e.g., ["English"], ["English", "Spanish"]). Empty list if unclear.
 - programs: 3-8 short noun phrases for active ministries (e.g., "youth group", "food pantry", "small groups"). Empty list if none mentioned.
-- vibe_tags: 3-7 short adjectives/tags describing community feel (e.g., "family-friendly", "liturgical", "contemporary worship"). Avoid generic words like "Christian" or "church".
-- summary: ONE or TWO sentences, 60-200 characters, describing what makes this church distinctive. No hype, no marketing language.
+- vibe_tags: 3-7 short adjectives/tags describing community feel (e.g., "family-friendly", "intergenerational"). Avoid generic words like "Christian" or "welcoming".
+- community_summary: ONE or TWO sentences (60-200 chars) describing WHO this congregation is — neighborhood, demographics, atmosphere. No hype, no marketing language. Empty string "" if text gives no signal.
+- theology_summary: ONE or TWO sentences (60-200 chars) describing WHAT they teach — doctrinal emphasis, preaching style, distinctive theology. Empty string if no signal.
+- worship_style: one bucket if discernible from explicit cues (organ/hymnal -> traditional-hymns; band/contemporary -> contemporary; mass/eucharist/responsive readings -> liturgical; spirit-filled/charismatic-language -> charismatic; mix of hymns + band -> blended). Null if unclear.
+- worship_style_detail: ONE short sentence (under 120 chars) describing what a service feels like (instruments, music style, formality, sermon length). Empty string if no signal.
+- pull_quote: a verbatim sentence (max 200 chars) from the website that captures the church's self-description in their own voice — pastor's letter, mission statement, welcome note. Must be a real quote from the source text, not generated. Empty string if no good candidate.
+- statement_of_faith: 3-8 short bullets (each under 120 chars) listing doctrinal beliefs, ONLY if the site has an explicit statement-of-faith / what-we-believe / doctrine page. Each bullet should be a single belief (e.g., "Scripture is inspired and authoritative", "Salvation by grace through faith"). Empty list if no such page.
 
-If the text appears to be junk, an error page, or unrelated to a church, return all nulls/empty lists and summary="".
+If the text appears to be junk, an error page, or unrelated to a church, return all nulls/empty values.
 """
 
 
@@ -143,17 +165,35 @@ def call_llm(text: str, *, api_key: str | None = None, client: httpx.Client | No
 
 def _normalize(obj: dict[str, Any]) -> dict[str, Any]:
     def s(v): return v.strip() if isinstance(v, str) else None
-    def lst(v):
+    def clamp(v, n):
+        v = s(v) or ""
+        return v[:n].rstrip()
+    def lst(v, item_max: int | None = None):
         if not isinstance(v, list):
             return []
-        return [str(x).strip() for x in v if str(x).strip()]
+        out = []
+        for x in v:
+            t = (s(x) or "")
+            if not t:
+                continue
+            if item_max:
+                t = t[:item_max].rstrip()
+            out.append(t)
+        return out
+    stance = obj.get("theological_stance")
+    style = obj.get("worship_style")
     return {
-        "denomination":      s(obj.get("denomination")),
-        "theological_stance": (obj.get("theological_stance") if obj.get("theological_stance") in {"traditional","moderate","progressive"} else None),
-        "service_languages": lst(obj.get("service_languages")),
-        "programs":          lst(obj.get("programs")),
-        "vibe_tags":         lst(obj.get("vibe_tags")),
-        "summary":           s(obj.get("summary")) or "",
+        "denomination":         s(obj.get("denomination")),
+        "theological_stance":   stance if stance in {"traditional", "moderate", "progressive"} else None,
+        "service_languages":    lst(obj.get("service_languages")),
+        "programs":             lst(obj.get("programs")),
+        "vibe_tags":            lst(obj.get("vibe_tags")),
+        "community_summary":    clamp(obj.get("community_summary") or obj.get("summary"), 240),
+        "theology_summary":     clamp(obj.get("theology_summary"), 240),
+        "worship_style":        style if style in WORSHIP_STYLES else None,
+        "worship_style_detail": clamp(obj.get("worship_style_detail"), 160),
+        "pull_quote":           clamp(obj.get("pull_quote"), 240),
+        "statement_of_faith":   lst(obj.get("statement_of_faith"), item_max=160)[:8],
     }
 
 
@@ -175,10 +215,15 @@ def extract_for_church(con: sqlite3.Connection, church_id: int, *, api_key: str 
 
 def _persist(con: sqlite3.Connection, church_id: int, norm: dict[str, Any]) -> None:
     tags = {
-        "theological_stance": norm["theological_stance"],
-        "service_languages":  norm["service_languages"],
-        "programs":           norm["programs"],
-        "vibe_tags":          norm["vibe_tags"],
+        "theological_stance":   norm["theological_stance"],
+        "service_languages":    norm["service_languages"],
+        "programs":             norm["programs"],
+        "vibe_tags":            norm["vibe_tags"],
+        "theology_summary":     norm["theology_summary"] or None,
+        "worship_style":        norm["worship_style"],
+        "worship_style_detail": norm["worship_style_detail"] or None,
+        "pull_quote":           norm["pull_quote"] or None,
+        "statement_of_faith":   norm["statement_of_faith"],
     }
     con.execute(
         """
@@ -192,7 +237,7 @@ def _persist(con: sqlite3.Connection, church_id: int, norm: dict[str, Any]) -> N
         WHERE church_id = ?
         """,
         (
-            norm["summary"] or None,
+            norm["community_summary"] or None,
             json.dumps(tags, ensure_ascii=False),
             datetime.now(timezone.utc).isoformat(),
             PROMPT_VERSION,
