@@ -142,7 +142,9 @@ Identify the failure mode before patching on top: misread product intent, edited
 - **Database — active path:** Supabase Postgres via psycopg 3 async pool, transaction pooler on port 6543. All runtime SQL goes through [`backend/db/repository.py`](backend/db/repository.py); routers do not touch `psycopg` directly. Schema changes are numbered SQL files under `migrations/`.
 - **Cutover safety:** The `READ_ONLY=1` env var makes the app return 503 on all writes (except `/api/health` and `/api/auth/verify`). Use during database upgrades or DNS flips so a stale frontend tab cannot silently lose a review.
 - **Pool config:** `psycopg_pool.AsyncConnectionPool` is configured with `prepare_threshold=None`. This is required for Supabase's transaction-mode pooler; do not remove without testing connection reuse under load.
-- **Scrapers frozen:** `backend/scrapers/` does not import after the Phase A migration removed `holyhub/`. Phase B will rewrite these against R2 + GitHub Actions. Do not "fix" the scrapers as a side effect of unrelated work; the rewrite is the fix.
+- **Scrapers v2 live, v1 frozen:** Active crawl pipeline is `backend/scrapers_v2/` (R2-backed, async psycopg, three stages: fetch → extract → tag). Schema in `migrations/0004_crawl_artifacts.sql` (`raw_crawl_artifacts`, `crawl_runs`, `robots_cache`). Driven by `.github/workflows/crawl.yml` calling `X-Crawl-Token`-protected `/api/admin/crawl/*` endpoints. `backend/scrapers/` (v1) is reference-only — do not import; the CI grep test will fail. Port forward, don't "fix" v1.
+- **Crawl admin auth:** `/api/admin/crawl/*` is not GSI-protected. Static `CRAWL_TOKEN` (env on Render, repo secret in GH Actions) compared with `secrets.compare_digest`. Don't reuse for user-facing endpoints.
+- **R2 keys:** `raw_html/{church_id}/{YYYY-MM-DD}/{content_hash}.html`. content_hash is sha256 of *cleaned trafilatura text*, not raw HTML, so cookies/timestamps in HTML don't bust dedup. Idempotency is enforced at both layers: R2 HEAD before PUT, and `UNIQUE(church_id, url, content_hash)` on `raw_crawl_artifacts`.
 
 ---
 

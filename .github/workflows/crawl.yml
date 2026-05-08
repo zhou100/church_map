@@ -1,0 +1,78 @@
+name: crawl
+
+# Phase B crawl pipeline. Each job is just a curl to a token-protected admin
+# endpoint on the Render backend; no Python/Docker setup needed in the runner.
+#
+# Schedules are intentionally offset from the top of the hour so we don't
+# pile on with everyone else's crons. fetch every 4h, extract twice daily,
+# tag once daily.
+
+on:
+  schedule:
+    - cron: '17 */4 * * *'    # fetch
+    - cron: '37 6,18 * * *'   # extract
+    - cron: '47 7 * * *'      # tag
+  workflow_dispatch:
+    inputs:
+      stage:
+        description: 'Which stage to run'
+        type: choice
+        required: true
+        default: 'fetch'
+        options: [fetch, extract, tag, all]
+      batch:
+        description: 'Batch size'
+        required: false
+        default: ''
+
+jobs:
+  fetch:
+    if: |
+      github.event.schedule == '17 */4 * * *' ||
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.stage == 'fetch' || github.event.inputs.stage == 'all')
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/crawl/fetch
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRAWL_TOKEN: ${{ secrets.CRAWL_TOKEN }}
+          BATCH: ${{ github.event.inputs.batch || '50' }}
+        run: |
+          curl -fsS --max-time 600 -X POST \
+            -H "X-Crawl-Token: $CRAWL_TOKEN" \
+            "$BACKEND_URL/api/admin/crawl/fetch?batch=$BATCH"
+
+  extract:
+    if: |
+      github.event.schedule == '37 6,18 * * *' ||
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.stage == 'extract' || github.event.inputs.stage == 'all')
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/crawl/extract
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRAWL_TOKEN: ${{ secrets.CRAWL_TOKEN }}
+          BATCH: ${{ github.event.inputs.batch || '20' }}
+        run: |
+          curl -fsS --max-time 900 -X POST \
+            -H "X-Crawl-Token: $CRAWL_TOKEN" \
+            "$BACKEND_URL/api/admin/crawl/extract?batch=$BATCH"
+
+  tag:
+    if: |
+      github.event.schedule == '47 7 * * *' ||
+      github.event_name == 'workflow_dispatch' &&
+      (github.event.inputs.stage == 'tag' || github.event.inputs.stage == 'all')
+    runs-on: ubuntu-latest
+    steps:
+      - name: POST /api/admin/crawl/tag
+        env:
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          CRAWL_TOKEN: ${{ secrets.CRAWL_TOKEN }}
+          BATCH: ${{ github.event.inputs.batch || '500' }}
+        run: |
+          curl -fsS --max-time 300 -X POST \
+            -H "X-Crawl-Token: $CRAWL_TOKEN" \
+            "$BACKEND_URL/api/admin/crawl/tag?batch=$BATCH"

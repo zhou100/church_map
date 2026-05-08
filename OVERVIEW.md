@@ -37,11 +37,12 @@ Finding a new church is notoriously hard. Google Maps shows you a star rating an
 | Enrichment | Google Places API (Text Search + Place Details) | ~5,400 enriched ($194 one-time) |
 | Storage | Supabase Postgres (transaction pooler) | ~80 MB live |
 
-The Phase B pipeline (under construction, see `backend/scrapers/README.md`) will add:
-- **Raw HTML capture** to Cloudflare R2 (object key + content_hash in Postgres)
-- **LLM extraction** of worship style, languages, programs, theological stance from church websites
-- **Deterministic tagging** from extracted attributes into product-facing tags
-- Execution via GitHub Actions cron, not in-request
+The Phase B pipeline (live, see `backend/scrapers_v2/`) adds:
+- **Raw HTML capture** to Cloudflare R2 — keys `raw_html/{church_id}/{YYYY-MM-DD}/{content_hash}.html`, idempotent on `(church_id, url, content_hash)`
+- **LLM extraction** of worship style, languages, programs, theological stance from church websites; per-field confidence and verbatim source snippets stored in `churches.extracted_confidence` / `extracted_source_snippets`
+- **Deterministic tagging** from extracted attributes + name/denomination regex rules
+- Execution via GitHub Actions cron (`.github/workflows/crawl.yml`) hitting `X-Crawl-Token`-protected admin endpoints under `/api/admin/crawl/{fetch,extract,tag,status}`
+- Three new tables: `raw_crawl_artifacts`, `crawl_runs`, `robots_cache` (24h TTL)
 
 ---
 
