@@ -15,28 +15,36 @@ The core product intent: **help people find a church that fits them**. Don't ero
 ## Repository Structure
 
 ```
-backend/      FastAPI app, SQLite queries, auth, enrichment scripts
-frontend/    React + Vite + Leaflet SPA
-tests/       Backend tests
-holyhub.db   SQLite database (baked into Docker image at deploy)
-Dockerfile   Backend image (Fly.io)
-fly.toml     Fly.io config (2 machines, scale-to-zero)
-DESIGN.md    Design system — read before any UI change
-OVERVIEW.md  Product + architecture writeup
-TODOS.md     Active work list
+backend/
+  main.py            FastAPI app: lifespan, READ_ONLY middleware, CORS lockdown
+  auth.py            Consolidated GSI tokeninfo verification
+  enrichment.py      Google Places enrichment (sync psycopg)
+  db/                psycopg pool + migration runner + repository layer
+  routers/           Route handlers (async)
+  scrapers/          FROZEN — see backend/scrapers/README.md (Phase B rewrite)
+migrations/          Numbered .sql files run by backend/db/migrate.py
+scripts/             migrate_data.py (one-shot SQLite -> Postgres), entrypoint
+frontend/            React + Vite + Leaflet SPA
+tests/               pytest suite (parity tests gated on DATABASE_URL)
+Dockerfile           Render Web Service image
+render.yaml          Render Blueprint
+DESIGN.md            Design system — read before any UI change
+OVERVIEW.md          Product + architecture writeup
+TODOS.md             Active work list
 ```
 
-The `holyhub/` directory is a legacy artifact — do not edit unless the task is specifically about cleanup.
+The `holyhub/` directory was removed in Phase A. The `backend/scrapers/` directory is frozen pending Phase B rewrite — do not run those modules; they will fail on import.
 
 ---
 
 ## Tech Stack
 
 - **Frontend:** React 18, Vite, React Router, Leaflet
-- **Backend:** FastAPI (Python 3.11), raw `sqlite3` (no ORM)
-- **Database:** SQLite, baked into Docker image (~45 MB)
+- **Backend:** FastAPI 3.11 async, psycopg 3 + AsyncConnectionPool, raw SQL via repositories (no ORM)
+- **Database:** Supabase Postgres + pgvector, transaction pooler on port 6543
 - **Auth:** Google Identity Services (GSI) + tokeninfo verification (no JWT lib, no session store)
-- **Hosting:** Vercel (frontend) + Fly.io (backend, scale-to-zero)
+- **Hosting:** Vercel (frontend) + Render Web Service Starter (backend)
+- **Migrations:** Numbered `migrations/*.sql` files + `backend/db/migrate.py` runner; `schema_migrations` table tracks applied versions
 
 ---
 
@@ -80,16 +88,16 @@ Prefer small, reversible changes. If the task is growing, stop and narrow scope 
 
 **Engineering mode** — respect existing architecture boundaries (backend routes ↔ frontend API client). Make small patches. Keep request/response contracts aligned. Add or update tests when behavior changes.
 
-**Deployment mode** — distinguish local, Vercel preview, and Fly.io production. SQLite writes don't replicate across Fly machines — keep this in mind for any review/write feature. Summarize manual deploy steps clearly.
+**Deployment mode** — distinguish local, Vercel preview, and Render production. Render auto-deploys from `main` via `render.yaml`. Schema changes ride with code: add a numbered file under `migrations/`, the entrypoint runs `python -m backend.db.migrate` before Uvicorn starts. Summarize manual deploy steps clearly when something needs to happen out-of-band (e.g., data backfills, env-var rotation).
 
 ### Context loading by task type
 
 - **Frontend** — relevant components, DESIGN.md, routing, API client
-- **Backend** — the relevant route file, SQL queries, schemas if shapes change
-- **Auth** — current GSI/tokeninfo flow only; do NOT reintroduce JWT/session-store paths
-- **Database** — `holyhub.db` schema; any schema change requires a migration script and a rebuild of the Docker image
-- **Data pipeline** — identify the specific stage (scrape, dedup, geocode, enrich); enrichment costs real money (~$194 spent), don't re-run blindly
-- **Deployment** — `fly.toml`, `Dockerfile`, Vercel config, env var names, CORS origins
+- **Backend** — the relevant route file, the repository in `backend/db/repository.py`, SQL queries
+- **Auth** — `backend/auth.py` (consolidated tokeninfo path); do NOT reintroduce JWT/session-store paths
+- **Database** — Postgres schema lives in `migrations/*.sql`; new tables/columns require a new numbered migration file. `psycopg` uses `%s` placeholders, never `?`
+- **Data pipeline** — currently FROZEN. The Phase B rewrite (R2 + GitHub Actions) is the next major workstream; see `backend/scrapers/README.md`. Existing enrichment cost ~$194 (one-time Google Places spend); don't re-run blindly
+- **Deployment** — `render.yaml`, `Dockerfile`, `scripts/docker-entrypoint.sh`, Vercel config, env var names, CORS origins
 
 ### Review as a separate phase
 
@@ -111,9 +119,10 @@ Hard rules:
 
 - No broad refactors unless explicitly requested
 - No renames of core files, routes, models, or components unless the task requires it
-- Don't touch the `holyhub/` legacy directory unless cleanup is the task
+- Don't touch `backend/scrapers/` — frozen pending Phase B rewrite
 - Don't change auth, DB schema, API contracts, or deploy config as a side effect of a UI task
 - Don't change enrichment scripts or re-run Google Places calls as a side effect of unrelated work
+- Don't reintroduce `sqlite3.connect`, `?` placeholders, `.lastrowid`, or any `holyhub.database.Database` import in runtime route code; the CI grep test in `tests/test_no_sqlite_in_routes.py` will fail
 - Don't introduce new libraries without explaining why existing tools are insufficient
 - Don't remove tests to make a build pass
 - Don't silently rename environment variables
@@ -129,9 +138,11 @@ Identify the failure mode before patching on top: misread product intent, edited
 
 ## Project-Specific Guardrails
 
-- **Auth — active path:** Google Identity Services (GSI) in browser → `POST /api/auth/verify` → Google `tokeninfo`. **Don't** reintroduce JWT libraries, server-side sessions, or cookie-based auth — the design is intentionally tokeninfo-on-every-protected-request.
-- **Database — active path:** SQLite file baked into the Docker image (`holyhub.db`). **Don't** add a hosted DB dependency (Postgres/RDS/Turso) without explicit approval — the architecture relies on in-process queries and image-baked data.
-- **Deploys — Fly machines don't share writes:** review data written on one Fly machine isn't visible on the other in real time. Don't add features that assume cross-machine write consistency without flagging the limitation.
+- **Auth — active path:** Google Identity Services (GSI) in browser → `POST /api/auth/verify` → Google `tokeninfo`. Verification logic is consolidated in [`backend/auth.py`](backend/auth.py). **Don't** reintroduce JWT libraries, server-side sessions, or cookie-based auth — the design is intentionally tokeninfo-on-every-protected-request.
+- **Database — active path:** Supabase Postgres via psycopg 3 async pool, transaction pooler on port 6543. All runtime SQL goes through [`backend/db/repository.py`](backend/db/repository.py); routers do not touch `psycopg` directly. Schema changes are numbered SQL files under `migrations/`.
+- **Cutover safety:** The `READ_ONLY=1` env var makes the app return 503 on all writes (except `/api/health` and `/api/auth/verify`). Use during database upgrades or DNS flips so a stale frontend tab cannot silently lose a review.
+- **Pool config:** `psycopg_pool.AsyncConnectionPool` is configured with `prepare_threshold=None`. This is required for Supabase's transaction-mode pooler; do not remove without testing connection reuse under load.
+- **Scrapers frozen:** `backend/scrapers/` does not import after the Phase A migration removed `holyhub/`. Phase B will rewrite these against R2 + GitHub Actions. Do not "fix" the scrapers as a side effect of unrelated work; the rewrite is the fix.
 
 ---
 
@@ -153,23 +164,32 @@ In QA mode, flag any code that doesn't match DESIGN.md.
 
 ```
 # Backend
-uvicorn backend.main:app --reload          # local dev
-pytest tests/                              # tests
-fly deploy                                 # deploy backend (rebuilds Docker image with current holyhub.db)
+DATABASE_URL=postgresql://...:6543/postgres uvicorn backend.main:app --reload   # local dev
+pytest -q                                                                       # unit + static checks
+DATABASE_URL=... pytest tests/test_parity.py                                    # parity against Postgres
+DATABASE_URL=... python -m backend.db.migrate                                   # apply new migrations
+DATABASE_URL=... SQLITE_PATH=./holyhub.db python -m scripts.migrate_data        # one-shot data migration
 
 # Frontend
-cd frontend && npm run dev                 # local dev
-cd frontend && npm run build               # production build (Vercel auto-deploys on push to main)
+cd frontend && npm run dev                                                      # local dev
+cd frontend && npm run build                                                    # production build (Vercel auto-deploys on push to main)
+
+# Deploy
+# Render auto-deploys backend from main on every push (render.yaml).
+# Vercel auto-deploys frontend from main.
 ```
 
 ---
 
 ## Conventions
 
-- Backend uses raw `sqlite3` queries — no ORM. Keep queries explicit and parameterized.
+- All runtime SQL goes through `backend/db/repository.py`. Routers never call `psycopg` directly.
+- psycopg uses `%s` placeholders and `INSERT ... RETURNING id` (no `?`, no `lastrowid`).
+- Table names are lowercase (`churches`, `reviews`, `users`, `api_usage`, `church_embeddings`). Postgres folds unquoted identifiers; never use `Churches`.
+- New schema = new file in `migrations/` with the next sequential prefix. Runner applies in order.
 - Frontend API calls go through a single client module; don't `fetch` directly from components.
 - Errors raised from FastAPI use `HTTPException` with explicit status codes.
-- Auth-protected endpoints expect `Authorization: Bearer <google_id_token>` and re-verify via tokeninfo.
+- Auth-protected endpoints depend on `backend.auth.get_current_user`, which re-verifies the bearer token via tokeninfo on every call.
 
 ---
 

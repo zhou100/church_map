@@ -7,7 +7,9 @@ Catches:
   * sqlite3.connect() in routers / main / enrichment / auth
   * `?` placeholders in those files (psycopg uses %s)
   * .lastrowid (psycopg has no equivalent; use RETURNING)
-  * imports of holyhub.database.Database in routers
+
+The holyhub/ directory was removed in Phase A; this test makes sure no
+stray import sneaks back in via copy-paste from old code or scrapers.
 """
 from __future__ import annotations
 
