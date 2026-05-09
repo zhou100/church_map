@@ -374,9 +374,6 @@ export default function Search() {
                       {c.avg_rating != null && (
                         <span className="popup-rating">★ {c.avg_rating.toFixed(1)}</span>
                       )}
-                      <button className="popup-link" onClick={() => handleSelectChurch(c.id)}>
-                        View details →
-                      </button>
                     </div>
                   </Popup>
                 </Marker>
