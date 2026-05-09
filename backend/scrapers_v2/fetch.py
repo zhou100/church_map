@@ -181,6 +181,23 @@ async def fetch_church(
     """Fetch homepage + up to (max_pages - 1) candidate pages. Returns artifact count."""
     base = normalize_url(website)
     if not base:
+        # Record the attempt so the 48h failure backoff in churches_due_for_fetch
+        # kicks in. Without this, malformed-website churches have no row in
+        # raw_crawl_artifacts, last_try stays NULL forever, and every cron run
+        # re-selects them and burns the batch on instant fast-fails.
+        await repo.insert_artifact(
+            church_id=church_id,
+            url=(website or "")[:500],
+            kind="homepage",
+            http_status=0,
+            fetch_error="bad-url",
+            robots_allowed=True,
+            content_hash=None,
+            r2_key=None,
+            bytes_raw=None,
+            bytes_text=None,
+            crawl_run_id=crawl_run_id,
+        )
         return 0
 
     rp = await get_parser(repo, client, base)

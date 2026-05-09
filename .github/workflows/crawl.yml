@@ -62,7 +62,7 @@ jobs:
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           CRAWL_TOKEN: ${{ secrets.CRAWL_TOKEN }}
-          BATCH: ${{ github.event.inputs.batch || '20' }}
+          BATCH: ${{ github.event.inputs.batch || '50' }}
         run: |
           curl -fsS --max-time 900 -X POST \
             -H "X-Crawl-Token: $CRAWL_TOKEN" \
