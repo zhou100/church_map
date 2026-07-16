@@ -1,0 +1,1371 @@
+{
+  "Example: Park Slope Methodist": {
+    "extraction": {
+      "fields": {
+        "denomination": "United Methodist",
+        "theological_stance": "progressive",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "youth group"
+        ],
+        "vibe_tags": [
+          "open and affirming",
+          "inclusive",
+          "intergenerational"
+        ],
+        "community_summary": "Park Slope United Methodist Church is an open and affirming community in Brooklyn that welcomes all regardless of sexual orientation, race, or background.",
+        "theology_summary": "This church emphasizes radical inclusivity and welcome for all people, reflecting a progressive theological stance.",
+        "worship_style": "traditional-hymns",
+        "worship_style_detail": "Services feature traditional hymns accompanied by a pipe organ and a robe-wearing choir.",
+        "pull_quote": "No matter where you are on your journey, you are welcome here.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.9,
+        "theological_stance": 0.9,
+        "service_languages": 0.8,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.9,
+        "theology_summary": 0.8,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "Park Slope United Methodist Church",
+        "theological_stance": "open and affirming community",
+        "service_languages": "Park Slope United Methodist Church is an open and affirming community in Brooklyn.",
+        "programs": "Our youth group meets Thursdays.",
+        "vibe_tags": "open and affirming community",
+        "theology_summary": "We welcome all regardless of sexual orientation, race, or background.",
+        "worship_style": "traditional hymns accompanied by the pipe organ and a robe-wearing choir",
+        "worship_style_detail": "traditional hymns accompanied by the pipe organ and a robe-wearing choir.",
+        "pull_quote": "'No matter where you are on your journey, you are welcome here.'"
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Faithful and complete."
+      },
+      "vibe_tags": {
+        "ok": false,
+        "reason": "The 'intergenerational' tag is not supported by the text."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurate and faithful summary from the text."
+      },
+      "theology_summary": {
+        "ok": false,
+        "reason": "Adds interpretive labels like 'radical' and 'progressive'."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Faithful and complete description from the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "An exact quote from the text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no statement of faith is provided."
+      }
+    }
+  },
+  "Example: First Baptist Conservative": {
+    "extraction": {
+      "fields": {
+        "denomination": "Southern Baptist",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "children's ministry",
+          "AWANA",
+          "men's Bible study",
+          "women's Bible study"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "This church believes in the inerrancy of Scripture, salvation by grace through faith, and defines marriage as between one man and one woman.",
+        "worship_style": "traditional-hymns",
+        "worship_style_detail": "Sunday services feature hymnal worship led by piano.",
+        "pull_quote": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message.",
+        "statement_of_faith": [
+          "The Bible is God's inspired and inerrant Word.",
+          "Salvation is by grace through faith in Christ alone.",
+          "Marriage is between one man and one woman.",
+          "The local church is autonomous under Christ's headship."
+        ]
+      },
+      "confidence": {
+        "denomination": 0.8,
+        "theological_stance": 0.9,
+        "service_languages": 0.9,
+        "programs": 0.9,
+        "theology_summary": 0.9,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 0.9,
+        "statement_of_faith": 0.9
+      },
+      "snippets": {
+        "denomination": "historic Baptist Faith and Message",
+        "theological_stance": "holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message. We believe marriage is between one man and one woman.",
+        "service_languages": "Sunday services in English",
+        "programs": "children's ministry, AWANA on Wednesdays, men's and women's Bible studies",
+        "theology_summary": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message. We believe marriage is between one man and one woman",
+        "worship_style": "hymnal worship led by piano",
+        "worship_style_detail": "hymnal worship led by piano",
+        "pull_quote": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message.",
+        "statement_of_faith": "What We Believe: The Bible is God's inspired and inerrant Word. Salvation is by grace through faith in Christ alone. Marriage is between one man and one woman. "
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are directly from the text."
+      },
+      "vibe_tags": {
+        "ok": false,
+        "reason": "Incomplete. Missed tags like 'traditional' or 'hymns'."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Correctly empty as the text lacks community description."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes key theological points from the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Accurately and completely reflects worship details from text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "The value is a direct quote from the text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Accurately lists all points from the belief section."
+      }
+    }
+  },
+  "Example: Bilingual Catholic": {
+    "extraction": {
+      "fields": {
+        "denomination": "Roman Catholic",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English",
+          "Spanish"
+        ],
+        "programs": [
+          "CCD program",
+          "RCIA",
+          "Knights of Columbus"
+        ],
+        "vibe_tags": [],
+        "community_summary": "St. Joseph Catholic Church serves its parish with regular Mass services and various programs for children and adults.",
+        "theology_summary": "This church celebrates Mass according to the Roman Missal, indicating adherence to traditional Catholic doctrine.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Mass is celebrated with the Roman Missal, accompanied by organ and a cantor.",
+        "pull_quote": "St. Joseph Catholic Church serves the parish with Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.8,
+        "service_languages": 1.0,
+        "programs": 0.9,
+        "community_summary": 0.8,
+        "theology_summary": 0.8,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 1.0
+      },
+      "snippets": {
+        "denomination": "St. Joseph Catholic Church",
+        "theological_stance": "Mass is celebrated with the Roman Missal",
+        "service_languages": "Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm",
+        "programs": "CCD program for children, RCIA for adults entering the Church, and the Knights of Columbus chapter",
+        "theology_summary": "Mass is celebrated with the Roman Missal",
+        "worship_style": "Mass is celebrated with the Roman Missal, organ, and cantor.",
+        "worship_style_detail": "Mass is celebrated with the Roman Missal, organ, and cantor.",
+        "pull_quote": "St. Joseph Catholic Church serves the parish with Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are explicitly mentioned in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "The text lacks strong, general vibe descriptors."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the community activities mentioned in the text."
+      },
+      "theology_summary": {
+        "ok": false,
+        "reason": "Adds interpretation not explicitly stated in the source text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Faithfully and completely captures worship details from the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "The quote is an exact sentence from the text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as the text lacks a statement of faith."
+      }
+    }
+  },
+  "Example: Contemporary Non-denom": {
+    "extraction": {
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Sojourn Kids",
+          "youth group",
+          "men's groups",
+          "women's groups",
+          "recovery ministry"
+        ],
+        "vibe_tags": [
+          "modern",
+          "band-led",
+          "expository preaching"
+        ],
+        "community_summary": "Sojourn is a church planted in 2014 in East Austin, meeting in a renovated warehouse.",
+        "theology_summary": "Sermons feature expository preaching through books of the Bible.",
+        "worship_style": "contemporary",
+        "worship_style_detail": "Worship is led by a full band with drums, electric guitar, keys, and vocals, featuring original songs and modern arrangements of hymns.",
+        "pull_quote": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.9,
+        "theology_summary": 0.9,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 1.0
+      },
+      "snippets": {
+        "denomination": "Sojourn is a non-denominational church",
+        "programs": "Programs: Sojourn Kids (newborn through 5th grade), middle and high school youth, men's and women's groups, recovery ministry.",
+        "vibe_tags": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns. Sermons are 35-40 minutes o",
+        "theology_summary": "Sermons are 35-40 minutes of expository preaching through books of the Bible.",
+        "worship_style": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+        "worship_style_detail": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+        "pull_quote": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are present in the source text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are directly supported by the text."
+      },
+      "community_summary": {
+        "ok": false,
+        "reason": "Incomplete. Misses the key 'non-denominational' descriptor from the text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Accurately captures the theological information provided in the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Faithful and complete summary of worship style details."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "The quote is verbatim from the source text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no statement of faith is provided."
+      }
+    }
+  },
+  "DRAFT: Megachurch multi-site": {
+    "extraction": {
+      "fields": {
+        "denomination": "Southern Baptist",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Lifepoint Kids",
+          "youth group",
+          "small groups"
+        ],
+        "vibe_tags": [
+          "multi-site",
+          "large-church",
+          "modern",
+          "community-focused"
+        ],
+        "community_summary": "This is a large, multi-site church with eleven locations across the Nashville area, gathering over 12,000 people weekly.",
+        "theology_summary": "The church focuses on removing barriers between people and Jesus, delivering a 35-minute teaching from Pastor Pat each weekend.",
+        "worship_style": "contemporary",
+        "worship_style_detail": "Weekend experiences are 70 minutes with modern worship led by live bands, a video-delivered teaching, and prayer response.",
+        "pull_quote": "We're a Southern Baptist Convention church but you won't see that on the sign; we want to remove every unnecessary barrier between people and Jesus.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.8,
+        "service_languages": 0.9,
+        "programs": 0.9,
+        "vibe_tags": 0.9,
+        "community_summary": 0.9,
+        "theology_summary": 0.8,
+        "worship_style": 1.0,
+        "worship_style_detail": 0.9,
+        "pull_quote": 1.0
+      },
+      "snippets": {
+        "denomination": "We're a Southern Baptist Convention church",
+        "theological_stance": "we want to remove every unnecessary barrier between people and Jesus.",
+        "service_languages": "Lifepoint Church is one church in eleven locations across the Nashville area.",
+        "programs": "Lifepoint Kids serves birth through 5th grade with age-graded environments. Middle and high schoolers meet midweek. Small groups meet in homes throughout the we",
+        "vibe_tags": "Lifepoint Church is one church in eleven locations across the Nashville area. Each weekend, more than 12,000 people gather at one of our campuses or watch onlin",
+        "community_summary": "Lifepoint Church is one church in eleven locations across the Nashville area. Each weekend, more than 12,000 people gather at one of our campuses or watch onlin",
+        "theology_summary": "Our message is delivered live at the Smyrna campus and shown via video at the others, with live worship bands at every site. Weekend experiences are 70 minutes ",
+        "worship_style": "modern worship",
+        "worship_style_detail": "Weekend experiences are 70 minutes \u2014 modern worship, a 35-minute teaching from Pastor Pat, and prayer response. Lifepoint Kids serves birth through 5th grade wi",
+        "pull_quote": "We're a Southern Baptist Convention church but you won't see that on the sign; we want to remove every unnecessary barrier between people and Jesus."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All programs listed are directly from the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are well-supported by the text."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the size and structure from the text."
+      },
+      "theology_summary": {
+        "ok": false,
+        "reason": "Misses the explicit Southern Baptist Convention affiliation."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Faithfully captures all worship elements mentioned."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is a direct and representative quote."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as none is provided in text."
+      }
+    }
+  },
+  "DRAFT: AME historically Black": {
+    "extraction": {
+      "fields": {
+        "denomination": "African Methodist Episcopal",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Sons of Allen men's group",
+          "Women's Missionary Society",
+          "Class Leaders Council",
+          "scholarship fund"
+        ],
+        "vibe_tags": [
+          "Spirit-filled",
+          "gospel music",
+          "historic",
+          "community-focused",
+          "liberation-oriented"
+        ],
+        "community_summary": "St. Paul African Methodist Episcopal Church has served the Harlem community since 1887, with ministries focused on uplift and education.",
+        "theology_summary": "The church preaches the historic AME tradition of liberation and uplift, centered on God as Father, Christ as Redeemer, and the Holy Spirit as Comforter.",
+        "worship_style": "blended",
+        "worship_style_detail": "Sunday morning worship is a Spirit-filled celebration featuring gospel music, choir, Hammond organ, drums, and praise dancers.",
+        "pull_quote": "Reverend Dr. Carla Williams preaches the historic AME tradition of liberation and uplift \u2014 'God Our Father, Christ Our Redeemer, the Holy Spirit Our Comforter, Humankind Our Family.'",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.8,
+        "service_languages": 0.9,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.9,
+        "theology_summary": 0.9,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "St. Paul African Methodist Episcopal Church",
+        "theological_stance": "historic AME tradition of liberation and uplift",
+        "service_languages": "Our Sunday morning worship at 10:45am is a Spirit-filled celebration of gospel music",
+        "programs": "Ministries include the Sons of Allen men's group, Women's Missionary Society, Class Leaders Council, and a robust scholarship fund",
+        "vibe_tags": "Spirit-filled celebration of gospel music led by the Voices of St. Paul choir, with hammond organ, drums, and praise dancers. Communion is the first Sunday of e",
+        "community_summary": "St. Paul African Methodist Episcopal Church has served the Harlem community since 1887.",
+        "theology_summary": "Reverend Dr. Carla Williams preaches the historic AME tradition of liberation and uplift \u2014 'God Our Father, Christ Our Redeemer, the Holy Spirit Our Comforter, ",
+        "worship_style": "Our Sunday morning worship at 10:45am is a Spirit-filled celebration of gospel music led by the Voices of St. Paul choir, with hammond organ, drums, and praise ",
+        "worship_style_detail": "Our Sunday morning worship at 10:45am is a Spirit-filled celebration of gospel music led by the Voices of St. Paul choir, with hammond organ, drums, and praise ",
+        "pull_quote": "Reverend Dr. Carla Williams preaches the historic AME tradition of liberation and uplift \u2014 'God Our Father, Christ Our Redeemer, the Holy Spirit Our Comforter, "
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are directly from the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are directly supported by the text."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the community description from the text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the theological statement in the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Faithfully captures all worship details from the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is a verbatim quote from the source text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no formal statement of faith exists."
+      }
+    }
+  },
+  "DRAFT: Eastern Orthodox": {
+    "extraction": {
+      "fields": {
+        "denomination": "Greek Orthodox",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Greek",
+          "English"
+        ],
+        "programs": [
+          "Greek school",
+          "Philoptochos Society",
+          "GOYA youth group"
+        ],
+        "vibe_tags": [
+          "historic",
+          "community-focused",
+          "culturally-rich",
+          "traditional"
+        ],
+        "community_summary": "This cathedral serves as the spiritual home for the Greek Orthodox community, with a focus on intergenerational engagement and cultural preservation.",
+        "theology_summary": "They confess the faith of the Seven Ecumenical Councils and uphold the unbroken Tradition of the undivided Church, emphasizing preparation for sacraments.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Divine Liturgy is celebrated with Byzantine music chanted a cappella in the traditional Greek style, including English readings.",
+        "pull_quote": "We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church.",
+        "statement_of_faith": [
+          "Confess the faith of the Seven Ecumenical Councils",
+          "Uphold the unbroken Tradition of the undivided Church",
+          "Holy Communion offered only to baptized Orthodox Christians in good standing",
+          "Preparation for communion through prayer, fasting, and recent confession"
+        ]
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.9,
+        "service_languages": 1.0,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.8,
+        "theology_summary": 0.9,
+        "worship_style": 1.0,
+        "worship_style_detail": 0.9,
+        "pull_quote": 1.0,
+        "statement_of_faith": 0.9
+      },
+      "snippets": {
+        "denomination": "Holy Trinity Greek Orthodox Cathedral",
+        "theological_stance": "We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church.",
+        "service_languages": "primarily in Greek with English readings of the Epistle and Gospel.",
+        "programs": "Greek school for children meets Tuesday and Thursday evenings; the Philoptochos Society serves the poor; the GOYA youth group is active.",
+        "vibe_tags": "Holy Trinity Greek Orthodox Cathedral has been the spiritual home of the Greek Orthodox community for over a century.",
+        "community_summary": "Holy Trinity Greek Orthodox Cathedral has been the spiritual home of the Greek Orthodox community for over a century.",
+        "theology_summary": "We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church.",
+        "worship_style": "Divine Liturgy is celebrated every Sunday at 9:30am",
+        "worship_style_detail": "The choir chants Byzantine music a cappella in the traditional Greek style.",
+        "pull_quote": "We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church.",
+        "statement_of_faith": "We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are explicitly named in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are directly supported by phrases in the text."
+      },
+      "community_summary": {
+        "ok": false,
+        "reason": "Adds interpretive phrases not present in the source text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes all theological points from the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Accurately reflects the worship details provided in the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is a direct and representative quote from the text."
+      },
+      "statement_of_faith": {
+        "ok": false,
+        "reason": "Text lacks a formal statement of faith list."
+      }
+    }
+  },
+  "DRAFT: Korean immigrant bilingual": {
+    "extraction": {
+      "fields": {
+        "denomination": "Korean American Presbyterian Church (KAPC)",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Korean",
+          "English"
+        ],
+        "programs": [
+          "Korean language school",
+          "college fellowship",
+          "young adult ministry",
+          "dawn prayer"
+        ],
+        "vibe_tags": [
+          "multigenerational",
+          "Korean-American",
+          "first-generation",
+          "second-generation"
+        ],
+        "community_summary": "This is a multigenerational Korean-American congregation in Northern Virginia, serving both first and second-generation members.",
+        "theology_summary": "The church is part of the Korean American Presbyterian Church (KAPC) denomination and adheres to the Westminster Confession.",
+        "worship_style": "blended",
+        "worship_style_detail": "Services include both hymnal worship with traditional preaching and contemporary praise band worship.",
+        "pull_quote": "Grace Korean Church is a multigenerational Korean-American congregation in Northern Virginia.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.9,
+        "service_languages": 1.0,
+        "programs": 1.0,
+        "vibe_tags": 0.9,
+        "community_summary": 0.9,
+        "theology_summary": 0.9,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "We are part of the Korean American Presbyterian Church (KAPC) denomination",
+        "theological_stance": "holding to the Westminster Confession",
+        "programs": "Programs include Korean language school for children on Saturdays, college fellowship (KCF), young adult ministry (YA), and dawn prayer (\uc0c8\ubcbd\uae30\ub3c4)",
+        "vibe_tags": "multigenerational Korean-American congregation",
+        "community_summary": "\uc740\ud61c\ud55c\uc778\uad50\ud68c / Grace Korean Church is a multigenerational Korean-American congregation in Northern Virginia.",
+        "theology_summary": "We are part of the Korean American Presbyterian Church (KAPC) denomination, holding to the Westminster Confession.",
+        "worship_style": "hymnal worship and traditional preaching, and the 11:30am English Ministry (EM) service for the 1.5 and second generation with contemporary praise band worship.",
+        "worship_style_detail": "the 9:00am Korean-language service for first-generation members with hymnal worship and traditional preaching, and the 11:30am English Ministry (EM) service for",
+        "pull_quote": "\uc740\ud61c\ud55c\uc778\uad50\ud68c / Grace Korean Church is a multigenerational Korean-American congregation in Northern Virginia."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Faithful and complete list of programs from text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "Tags are directly from the text's self-description."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the community description from the text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Faithfully captures all theological details from the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Accurately describes the two worship styles mentioned."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "An exact, representative sentence from the source text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no statement of faith is listed."
+      }
+    }
+  },
+  "DRAFT: Quaker meeting": {
+    "extraction": {
+      "fields": {
+        "denomination": "Quaker",
+        "theological_stance": "progressive",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "First Day School"
+        ],
+        "vibe_tags": [
+          "inclusive",
+          "intergenerational",
+          "community-focused",
+          "spirit-led"
+        ],
+        "community_summary": "This is an unprogrammed Quaker meeting that welcomes all individuals regardless of belief, background, gender identity, or sexual orientation.",
+        "theology_summary": "The community practices silent waiting upon the Spirit, where anyone may offer vocal ministry, and affirms the testimonies of Simplicity, Peace, Integrity, Community, Equality, and Stewardship.",
+        "worship_style": null,
+        "worship_style_detail": "Worship is held in silent waiting upon the Spirit, with vocal ministry offered by anyone moved by the Spirit, and no prepared sermon.",
+        "pull_quote": "All are welcome regardless of belief, background, gender identity, or sexual orientation.",
+        "statement_of_faith": [
+          "Simplicity",
+          "Peace",
+          "Integrity",
+          "Community",
+          "Equality",
+          "Stewardship"
+        ]
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.9,
+        "service_languages": 0.9,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.9,
+        "theology_summary": 0.9,
+        "worship_style_detail": 0.9,
+        "pull_quote": 1.0,
+        "statement_of_faith": 0.9
+      },
+      "snippets": {
+        "denomination": "Friends Meeting at Cambridge is an unprogrammed Quaker meeting in the tradition of the Religious Society of Friends.",
+        "theological_stance": "All are welcome regardless of belief, background, gender identity, or sexual orientation.",
+        "service_languages": "Friends Meeting at Cambridge is an unprogrammed Quaker meeting in the tradition of the Religious Society of Friends.",
+        "programs": "First Day School for children meets concurrently with worship.",
+        "vibe_tags": "All are welcome regardless of belief, background, gender identity, or sexual orientation.",
+        "theology_summary": "Meeting for Worship is held every First Day (Sunday) at 10:30am in silent waiting upon the Spirit \u2014 anyone moved by the Spirit may rise and offer vocal ministry",
+        "worship_style_detail": "Meeting for Worship is held every First Day (Sunday) at 10:30am in silent waiting upon the Spirit \u2014 anyone moved by the Spirit may rise and offer vocal ministry",
+        "pull_quote": "All are welcome regardless of belief, background, gender identity, or sexual orientation.",
+        "statement_of_faith": "We affirm the testimonies of Simplicity, Peace, Integrity, Community, Equality, and Stewardship (SPICES)."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Accurately lists the named program from the text."
+      },
+      "vibe_tags": {
+        "ok": false,
+        "reason": "The tag 'intergenerational' is an inference, not stated."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes identity and welcome statement from text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Faithfully summarizes worship practice and affirmed testimonies."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Faithfully and completely describes the worship style details."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is an exact quote from the text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly lists the affirmed testimonies from the text."
+      }
+    }
+  },
+  "DRAFT: Sparse low-info page": {
+    "extraction": {
+      "fields": {
+        "denomination": null,
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "",
+        "statement_of_faith": []
+      },
+      "confidence": {},
+      "snippets": {}
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Correct. The text does not mention any programs."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "Correct. The text does not provide any vibe information."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Correct. The text does not describe the community."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Correct. The text does not describe the church's theology."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Correct. The text does not describe the worship style."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "Correct. The text contains no suitable pull quotes."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correct. The text has no statement of faith."
+      }
+    }
+  },
+  "DRAFT: Saint Francis of Assisi Church (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Roman Catholic",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English",
+          "Spanish",
+          "Kreyol"
+        ],
+        "programs": [
+          "Haitian Prayer Group",
+          "Legion of Mary",
+          "Youth Group",
+          "Religious Education"
+        ],
+        "vibe_tags": [
+          "multilingual",
+          "community-focused",
+          "devotional"
+        ],
+        "community_summary": "This is a diverse Roman Catholic community in Brooklyn, offering services in multiple languages and led by a team of priests.",
+        "theology_summary": "The church follows traditional Roman Catholic doctrine, emphasizing daily prayer, Eucharistic Adoration, and various devotions.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Services are liturgical, featuring Masses with specific safety precautions, daily morning prayer, and Eucharistic Adoration.",
+        "pull_quote": "Let us take precautions to keep each other safe and healthy!",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 1.0,
+        "theological_stance": 0.9,
+        "service_languages": 1.0,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.8,
+        "theology_summary": 0.8,
+        "worship_style": 1.0,
+        "worship_style_detail": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "St. Francis of Assisi Catholic Academy",
+        "theological_stance": "Daily Morning Prayer at 7:15 a.m.\nMonday, Wednesday, Friday in the Church\nDaily Morning Prayer at 8:15 a.m.\nTuesday, Thursday, Saturday in the Chapel\nH",
+        "programs": "- Jul 16 2026 7:00 pm - Haitian Prayer Group\n- Jul 16 2026 7:00 pm - Legion of Mary\n- Jul 17 2026 6:00 pm - Youth Group",
+        "community_summary": "ST. FRANCIS OF ASSISI - ST. BLAISE CHURCH\nLincoln Road and Nostrand Ave (Enter at Lincoln Road Parking Lot)",
+        "theology_summary": "Devotions\nDaily Morning Prayer at 7:15 a.m.\nMonday, Wednesday, Friday in the Church\nDaily Morning Prayer at 8:15 a.m.\nTuesday, Thursday, Saturday in the Chapel\n",
+        "worship_style": "Weekday and Weekend Masses",
+        "worship_style_detail": "Weekday Mass\n- Monday to Saturday at 8:30 AM\nSunday Masses\n- Saturday 5:00 PM (English)\n- Sunday 9:00 AM (English)\n- Sunday 11:00 AM (Spanish)\n- Sunday 12:30 PM",
+        "pull_quote": "Let us take precautions to keep each other safe and healthy!"
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are mentioned in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "Tags are directly supported by text (languages, devotions, safety)."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the multilingual, Catholic community in Brooklyn."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Accurately reflects the emphasis on Catholic devotions mentioned."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Correctly identifies worship types and precautions from the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "Quote is exact and represents the church's voice."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "The source text lacks a formal statement of faith."
+      }
+    }
+  },
+  "Example: The Church of Haile Selassie I (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Rastafarian",
+        "theological_stance": null,
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Sunday School",
+          "Cooperative Enterprises",
+          "Prison Ministry"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "This church worships Haile Selassie I as God and King, interpreting biblical passages to reflect his divinity and role as the Conquering Lion of Judah.",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "We sing the song of Moses the servant of God, and the song of the Lamb, saying, \"Great and marvelous are thy works, Lord God Almighty; just and true are thy ways, thou King of saints.\"",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.9,
+        "service_languages": 0.9,
+        "programs": 0.8,
+        "theology_summary": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "Rastalogy",
+        "programs": "Sunday School ~ 10:00am-11:00am\nSunday Temple Worship ~ 11:00am~1:30pm\nCooperative Enterprises",
+        "theology_summary": "Haile Selassie is the Chapel\n(Ah, Ah, Ahh)\nPower of the Trinity\n(Trinity, Trinity is He)\nBuild your mind on this direction\n(Ah, Ah, Ahh)\nServe the living God an",
+        "pull_quote": "We\nsing the song of Moses the\nservant of God, and the song of the Lamb,\nsaying,\n\"Great and marvelous are thy works,\nLord God Almighty; just and true are thy\nway"
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are explicitly named in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "The text lacks clear, self-descriptive vibe tags, so empty is acceptable."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "The text does not describe the congregation's members."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "The summary is well-supported by the modified scriptures and song lyrics."
+      },
+      "worship_style_detail": {
+        "ok": false,
+        "reason": "The extraction missed signals like 'Anaphora' (liturgy) and singing."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "The quote is taken directly from the source text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "The text does not have a formal statement of faith section."
+      }
+    }
+  },
+  "DRAFT: The Gospel Tabernacle Church (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": "traditional",
+        "service_languages": [],
+        "programs": [
+          "food pantry",
+          "marriage counseling",
+          "family counseling",
+          "baby dedication",
+          "youth activities",
+          "elderly programs",
+          "intercessory prayer",
+          "Bible teaching"
+        ],
+        "vibe_tags": [
+          "community-focused",
+          "mission-driven",
+          "intergenerational",
+          "spirit-filled"
+        ],
+        "community_summary": "This church has been in the community since 1984, working for positive changes and welcoming new residents. It serves as a training center for lay leaders and pastors, with multiple branches and outreaches.",
+        "theology_summary": "The church embraces a Pentecostal born-again experience and is committed to sharing the love of Christ through the preaching of the gospel.",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "Our goal is to continue to share the love of Christ through the preaching of the gospel in various forms.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.8,
+        "theological_stance": 0.9,
+        "programs": 0.9,
+        "vibe_tags": 0.8,
+        "community_summary": 0.9,
+        "theology_summary": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "GTC is a 501 c (3) non-profit organization",
+        "theological_stance": "Gospel Tabernacle embrace the PENTECOSTAL BORN AGAIN EXPERIENCE",
+        "programs": "We operate a food pantry out of our main branch. We perform marriages and marriage counseling, family counseling, dedication of babies and infants, as well as a",
+        "vibe_tags": "GTC has been in this community since 1984. We have seen many changes for the better and are working for even greater ones to the benefit of all, and welcome our",
+        "community_summary": "GTC has been in this community since 1984. We have seen many changes for the better and are working for even greater ones to the benefit of all, and welcome our",
+        "theology_summary": "Our goal is to continue to share the love of Christ through the preaching of the gospel in various forms. We welcome you to join us for our Sunday Worship Sessi",
+        "pull_quote": "Our goal is to continue to share the love of Christ through the preaching of the gospel in various forms."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are directly mentioned in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "Tags are well-supported by the text's self-description."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the church's community role from the text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Faithfully summarizes the theological statements from the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Correctly empty as the text lacks worship style details."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "Quote is verbatim from the text and representative."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no formal statement of faith exists."
+      }
+    }
+  },
+  "Example: St. John the Forerunner Orthodox Church (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Orthodox",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Russian"
+        ],
+        "programs": [
+          "children's school"
+        ],
+        "vibe_tags": [
+          "traditional",
+          "community-focused",
+          "reverent"
+        ],
+        "community_summary": "This is a Russian Orthodox community in Brooklyn that celebrates major Christian holidays with traditional services and includes a children's school.",
+        "theology_summary": "The church observes traditional Orthodox holidays like Pentecost and Pascha, emphasizing prayer for the departed and the salvation offered by Christ.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Services are solemn and traditional, following the liturgical calendar with celebrations for major feasts like Pascha and Pentecost.",
+        "pull_quote": "\u00ab\u0425\u0440\u0438\u0441\u0442\u043e\u0441 \u0412\u043e\u0441\u043a\u0440\u0435\u0441\u0435!\u00bb \u2014 \u044d\u0442\u0438\u043c\u0438 \u043b\u0438\u043a\u0443\u044e\u0449\u0438\u043c\u0438 \u0441\u043b\u043e\u0432\u0430\u043c\u0438 \u0432 \u043d\u043e\u0447\u044c \u0441 11 \u043d\u0430 12 \u0430\u043f\u0440\u0435\u043b\u044f \u043d\u0430\u043f\u043e\u043b\u043d\u0438\u043b\u0438\u0441\u044c \u0441\u0432\u043e\u0434\u044b \u0418\u043e\u0430\u043d\u043d\u043e-\u041f\u0440\u0435\u0434\u0442\u0435\u0436\u0435\u043d\u0441\u043a\u043e\u0433\u043e \u0441\u043e\u0431\u043e\u0440\u0430 \u0432 \u0411\u0440\u0443\u043a\u043b\u0438\u043d\u0435 \u0438 \u0441\u0435\u0440\u0434\u0446\u0430 \u043c\u043d\u043e\u0436\u0435\u0441\u0442\u0432\u0430 \u043f\u0440\u0438\u0445\u043e\u0436\u0430\u043d \u0438 \u0433\u043e\u0441\u0442\u0435\u0439 \u0445\u0440\u0430\u043c\u0430, \u0441\u043e\u0431\u0440\u0430\u0432\u0448\u0438\u0445\u0441\u044f \u0440\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u0440\u0430\u0434\u043e\u0441\u0442\u044c \u0433\u043b\u0430\u0432\u043d\u043e\u0433\u043e \u0446\u0435\u0440\u043a\u043e\u0432\u043d\u043e\u0433\u043e \u043f\u0440\u0430\u0437\u0434\u043d\u0438\u043a\u0430.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.9,
+        "theological_stance": 0.9,
+        "service_languages": 0.8,
+        "programs": 0.9,
+        "vibe_tags": 0.7,
+        "community_summary": 0.8,
+        "theology_summary": 0.8,
+        "worship_style": 0.9,
+        "worship_style_detail": 0.8,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "\u0412 \u043d\u0430\u0448\u0435\u0439 \u043f\u0440\u0430\u0432\u043e\u0441\u043b\u0430\u0432\u043d\u043e\u0439 \u0448\u043a\u043e\u043b\u0435",
+        "theological_stance": "\u0422\u0440\u043e\u0438\u0446\u043a\u0430\u044f \u0440\u043e\u0434\u0438\u0442\u0435\u043b\u044c\u0441\u043a\u0430\u044f \u0441\u0443\u0431\u0431\u043e\u0442\u0430: \u0434\u0435\u043d\u044c \u043e\u0441\u043e\u0431\u043e\u0439 \u043c\u043e\u043b\u0438\u0442\u0432\u044b \u043e \u043d\u0430\u0448\u0438\u0445 \u0443\u0441\u043e\u043f\u0448\u0438\u0445",
+        "service_languages": "\u0412 \u043d\u0430\u0448\u0435\u0439 \u043f\u0440\u0430\u0432\u043e\u0441\u043b\u0430\u0432\u043d\u043e\u0439 \u0448\u043a\u043e\u043b\u0435",
+        "programs": "\u0417\u0430\u0432\u0435\u0440\u0448\u0435\u043d\u0438\u0435 \u0443\u0447\u0435\u0431\u043d\u043e\u0433\u043e \u0433\u043e\u0434\u0430 \u0432 \u0434\u0435\u0442\u0441\u043a\u043e\u0439 \u0448\u043a\u043e\u043b\u0435 \u043f\u0440\u0435\u043f\u043e\u0434\u043e\u0431\u043d\u043e\u0433\u043e \u0421\u0435\u0440\u0433\u0438\u044f \u0420\u0430\u0434\u043e\u043d\u0435\u0436\u0441\u043a\u043e\u0433\u043e \u0432 \u0411\u0440\u0443\u043a\u043b\u0438\u043d\u0435",
+        "vibe_tags": "\u0412 \u043d\u0430\u0448\u0435\u0439 \u043f\u0440\u0430\u0432\u043e\u0441\u043b\u0430\u0432\u043d\u043e\u0439 \u0448\u043a\u043e\u043b\u0435 \u043f\u0440\u043e\u0448\u0435\u043b \u0437\u0430\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439 \u0434\u0435\u043d\u044c \u0443\u0447\u0435\u0431\u043d\u043e\u0433\u043e \u0433\u043e\u0434\u0430. \u041e\u043d \u0431\u044b\u043b \u043e\u0434\u043d\u043e\u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u0440\u0430\u0434\u043e\u0441\u0442\u043d\u044b\u043c \u0438 \u043d\u0435\u043c\u043d\u043e\u0433\u043e \u0432\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u043c",
+        "community_summary": "\u0412 \u043d\u0430\u0448\u0435\u0439 \u043f\u0440\u0430\u0432\u043e\u0441\u043b\u0430\u0432\u043d\u043e\u0439 \u0448\u043a\u043e\u043b\u0435 \u043f\u0440\u043e\u0448\u0435\u043b \u0437\u0430\u043a\u043b\u044e\u0447\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u0439 \u0434\u0435\u043d\u044c \u0443\u0447\u0435\u0431\u043d\u043e\u0433\u043e \u0433\u043e\u0434\u0430. \u041e\u043d \u0431\u044b\u043b \u043e\u0434\u043d\u043e\u0432\u0440\u0435\u043c\u0435\u043d\u043d\u043e \u0440\u0430\u0434\u043e\u0441\u0442\u043d\u044b\u043c \u0438 \u043d\u0435\u043c\u043d\u043e\u0433\u043e \u0432\u043e\u043b\u043d\u0438\u0442\u0435\u043b\u044c\u043d\u044b\u043c: \u0432\u043f\u0435\u0440\u0435\u0434\u0438 \u043b\u0435\u0442\u043d\u0438\u0435 \u043a\u0430\u043d\u0438\u043a\u0443\u043b\u044b, \u0430 \u0437\u0430 \u043f\u043b\u0435\u0447\u0430\u043c\u0438",
+        "theology_summary": "\u041d\u0430\u043a\u0430\u043d\u0443\u043d\u0435 \u043f\u0440\u0430\u0437\u0434\u043d\u0438\u043a\u0430 \u0421\u0432\u044f\u0442\u043e\u0439 \u0422\u0440\u043e\u0438\u0446\u044b \u0426\u0435\u0440\u043a\u043e\u0432\u044c \u043f\u0440\u0438\u0437\u044b\u0432\u0430\u0435\u0442 \u0443\u0441\u0438\u043b\u0435\u043d\u043d\u043e \u043c\u043e\u043b\u0438\u0442\u044c\u0441\u044f \u043e \u0432\u0441\u0435\u0445 \u0443\u0441\u043e\u043f\u0448\u0438\u0445 \u2014 \u0440\u043e\u0434\u043d\u044b\u0445, \u0431\u043b\u0438\u0437\u043a\u0438\u0445 \u0438 \u0432\u0441\u0435\u0445 \u043e\u0441\u0442\u0430\u043b\u044c\u043d\u044b\u0445, \u043d\u0430\u043f\u043e\u043c\u0438\u043d\u0430\u044f, \u0447\u0442\u043e \u0441\u043f\u0430\u0441\u0435\u043d\u0438\u0435 \u0425\u0440\u0438\u0441\u0442\u043e\u0432\u043e \u043f\u0440\u043e\u0441\u0442\u0438\u0440",
+        "worship_style": "\u0441\u043e\u0432\u0435\u0440\u0448\u0435\u043d\u044b \u0442\u043e\u0440\u0436\u0435\u0441\u0442\u0432\u0435\u043d\u043d\u044b\u0435 \u0431\u043e\u0433\u043e\u0441\u043b\u0443\u0436\u0435\u043d\u0438\u044f."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Faithful and complete, based on the mention of the school."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are well-supported by the text's descriptions."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the community described in the text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Faithfully captures the theological points mentioned in the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Accurately reflects the worship descriptions in the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is a verbatim quote from the source text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as the text lacks a formal statement."
+      }
+    }
+  },
+  "DRAFT: First Church of Christ, Scientist (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Christian Science",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Sunday School",
+          "Reading Room"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "Welcome to the First Church of Christ, Scientist in Brooklyn, New York. All are invited to attend our services:",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.9,
+        "programs": 0.8,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "First Church of Christ, Scientist",
+        "programs": "Sunday School: 11:00 am\nWednesday Evening: 7:30 pm.\nReading Room:",
+        "pull_quote": "Welcome to the First Church of Christ, Scientist in Brooklyn, New York.\nAll are invited to attend our services:"
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Faithful and complete."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "Correctly empty as text lacks descriptive vibe words."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Correctly empty as text lacks community description."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Correctly empty as text lacks theological description."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Correctly empty as text lacks worship style details."
+      },
+      "pull_quote": {
+        "ok": false,
+        "reason": "Not a single sentence from the text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as text lacks a statement of faith."
+      }
+    }
+  },
+  "DRAFT: Church of Gethsemane (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": null,
+        "theological_stance": null,
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Sunday School",
+          "Project Connect"
+        ],
+        "vibe_tags": [
+          "diverse",
+          "inclusive",
+          "intergenerational"
+        ],
+        "community_summary": "This is an intentional congregation with members from all racial, ethnic, economic, and educational backgrounds.",
+        "theology_summary": "",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "We are welcoming, diverse and inclusive. We are a unique intentional congregation of persons from all racial, ethnic, economic and educational backgrounds.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "service_languages": 0.8,
+        "programs": 0.9,
+        "vibe_tags": 0.9,
+        "community_summary": 0.9,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "service_languages": "Sunday Worship Service\nServices are held every Sunday at 11:00am",
+        "programs": "Sunday School is at 10:00am\nLocation & Directions\n1012 Eighth Avenue, Brooklyn, NY 11215. Take F train to 7th Ave. stop Click here for map\nProject Connect",
+        "vibe_tags": "We are welcoming, diverse and inclusive. We are a unique intentional congregation of persons from all racial, ethnic, economic and educational backgrounds.",
+        "community_summary": "We are welcoming, diverse and inclusive. We are a unique intentional congregation of persons from all racial, ethnic, economic and educational backgrounds.",
+        "pull_quote": "We are welcoming, diverse and inclusive. We are a unique intentional congregation of persons from all racial, ethnic, economic and educational backgrounds."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "Faithful and complete."
+      },
+      "vibe_tags": {
+        "ok": false,
+        "reason": "The tag 'intergenerational' is not in the source text."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "Accurately summarizes the community description from the text."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "Correctly empty as no theology is mentioned."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Correctly empty as no worship style is mentioned."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is a direct and representative quote."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no statement of faith is provided."
+      }
+    }
+  },
+  "Example: St. Joasaph Church (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Russian Orthodox Church",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Russian"
+        ],
+        "programs": [
+          "adult Sunday school",
+          "children's Sunday school"
+        ],
+        "vibe_tags": [
+          "cozy",
+          "community-focused",
+          "culturally-preserving"
+        ],
+        "community_summary": "This is a Russian Orthodox community in Brooklyn, focused on preserving spiritual traditions, language, and culture for children away from their homeland.",
+        "theology_summary": "The church teaches the Law of God and emphasizes traditional Orthodox practices, including prayer for the living and the departed.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "The services are described as beautiful and blessed, with a strong desire for children to participate in the Liturgies.",
+        "pull_quote": "\u0423 \u043d\u0430\u0441 \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u0435\u043b\u044c\u043d\u0430\u044f \u0446\u0435\u0440\u043a\u043e\u0432\u044c, \u0433\u0434\u0435 \u043e\u0447\u0435\u043d\u044c \u043a\u0440\u0430\u0441\u0438\u0432\u043e, \u0443\u044e\u0442\u043d\u043e , \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0442\u043d\u043e \u2013 \u043d\u0435 \u0437\u0440\u044f \u0432\u0441\u0435, \u043a\u0442\u043e \u0432 \u043d\u0435\u0451 \u043f\u0440\u0438\u0445\u043e\u0434\u044f\u0442 \u2013 \u0433\u043e\u0432\u043e\u0440\u044f\u0442, \u0447\u0442\u043e \u0437\u0434\u0435\u0441\u044c \u0442\u0430\u043a \u0445\u043e\u0440\u043e\u0448\u043e, \u0447\u0442\u043e \u043d\u0435 \u0445\u043e\u0447\u0435\u0442\u0441\u044f \u0443\u0445\u043e\u0434\u0438\u0442\u044c \u0434\u043e\u043c\u043e\u0439 .",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.9,
+        "theological_stance": 0.8,
+        "service_languages": 0.9,
+        "programs": 0.9,
+        "vibe_tags": 0.7,
+        "community_summary": 0.8,
+        "theology_summary": 0.7,
+        "worship_style": 0.8,
+        "worship_style_detail": 0.7,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "Russian Orthodox Church",
+        "theological_stance": "\u0412\u0435\u0434\u044c \u0438\u0437\u0434\u0430\u0432\u043d\u0430 \u043d\u0430 \u0420\u0443\u0441\u0438, \u0434\u0430 \u0438 \u0432 \u0434\u0440\u0443\u0433\u0438\u0445 \u043f\u0440\u0430\u0432\u043e\u0441\u043b\u0430\u0432\u043d\u044b\u0445 \u0441\u0442\u0440\u0430\u043d\u0430\u0445 \u2013 \u0441\u0442\u0440\u043e\u0438\u0442\u0435\u043b\u044c\u0441\u0442\u0432\u043e \u0438 \u043e\u0431\u0443\u0441\u0442\u0440\u043e\u0439\u0441\u0442\u0432\u043e \u0445\u0440\u0430\u043c\u0430 \u2013 \u0441\u0447\u0438\u0442\u0430\u043b\u043e\u0441\u044c \u0441\u0430\u043c\u044b\u043c \u0432\u0430\u0436\u043d\u044b\u043c \u0434\u0435\u043b\u043e\u043c.",
+        "service_languages": "\u0414\u043e\u0440\u043e\u0433\u0438\u0435 \u0431\u0440\u0430\u0442\u044c\u044f \u0438 \u0441\u0451\u0441\u0442\u0440\u044b!\n\u041d\u0430\u0448 \u0445\u0440\u0430\u043c \u0421\u0432\u044f\u0442\u0438\u0442\u0435\u043b\u044f \u0418\u043e\u0430\u0441\u0430\u0444\u0430 \u0411\u0435\u043b\u0433\u043e\u0440\u043e\u0434\u0441\u043a\u043e\u0433\u043e \u0432 \u0411\u0440\u0443\u043a\u043b\u0438\u043d\u0435 \u043c\u0438\u043b\u043e\u0441\u0442\u0438\u044e \u0411\u043e\u0436\u0438\u0435\u0439 \u0438 \u0441\u0442\u0430\u0440\u0430\u043d\u0438\u044f\u043c\u0438 \u0431\u043b\u0430\u0433\u043e\u0447\u0435\u0441\u0442\u0438\u0432\u044b\u0445 \u0445\u0440\u0438\u0441\u0442\u0438\u0430\u043d \u0431\u044b\u043b \u043e\u0442\u043a\u0440\u044b\u0442 10 \u0430\u0432\u0433\u0443\u0441\u0442\u0430 2013 \u0433\u043e\u0434\u0430",
+        "programs": "\u041f\u0440\u0438 \u043d\u0430\u0448\u0435\u043c \u0445\u0440\u0430\u043c\u0435 \u0442\u0430\u043a\u0436\u0435 \u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0443\u044e\u0442 2 \u0448\u043a\u043e\u043b\u044b \u2013 \u0412\u043e\u0441\u043a\u0440\u0435\u0441\u043d\u0430\u044f \u0448\u043a\u043e\u043b\u0430 \u0434\u043b\u044f \u0432\u0437\u0440\u043e\u0441\u043b\u044b\u0445 \u0438 \u0414\u0435\u0442\u0441\u043a\u0430\u044f \u0412\u043e\u0441\u043a\u0440\u0435\u0441\u043d\u0430\u044f \u0448\u043a\u043e\u043b\u0430 \u041f\u0440\u0435\u043f\u043e\u0434\u043e\u0431\u043d\u043e\u0433\u043e \u0421\u0435\u0440\u0430\u0444\u0438\u043c\u0430 \u0421\u0430\u0440\u043e\u0432\u0441\u043a\u043e\u0433\u043e.",
+        "vibe_tags": "\u0423 \u043d\u0430\u0441 \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u0435\u043b\u044c\u043d\u0430\u044f \u0446\u0435\u0440\u043a\u043e\u0432\u044c, \u0433\u0434\u0435 \u043e\u0447\u0435\u043d\u044c \u043a\u0440\u0430\u0441\u0438\u0432\u043e, \u0443\u044e\u0442\u043d\u043e , \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0442\u043d\u043e \u2013 \u043d\u0435 \u0437\u0440\u044f \u0432\u0441\u0435, \u043a\u0442\u043e \u0432 \u043d\u0435\u0451 \u043f\u0440\u0438\u0445\u043e\u0434\u044f\u0442 \u2013 \u0433\u043e\u0432\u043e\u0440\u044f\u0442, \u0447\u0442\u043e \u0437\u0434\u0435\u0441\u044c \u0442\u0430\u043a \u0445\u043e\u0440\u043e\u0448\u043e, \u0447\u0442\u043e \u043d\u0435 \u0445\u043e\u0447\u0435\u0442\u0441\u044f \u0443\u0445\u043e\u0434\u0438\u0442\u044c \u0434\u043e\u043c\u043e",
+        "community_summary": "\u0417\u0434\u0435\u0441\u044c, \u0432\u0434\u0430\u043b\u0438 \u043e\u0442 \u0420\u043e\u0434\u0438\u043d\u044b \u043e\u043d\u0438 \u043f\u0440\u043e\u0434\u043e\u043b\u0436\u0430\u044e\u0442 \u043d\u0430\u0448\u0438 \u0434\u0443\u0445\u043e\u0432\u043d\u044b\u0435 \u0442\u0440\u0430\u0434\u0438\u0446\u0438\u0438, \u0441\u043e\u0445\u0440\u0430\u043d\u044f\u044e\u0442 \u044f\u0437\u044b\u043a \u0438 \u0440\u043e\u0434\u043d\u0443\u044e \u043a\u0443\u043b\u044c\u0442\u0443\u0440\u0443.",
+        "theology_summary": "\u0412 \u043f\u0440\u043e\u0433\u0440\u0430\u043c\u043c\u0435 \u0448\u043a\u043e\u043b\u044b \u2013 \u0438\u0437\u0443\u0447\u0435\u043d\u0438\u0435 \u0417\u0430\u043a\u043e\u043d\u0430 \u0411\u043e\u0436\u044c\u0435\u0433\u043e, \u0420\u0443\u0441\u0441\u043a\u043e\u0433\u043e \u044f\u0437\u044b\u043a\u0430 \u0438 \u041b\u0438\u0442\u0435\u0440\u0430\u0442\u0443\u0440\u044b,\n\u0418\u0441\u0442\u043e\u0440\u0438\u0438 \u0420\u043e\u0441\u0441\u0438\u0438, \u043f\u0440\u0435\u043f\u043e\u0434\u0430\u044e\u0442\u0441\u044f \u0443\u0440\u043e\u043a\u0438 \u043f\u043e \u0440\u0430\u0437\u0432\u0438\u0442\u0438\u044e \u0440\u0435\u0447\u0438, \u0443\u0440\u043e\u043a\u0438 \u043c\u0443\u0437\u044b\u043a\u0438 \u0438 \u043f\u0435\u043d\u0438\u044f",
+        "worship_style": "\u041a\u0430\u043a \u0445\u043e\u0447\u0435\u0442\u0441\u044f \u043e\u0441\u0443\u0449\u0435\u0441\u0442\u0432\u0438\u0442\u044c \u044d\u0442\u0443 \u043c\u0435\u0447\u0442\u0443 \u2013 \u043e\u0431\u044c\u0435\u0434\u0438\u043d\u0438\u0442\u044c \u043d\u0430\u0448 \u0445\u0440\u0430\u043c \u0441 \u043d\u0430\u0448\u0435\u0439 \u0414\u0435\u0442\u0441\u043a\u043e\u0439 \u0412\u043e\u0441\u043a\u0440\u0435\u0441\u043d\u043e\u0439 \u0448\u043a\u043e\u043b\u043e\u0439, \u0447\u0442\u043e\u0431\u044b \u0432\u0438\u0434\u0435\u0442\u044c \u0440\u0435\u0431\u044f\u0442 \u043d\u0435 \u0442\u043e\u043b\u044c\u043a\u043e \u0432 \u043a\u043b\u0430\u0441\u0441\u0430\u0445 , \u043d\u043e \u0438 \u0432 \u0445\u0440\u0430\u043c\u0435\u043d\u0430 \u041b\u0438\u0442\u0443\u0440\u0433\u0438\u044f\u0445!",
+        "worship_style_detail": "\u0423 \u043d\u0430\u0441 \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u0435\u043b\u044c\u043d\u0430\u044f \u0446\u0435\u0440\u043a\u043e\u0432\u044c, \u0433\u0434\u0435 \u043e\u0447\u0435\u043d\u044c \u043a\u0440\u0430\u0441\u0438\u0432\u043e, \u0443\u044e\u0442\u043d\u043e , \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0442\u043d\u043e \u2013 \u043d\u0435 \u0437\u0440\u044f \u0432\u0441\u0435, \u043a\u0442\u043e \u0432 \u043d\u0435\u0451 \u043f\u0440\u0438\u0445\u043e\u0434\u044f\u0442 \u2013 \u0433\u043e\u0432\u043e\u0440\u044f\u0442, \u0447\u0442\u043e \u0437\u0434\u0435\u0441\u044c \u0442\u0430\u043a \u0445\u043e\u0440\u043e\u0448\u043e, \u0447\u0442\u043e \u043d\u0435 \u0445\u043e\u0447\u0435\u0442\u0441\u044f \u0443\u0445\u043e\u0434\u0438\u0442\u044c \u0434\u043e\u043c\u043e",
+        "pull_quote": "\u0423 \u043d\u0430\u0441 \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u0435\u043b\u044c\u043d\u0430\u044f \u0446\u0435\u0440\u043a\u043e\u0432\u044c, \u0433\u0434\u0435 \u043e\u0447\u0435\u043d\u044c \u043a\u0440\u0430\u0441\u0438\u0432\u043e, \u0443\u044e\u0442\u043d\u043e , \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0442\u043d\u043e \u2013 \u043d\u0435 \u0437\u0440\u044f \u0432\u0441\u0435, \u043a\u0442\u043e \u0432 \u043d\u0435\u0451 \u043f\u0440\u0438\u0445\u043e\u0434\u044f\u0442 \u2013 \u0433\u043e\u0432\u043e\u0440\u044f\u0442, \u0447\u0442\u043e \u0437\u0434\u0435\u0441\u044c \u0442\u0430\u043a \u0445\u043e\u0440\u043e\u0448\u043e, \u0447\u0442\u043e \u043d\u0435 \u0445\u043e\u0447\u0435\u0442\u0441\u044f \u0443\u0445\u043e\u0434\u0438\u0442\u044c \u0434\u043e\u043c\u043e"
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "The two schools listed are explicitly named in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are directly supported by the text's descriptions."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "This is a faithful and accurate summary of the community."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "The summary accurately reflects theological points mentioned in the text."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Accurately captures the limited worship details provided in the text."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "This is a verbatim quote from the source text."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as no formal statement of faith is provided."
+      }
+    }
+  },
+  "DRAFT: The Bridge Church (auto)": {
+    "extraction": {
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Growth Groups",
+          "online sermons",
+          "community outreach"
+        ],
+        "vibe_tags": [
+          "diverse",
+          "community-focused",
+          "transformational",
+          "accessible"
+        ],
+        "community_summary": "This church is a diverse family in NYC, welcoming people from all over the city, New Jersey, and Long Island. They encourage connection with God and growth alongside like-minded individuals.",
+        "theology_summary": "They believe in reaching people where they are and helping them grow, emphasizing that true transformation happens through a personal relationship with Jesus.",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "You don\u2019t have to be fixed up or perfect to experience God\u2019s love. Every story matters and we\u2019d love to become part of yours.",
+        "statement_of_faith": []
+      },
+      "confidence": {
+        "denomination": 0.9,
+        "programs": 0.8,
+        "vibe_tags": 0.7,
+        "community_summary": 0.8,
+        "theology_summary": 0.8,
+        "pull_quote": 0.9
+      },
+      "snippets": {
+        "denomination": "As a non-denominational church in NYC",
+        "programs": "To learn more about our ministries, sermons, or Growth Groups",
+        "vibe_tags": "Led by Pastor James Roberson III, our diverse family encourages you to connect with God and grow alongside like-minded people.",
+        "community_summary": "Led by Pastor James Roberson III, our diverse family encourages you to connect with God and grow alongside like-minded people. As a local Christian church in Ne",
+        "pull_quote": "You don\u2019t have to be fixed up or perfect to experience God\u2019s love. Every story matters and we\u2019d love to become part of yours."
+      }
+    },
+    "judge": {
+      "programs": {
+        "ok": true,
+        "reason": "All listed programs are explicitly mentioned in the text."
+      },
+      "vibe_tags": {
+        "ok": true,
+        "reason": "All tags are directly supported by the source text."
+      },
+      "community_summary": {
+        "ok": true,
+        "reason": "The summary accurately reflects the description of the community."
+      },
+      "theology_summary": {
+        "ok": true,
+        "reason": "The summary correctly captures the main theological points mentioned."
+      },
+      "worship_style_detail": {
+        "ok": true,
+        "reason": "Correctly empty as the text provides no worship style details."
+      },
+      "pull_quote": {
+        "ok": true,
+        "reason": "The quote is verbatim from the text and representative."
+      },
+      "statement_of_faith": {
+        "ok": true,
+        "reason": "Correctly empty as there is no formal statement of faith."
+      }
+    }
+  }
+}

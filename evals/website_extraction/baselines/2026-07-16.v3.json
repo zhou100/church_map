@@ -1,0 +1,1246 @@
+{
+  "summary": {
+    "n": 18,
+    "fields": {
+      "denomination": 0.8666666666666667,
+      "theological_stance": 0.9090909090909091,
+      "service_languages": 0.7058823529411765,
+      "programs": 1.0,
+      "vibe_tags": 0.8333333333333334,
+      "worship_style": 0.75,
+      "community_summary": 0.8888888888888888,
+      "pull_quote": 0.8333333333333334,
+      "theology_summary": 0.8333333333333334,
+      "worship_style_detail": 0.9444444444444444,
+      "statement_of_faith": 0.9444444444444444
+    }
+  },
+  "examples": [
+    {
+      "name": "Example: Park Slope Methodist",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": true,
+        "community_summary": true,
+        "pull_quote": true,
+        "theology_summary": false,
+        "worship_style_detail": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "United Methodist",
+        "theological_stance": "progressive",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "youth group"
+        ],
+        "vibe_tags": [
+          "open and affirming",
+          "inclusive",
+          "intergenerational"
+        ],
+        "community_summary": "Park Slope United Methodist Church is an open and affirming community in Brooklyn that welcomes all regardless of sexual orientation, race, or background.",
+        "theology_summary": "This church emphasizes radical inclusivity and welcome for all people, reflecting a progressive theological stance.",
+        "worship_style": "traditional-hymns",
+        "worship_style_detail": "Services feature traditional hymns accompanied by a pipe organ and a robe-wearing choir.",
+        "pull_quote": "No matter where you are on your journey, you are welcome here.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Faithful and complete."
+        },
+        "vibe_tags": {
+          "ok": false,
+          "reason": "The 'intergenerational' tag is not supported by the text."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurate and faithful summary from the text."
+        },
+        "theology_summary": {
+          "ok": false,
+          "reason": "Adds interpretive labels like 'radical' and 'progressive'."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Faithful and complete description from the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "An exact quote from the text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no statement of faith is provided."
+        }
+      }
+    },
+    {
+      "name": "Example: First Baptist Conservative",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": false,
+        "worship_style": true,
+        "theology_summary": true,
+        "statement_of_faith": true,
+        "community_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true
+      },
+      "fields": {
+        "denomination": "Southern Baptist",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "children's ministry",
+          "AWANA",
+          "men's Bible study",
+          "women's Bible study"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "This church believes in the inerrancy of Scripture, salvation by grace through faith, and defines marriage as between one man and one woman.",
+        "worship_style": "traditional-hymns",
+        "worship_style_detail": "Sunday services feature hymnal worship led by piano.",
+        "pull_quote": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message.",
+        "statement_of_faith": [
+          "The Bible is God's inspired and inerrant Word.",
+          "Salvation is by grace through faith in Christ alone.",
+          "Marriage is between one man and one woman.",
+          "The local church is autonomous under Christ's headship."
+        ]
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are directly from the text."
+        },
+        "vibe_tags": {
+          "ok": false,
+          "reason": "Incomplete. Missed tags like 'traditional' or 'hymns'."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Correctly empty as the text lacks community description."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes key theological points from the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Accurately and completely reflects worship details from text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "The value is a direct quote from the text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Accurately lists all points from the belief section."
+        }
+      }
+    },
+    {
+      "name": "Example: Bilingual Catholic",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": false,
+        "worship_style": true,
+        "community_summary": true,
+        "theology_summary": false,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Roman Catholic",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English",
+          "Spanish"
+        ],
+        "programs": [
+          "CCD program",
+          "RCIA",
+          "Knights of Columbus"
+        ],
+        "vibe_tags": [],
+        "community_summary": "St. Joseph Catholic Church serves its parish with regular Mass services and various programs for children and adults.",
+        "theology_summary": "This church celebrates Mass according to the Roman Missal, indicating adherence to traditional Catholic doctrine.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Mass is celebrated with the Roman Missal, accompanied by organ and a cantor.",
+        "pull_quote": "St. Joseph Catholic Church serves the parish with Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are explicitly mentioned in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "The text lacks strong, general vibe descriptors."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the community activities mentioned in the text."
+        },
+        "theology_summary": {
+          "ok": false,
+          "reason": "Adds interpretation not explicitly stated in the source text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Faithfully and completely captures worship details from the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "The quote is an exact sentence from the text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as the text lacks a statement of faith."
+        }
+      }
+    },
+    {
+      "name": "Example: Contemporary Non-denom",
+      "scores": {
+        "denomination": true,
+        "service_languages": false,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": true,
+        "worship_style_detail": true,
+        "community_summary": false,
+        "theology_summary": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Sojourn Kids",
+          "youth group",
+          "men's groups",
+          "women's groups",
+          "recovery ministry"
+        ],
+        "vibe_tags": [
+          "modern",
+          "band-led",
+          "expository preaching"
+        ],
+        "community_summary": "Sojourn is a church planted in 2014 in East Austin, meeting in a renovated warehouse.",
+        "theology_summary": "Sermons feature expository preaching through books of the Bible.",
+        "worship_style": "contemporary",
+        "worship_style_detail": "Worship is led by a full band with drums, electric guitar, keys, and vocals, featuring original songs and modern arrangements of hymns.",
+        "pull_quote": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are present in the source text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are directly supported by the text."
+        },
+        "community_summary": {
+          "ok": false,
+          "reason": "Incomplete. Misses the key 'non-denominational' descriptor from the text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Accurately captures the theological information provided in the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Faithful and complete summary of worship style details."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "The quote is verbatim from the source text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no statement of faith is provided."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Megachurch multi-site",
+      "scores": {
+        "denomination": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": true,
+        "worship_style_detail": true,
+        "community_summary": true,
+        "theology_summary": false,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Southern Baptist",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Lifepoint Kids",
+          "youth group",
+          "small groups"
+        ],
+        "vibe_tags": [
+          "multi-site",
+          "large-church",
+          "modern",
+          "community-focused"
+        ],
+        "community_summary": "This is a large, multi-site church with eleven locations across the Nashville area, gathering over 12,000 people weekly.",
+        "theology_summary": "The church focuses on removing barriers between people and Jesus, delivering a 35-minute teaching from Pastor Pat each weekend.",
+        "worship_style": "contemporary",
+        "worship_style_detail": "Weekend experiences are 70 minutes with modern worship led by live bands, a video-delivered teaching, and prayer response.",
+        "pull_quote": "We're a Southern Baptist Convention church but you won't see that on the sign; we want to remove every unnecessary barrier between people and Jesus.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All programs listed are directly from the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are well-supported by the text."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the size and structure from the text."
+        },
+        "theology_summary": {
+          "ok": false,
+          "reason": "Misses the explicit Southern Baptist Convention affiliation."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Faithfully captures all worship elements mentioned."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is a direct and representative quote."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as none is provided in text."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: AME historically Black",
+      "scores": {
+        "denomination": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": false,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "African Methodist Episcopal",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Sons of Allen men's group",
+          "Women's Missionary Society",
+          "Class Leaders Council",
+          "scholarship fund"
+        ],
+        "vibe_tags": [
+          "Spirit-filled",
+          "gospel music",
+          "historic",
+          "community-focused",
+          "liberation-oriented"
+        ],
+        "community_summary": "St. Paul African Methodist Episcopal Church has served the Harlem community since 1887, with ministries focused on uplift and education.",
+        "theology_summary": "The church preaches the historic AME tradition of liberation and uplift, centered on God as Father, Christ as Redeemer, and the Holy Spirit as Comforter.",
+        "worship_style": "blended",
+        "worship_style_detail": "Sunday morning worship is a Spirit-filled celebration featuring gospel music, choir, Hammond organ, drums, and praise dancers.",
+        "pull_quote": "Reverend Dr. Carla Williams preaches the historic AME tradition of liberation and uplift \u2014 'God Our Father, Christ Our Redeemer, the Holy Spirit Our Comforter, Humankind Our Family.'",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are directly from the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are directly supported by the text."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the community description from the text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the theological statement in the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Faithfully captures all worship details from the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is a verbatim quote from the source text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no formal statement of faith exists."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Eastern Orthodox",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": true,
+        "community_summary": false,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": false
+      },
+      "fields": {
+        "denomination": "Greek Orthodox",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Greek",
+          "English"
+        ],
+        "programs": [
+          "Greek school",
+          "Philoptochos Society",
+          "GOYA youth group"
+        ],
+        "vibe_tags": [
+          "historic",
+          "community-focused",
+          "culturally-rich",
+          "traditional"
+        ],
+        "community_summary": "This cathedral serves as the spiritual home for the Greek Orthodox community, with a focus on intergenerational engagement and cultural preservation.",
+        "theology_summary": "They confess the faith of the Seven Ecumenical Councils and uphold the unbroken Tradition of the undivided Church, emphasizing preparation for sacraments.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Divine Liturgy is celebrated with Byzantine music chanted a cappella in the traditional Greek style, including English readings.",
+        "pull_quote": "We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church.",
+        "statement_of_faith": [
+          "Confess the faith of the Seven Ecumenical Councils",
+          "Uphold the unbroken Tradition of the undivided Church",
+          "Holy Communion offered only to baptized Orthodox Christians in good standing",
+          "Preparation for communion through prayer, fasting, and recent confession"
+        ]
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are explicitly named in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are directly supported by phrases in the text."
+        },
+        "community_summary": {
+          "ok": false,
+          "reason": "Adds interpretive phrases not present in the source text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes all theological points from the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Accurately reflects the worship details provided in the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is a direct and representative quote from the text."
+        },
+        "statement_of_faith": {
+          "ok": false,
+          "reason": "Text lacks a formal statement of faith list."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Korean immigrant bilingual",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Korean American Presbyterian Church (KAPC)",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Korean",
+          "English"
+        ],
+        "programs": [
+          "Korean language school",
+          "college fellowship",
+          "young adult ministry",
+          "dawn prayer"
+        ],
+        "vibe_tags": [
+          "multigenerational",
+          "Korean-American",
+          "first-generation",
+          "second-generation"
+        ],
+        "community_summary": "This is a multigenerational Korean-American congregation in Northern Virginia, serving both first and second-generation members.",
+        "theology_summary": "The church is part of the Korean American Presbyterian Church (KAPC) denomination and adheres to the Westminster Confession.",
+        "worship_style": "blended",
+        "worship_style_detail": "Services include both hymnal worship with traditional preaching and contemporary praise band worship.",
+        "pull_quote": "Grace Korean Church is a multigenerational Korean-American congregation in Northern Virginia.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Faithful and complete list of programs from text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "Tags are directly from the text's self-description."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the community description from the text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Faithfully captures all theological details from the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Accurately describes the two worship styles mentioned."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "An exact, representative sentence from the source text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no statement of faith is listed."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Quaker meeting",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": false,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Quaker",
+        "theological_stance": "progressive",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "First Day School"
+        ],
+        "vibe_tags": [
+          "inclusive",
+          "intergenerational",
+          "community-focused",
+          "spirit-led"
+        ],
+        "community_summary": "This is an unprogrammed Quaker meeting that welcomes all individuals regardless of belief, background, gender identity, or sexual orientation.",
+        "theology_summary": "The community practices silent waiting upon the Spirit, where anyone may offer vocal ministry, and affirms the testimonies of Simplicity, Peace, Integrity, Community, Equality, and Stewardship.",
+        "worship_style": null,
+        "worship_style_detail": "Worship is held in silent waiting upon the Spirit, with vocal ministry offered by anyone moved by the Spirit, and no prepared sermon.",
+        "pull_quote": "All are welcome regardless of belief, background, gender identity, or sexual orientation.",
+        "statement_of_faith": [
+          "Simplicity",
+          "Peace",
+          "Integrity",
+          "Community",
+          "Equality",
+          "Stewardship"
+        ]
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Accurately lists the named program from the text."
+        },
+        "vibe_tags": {
+          "ok": false,
+          "reason": "The tag 'intergenerational' is an inference, not stated."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes identity and welcome statement from text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Faithfully summarizes worship practice and affirmed testimonies."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Faithfully and completely describes the worship style details."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is an exact quote from the text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly lists the affirmed testimonies from the text."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Sparse low-info page",
+      "scores": {
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": null,
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Correct. The text does not mention any programs."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "Correct. The text does not provide any vibe information."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Correct. The text does not describe the community."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Correct. The text does not describe the church's theology."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Correct. The text does not describe the worship style."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "Correct. The text contains no suitable pull quotes."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correct. The text has no statement of faith."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Saint Francis of Assisi Church (auto)",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": false,
+        "worship_style": true,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Roman Catholic",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English",
+          "Spanish",
+          "Kreyol"
+        ],
+        "programs": [
+          "Haitian Prayer Group",
+          "Legion of Mary",
+          "Youth Group",
+          "Religious Education"
+        ],
+        "vibe_tags": [
+          "multilingual",
+          "community-focused",
+          "devotional"
+        ],
+        "community_summary": "This is a diverse Roman Catholic community in Brooklyn, offering services in multiple languages and led by a team of priests.",
+        "theology_summary": "The church follows traditional Roman Catholic doctrine, emphasizing daily prayer, Eucharistic Adoration, and various devotions.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Services are liturgical, featuring Masses with specific safety precautions, daily morning prayer, and Eucharistic Adoration.",
+        "pull_quote": "Let us take precautions to keep each other safe and healthy!",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are mentioned in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "Tags are directly supported by text (languages, devotions, safety)."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the multilingual, Catholic community in Brooklyn."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Accurately reflects the emphasis on Catholic devotions mentioned."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Correctly identifies worship types and precautions from the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "Quote is exact and represents the church's voice."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "The source text lacks a formal statement of faith."
+        }
+      }
+    },
+    {
+      "name": "Example: The Church of Haile Selassie I (auto)",
+      "scores": {
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": false,
+        "pull_quote": false,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Rastafarian",
+        "theological_stance": null,
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Sunday School",
+          "Cooperative Enterprises",
+          "Prison Ministry"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "This church worships Haile Selassie I as God and King, interpreting biblical passages to reflect his divinity and role as the Conquering Lion of Judah.",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "We sing the song of Moses the servant of God, and the song of the Lamb, saying, \"Great and marvelous are thy works, Lord God Almighty; just and true are thy ways, thou King of saints.\"",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are explicitly named in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "The text lacks clear, self-descriptive vibe tags, so empty is acceptable."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "The text does not describe the congregation's members."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "The summary is well-supported by the modified scriptures and song lyrics."
+        },
+        "worship_style_detail": {
+          "ok": false,
+          "reason": "The extraction missed signals like 'Anaphora' (liturgy) and singing."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "The quote is taken directly from the source text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "The text does not have a formal statement of faith section."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: The Gospel Tabernacle Church (auto)",
+      "scores": {
+        "denomination": false,
+        "theological_stance": true,
+        "service_languages": false,
+        "worship_style": false,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": "traditional",
+        "service_languages": [],
+        "programs": [
+          "food pantry",
+          "marriage counseling",
+          "family counseling",
+          "baby dedication",
+          "youth activities",
+          "elderly programs",
+          "intercessory prayer",
+          "Bible teaching"
+        ],
+        "vibe_tags": [
+          "community-focused",
+          "mission-driven",
+          "intergenerational",
+          "spirit-filled"
+        ],
+        "community_summary": "This church has been in the community since 1984, working for positive changes and welcoming new residents. It serves as a training center for lay leaders and pastors, with multiple branches and outreaches.",
+        "theology_summary": "The church embraces a Pentecostal born-again experience and is committed to sharing the love of Christ through the preaching of the gospel.",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "Our goal is to continue to share the love of Christ through the preaching of the gospel in various forms.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are directly mentioned in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "Tags are well-supported by the text's self-description."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the church's community role from the text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Faithfully summarizes the theological statements from the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Correctly empty as the text lacks worship style details."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "Quote is verbatim from the text and representative."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no formal statement of faith exists."
+        }
+      }
+    },
+    {
+      "name": "Example: St. John the Forerunner Orthodox Church (auto)",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "worship_style": true,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": false,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Orthodox",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Russian"
+        ],
+        "programs": [
+          "children's school"
+        ],
+        "vibe_tags": [
+          "traditional",
+          "community-focused",
+          "reverent"
+        ],
+        "community_summary": "This is a Russian Orthodox community in Brooklyn that celebrates major Christian holidays with traditional services and includes a children's school.",
+        "theology_summary": "The church observes traditional Orthodox holidays like Pentecost and Pascha, emphasizing prayer for the departed and the salvation offered by Christ.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Services are solemn and traditional, following the liturgical calendar with celebrations for major feasts like Pascha and Pentecost.",
+        "pull_quote": "\u00ab\u0425\u0440\u0438\u0441\u0442\u043e\u0441 \u0412\u043e\u0441\u043a\u0440\u0435\u0441\u0435!\u00bb \u2014 \u044d\u0442\u0438\u043c\u0438 \u043b\u0438\u043a\u0443\u044e\u0449\u0438\u043c\u0438 \u0441\u043b\u043e\u0432\u0430\u043c\u0438 \u0432 \u043d\u043e\u0447\u044c \u0441 11 \u043d\u0430 12 \u0430\u043f\u0440\u0435\u043b\u044f \u043d\u0430\u043f\u043e\u043b\u043d\u0438\u043b\u0438\u0441\u044c \u0441\u0432\u043e\u0434\u044b \u0418\u043e\u0430\u043d\u043d\u043e-\u041f\u0440\u0435\u0434\u0442\u0435\u0436\u0435\u043d\u0441\u043a\u043e\u0433\u043e \u0441\u043e\u0431\u043e\u0440\u0430 \u0432 \u0411\u0440\u0443\u043a\u043b\u0438\u043d\u0435 \u0438 \u0441\u0435\u0440\u0434\u0446\u0430 \u043c\u043d\u043e\u0436\u0435\u0441\u0442\u0432\u0430 \u043f\u0440\u0438\u0445\u043e\u0436\u0430\u043d \u0438 \u0433\u043e\u0441\u0442\u0435\u0439 \u0445\u0440\u0430\u043c\u0430, \u0441\u043e\u0431\u0440\u0430\u0432\u0448\u0438\u0445\u0441\u044f \u0440\u0430\u0437\u0434\u0435\u043b\u0438\u0442\u044c \u0440\u0430\u0434\u043e\u0441\u0442\u044c \u0433\u043b\u0430\u0432\u043d\u043e\u0433\u043e \u0446\u0435\u0440\u043a\u043e\u0432\u043d\u043e\u0433\u043e \u043f\u0440\u0430\u0437\u0434\u043d\u0438\u043a\u0430.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Faithful and complete, based on the mention of the school."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are well-supported by the text's descriptions."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the community described in the text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Faithfully captures the theological points mentioned in the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Accurately reflects the worship descriptions in the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is a verbatim quote from the source text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as the text lacks a formal statement."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: First Church of Christ, Scientist (auto)",
+      "scores": {
+        "denomination": false,
+        "service_languages": false,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": false,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Christian Science",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Sunday School",
+          "Reading Room"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "Welcome to the First Church of Christ, Scientist in Brooklyn, New York. All are invited to attend our services:",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Faithful and complete."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "Correctly empty as text lacks descriptive vibe words."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Correctly empty as text lacks community description."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Correctly empty as text lacks theological description."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Correctly empty as text lacks worship style details."
+        },
+        "pull_quote": {
+          "ok": false,
+          "reason": "Not a single sentence from the text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as text lacks a statement of faith."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: Church of Gethsemane (auto)",
+      "scores": {
+        "theological_stance": false,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": false,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": null,
+        "theological_stance": null,
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "Sunday School",
+          "Project Connect"
+        ],
+        "vibe_tags": [
+          "diverse",
+          "inclusive",
+          "intergenerational"
+        ],
+        "community_summary": "This is an intentional congregation with members from all racial, ethnic, economic, and educational backgrounds.",
+        "theology_summary": "",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "We are welcoming, diverse and inclusive. We are a unique intentional congregation of persons from all racial, ethnic, economic and educational backgrounds.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "Faithful and complete."
+        },
+        "vibe_tags": {
+          "ok": false,
+          "reason": "The tag 'intergenerational' is not in the source text."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "Accurately summarizes the community description from the text."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "Correctly empty as no theology is mentioned."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Correctly empty as no worship style is mentioned."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is a direct and representative quote."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no statement of faith is provided."
+        }
+      }
+    },
+    {
+      "name": "Example: St. Joasaph Church (auto)",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "worship_style": true,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Russian Orthodox Church",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "Russian"
+        ],
+        "programs": [
+          "adult Sunday school",
+          "children's Sunday school"
+        ],
+        "vibe_tags": [
+          "cozy",
+          "community-focused",
+          "culturally-preserving"
+        ],
+        "community_summary": "This is a Russian Orthodox community in Brooklyn, focused on preserving spiritual traditions, language, and culture for children away from their homeland.",
+        "theology_summary": "The church teaches the Law of God and emphasizes traditional Orthodox practices, including prayer for the living and the departed.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "The services are described as beautiful and blessed, with a strong desire for children to participate in the Liturgies.",
+        "pull_quote": "\u0423 \u043d\u0430\u0441 \u0437\u0430\u043c\u0435\u0447\u0430\u0442\u0435\u043b\u044c\u043d\u0430\u044f \u0446\u0435\u0440\u043a\u043e\u0432\u044c, \u0433\u0434\u0435 \u043e\u0447\u0435\u043d\u044c \u043a\u0440\u0430\u0441\u0438\u0432\u043e, \u0443\u044e\u0442\u043d\u043e , \u0431\u043b\u0430\u0433\u043e\u0434\u0430\u0442\u043d\u043e \u2013 \u043d\u0435 \u0437\u0440\u044f \u0432\u0441\u0435, \u043a\u0442\u043e \u0432 \u043d\u0435\u0451 \u043f\u0440\u0438\u0445\u043e\u0434\u044f\u0442 \u2013 \u0433\u043e\u0432\u043e\u0440\u044f\u0442, \u0447\u0442\u043e \u0437\u0434\u0435\u0441\u044c \u0442\u0430\u043a \u0445\u043e\u0440\u043e\u0448\u043e, \u0447\u0442\u043e \u043d\u0435 \u0445\u043e\u0447\u0435\u0442\u0441\u044f \u0443\u0445\u043e\u0434\u0438\u0442\u044c \u0434\u043e\u043c\u043e\u0439 .",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "The two schools listed are explicitly named in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are directly supported by the text's descriptions."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "This is a faithful and accurate summary of the community."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "The summary accurately reflects theological points mentioned in the text."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Accurately captures the limited worship details provided in the text."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "This is a verbatim quote from the source text."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as no formal statement of faith is provided."
+        }
+      }
+    },
+    {
+      "name": "DRAFT: The Bridge Church (auto)",
+      "scores": {
+        "denomination": true,
+        "service_languages": false,
+        "programs": true,
+        "vibe_tags": true,
+        "community_summary": true,
+        "theology_summary": true,
+        "worship_style_detail": true,
+        "pull_quote": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Growth Groups",
+          "online sermons",
+          "community outreach"
+        ],
+        "vibe_tags": [
+          "diverse",
+          "community-focused",
+          "transformational",
+          "accessible"
+        ],
+        "community_summary": "This church is a diverse family in NYC, welcoming people from all over the city, New Jersey, and Long Island. They encourage connection with God and growth alongside like-minded individuals.",
+        "theology_summary": "They believe in reaching people where they are and helping them grow, emphasizing that true transformation happens through a personal relationship with Jesus.",
+        "worship_style": null,
+        "worship_style_detail": "",
+        "pull_quote": "You don\u2019t have to be fixed up or perfect to experience God\u2019s love. Every story matters and we\u2019d love to become part of yours.",
+        "statement_of_faith": []
+      },
+      "judge": {
+        "programs": {
+          "ok": true,
+          "reason": "All listed programs are explicitly mentioned in the text."
+        },
+        "vibe_tags": {
+          "ok": true,
+          "reason": "All tags are directly supported by the source text."
+        },
+        "community_summary": {
+          "ok": true,
+          "reason": "The summary accurately reflects the description of the community."
+        },
+        "theology_summary": {
+          "ok": true,
+          "reason": "The summary correctly captures the main theological points mentioned."
+        },
+        "worship_style_detail": {
+          "ok": true,
+          "reason": "Correctly empty as the text provides no worship style details."
+        },
+        "pull_quote": {
+          "ok": true,
+          "reason": "The quote is verbatim from the text and representative."
+        },
+        "statement_of_faith": {
+          "ok": true,
+          "reason": "Correctly empty as there is no formal statement of faith."
+        }
+      }
+    }
+  ],
+  "prompt_version": "2026-05-08.v3",
+  "judge_model": "google/gemini-2.5-pro",
+  "judge_version": "2026-07-16.j1"
+}

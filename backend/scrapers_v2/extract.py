@@ -101,6 +101,8 @@ async def call_llm(
     *,
     api_key: str | None = None,
     client: httpx.AsyncClient | None = None,
+    model: str = MODEL,
+    system_prompt: str = SYSTEM_PROMPT,
 ) -> dict[str, Any]:
     api_key = api_key or os.environ.get("OPENROUTER_API_KEY", "")
     if not api_key:
@@ -108,9 +110,9 @@ async def call_llm(
         raise TransientExtractionError("OPENROUTER_API_KEY not set")
 
     payload = {
-        "model": MODEL,
+        "model": model,
         "messages": [
-            {"role": "system", "content": SYSTEM_PROMPT},
+            {"role": "system", "content": system_prompt},
             {"role": "user", "content": f"Website text follows:\n\n{text}"},
         ],
         "response_format": {"type": "json_object"},
