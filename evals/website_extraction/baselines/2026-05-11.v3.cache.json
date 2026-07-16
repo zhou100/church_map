@@ -1,0 +1,184 @@
+{
+  "Example: Park Slope Methodist": {
+    "fields": {
+      "denomination": "United Methodist",
+      "theological_stance": "progressive",
+      "service_languages": [
+        "English"
+      ],
+      "programs": [
+        "youth group"
+      ],
+      "vibe_tags": [
+        "open and affirming",
+        "inclusive",
+        "intergenerational"
+      ],
+      "community_summary": "Park Slope United Methodist Church is an open and affirming community in Brooklyn that welcomes all regardless of sexual orientation, race, or background.",
+      "theology_summary": "This church emphasizes radical inclusivity and welcomes individuals at any stage of their spiritual journey.",
+      "worship_style": "traditional-hymns",
+      "worship_style_detail": "Services feature traditional hymns accompanied by a pipe organ and a robe-wearing choir.",
+      "pull_quote": "No matter where you are on your journey, you are welcome here.",
+      "statement_of_faith": []
+    },
+    "confidence": {
+      "denomination": 0.9,
+      "theological_stance": 0.9,
+      "service_languages": 0.8,
+      "programs": 0.9,
+      "vibe_tags": 0.8,
+      "community_summary": 0.9,
+      "theology_summary": 0.8,
+      "worship_style": 0.9,
+      "worship_style_detail": 0.9,
+      "pull_quote": 0.9
+    },
+    "snippets": {
+      "denomination": "Park Slope United Methodist Church",
+      "theological_stance": "open and affirming community",
+      "service_languages": "Park Slope United Methodist Church is an open and affirming community in Brooklyn.",
+      "programs": "Our youth group meets Thursdays.",
+      "vibe_tags": "open and affirming community",
+      "theology_summary": "We welcome all regardless of sexual orientation, race, or background. From our pastor: 'No matter where you are on your journey, you are welcome here.'",
+      "worship_style": "traditional hymns accompanied by the pipe organ and a robe-wearing choir",
+      "worship_style_detail": "traditional hymns accompanied by the pipe organ and a robe-wearing choir.",
+      "pull_quote": "'No matter where you are on your journey, you are welcome here.'"
+    }
+  },
+  "Example: First Baptist Conservative": {
+    "fields": {
+      "denomination": "Southern Baptist",
+      "theological_stance": "traditional",
+      "service_languages": [
+        "English"
+      ],
+      "programs": [
+        "children's ministry",
+        "AWANA",
+        "men's Bible studies",
+        "women's Bible studies"
+      ],
+      "vibe_tags": [],
+      "community_summary": "",
+      "theology_summary": "This church believes in the inerrancy of Scripture, salvation by grace through faith, and the autonomy of the local church.",
+      "worship_style": "traditional-hymns",
+      "worship_style_detail": "Sunday services feature hymnal worship led by piano.",
+      "pull_quote": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message.",
+      "statement_of_faith": [
+        "The Bible is God's inspired and inerrant Word.",
+        "Salvation is by grace through faith in Christ alone.",
+        "Marriage is between one man and one woman.",
+        "The local church is autonomous under Christ's headship."
+      ]
+    },
+    "confidence": {
+      "denomination": 0.8,
+      "theological_stance": 0.9,
+      "service_languages": 0.9,
+      "programs": 0.9,
+      "theology_summary": 0.9,
+      "worship_style": 0.9,
+      "worship_style_detail": 0.9,
+      "pull_quote": 0.9,
+      "statement_of_faith": 0.9
+    },
+    "snippets": {
+      "denomination": "historic Baptist Faith and Message",
+      "theological_stance": "holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message. We believe marriage is between one man and one woman",
+      "service_languages": "Sunday services in English",
+      "programs": "Active children's ministry, AWANA on Wednesdays, men's and women's Bible studies",
+      "theology_summary": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message. We believe marriage is between one man and one woman",
+      "worship_style": "hymnal worship led by piano",
+      "worship_style_detail": "hymnal worship led by piano.",
+      "pull_quote": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message.",
+      "statement_of_faith": "What We Believe: The Bible is God's inspired and inerrant Word. Salvation is by grace through faith in Christ alone. Marriage is between one man and one woman. "
+    }
+  },
+  "Example: Bilingual Catholic": {
+    "fields": {
+      "denomination": "Roman Catholic",
+      "theological_stance": "traditional",
+      "service_languages": [
+        "English",
+        "Spanish"
+      ],
+      "programs": [
+        "CCD program",
+        "RCIA",
+        "Knights of Columbus"
+      ],
+      "vibe_tags": [],
+      "community_summary": "St. Joseph Catholic Church serves its parish with regular Mass services and various programs for children and adults.",
+      "theology_summary": "The church celebrates Mass according to the Roman Missal, indicating adherence to traditional Catholic doctrine.",
+      "worship_style": "liturgical",
+      "worship_style_detail": "Mass is celebrated with the Roman Missal, accompanied by organ and a cantor.",
+      "pull_quote": "St. Joseph Catholic Church serves the parish with Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm.",
+      "statement_of_faith": []
+    },
+    "confidence": {
+      "denomination": 1.0,
+      "theological_stance": 0.8,
+      "service_languages": 1.0,
+      "programs": 0.9,
+      "community_summary": 0.8,
+      "theology_summary": 0.8,
+      "worship_style": 0.9,
+      "worship_style_detail": 0.9,
+      "pull_quote": 1.0
+    },
+    "snippets": {
+      "denomination": "St. Joseph Catholic Church",
+      "theological_stance": "Mass is celebrated with the Roman Missal",
+      "service_languages": "Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm",
+      "programs": "We have a vibrant CCD program for children, RCIA for adults entering the Church, and the Knights of Columbus chapter.",
+      "theology_summary": "Mass is celebrated with the Roman Missal",
+      "worship_style": "Mass is celebrated with the Roman Missal, organ, and cantor.",
+      "worship_style_detail": "Mass is celebrated with the Roman Missal, organ, and cantor.",
+      "pull_quote": "St. Joseph Catholic Church serves the parish with Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm."
+    }
+  },
+  "Example: Contemporary Non-denom": {
+    "fields": {
+      "denomination": "Non-denominational",
+      "theological_stance": null,
+      "service_languages": [],
+      "programs": [
+        "Sojourn Kids",
+        "youth group",
+        "men's groups",
+        "women's groups",
+        "recovery ministry"
+      ],
+      "vibe_tags": [
+        "modern",
+        "band-led",
+        "expository preaching"
+      ],
+      "community_summary": "Sojourn is a church planted in 2014 in East Austin, meeting in a renovated warehouse.",
+      "theology_summary": "Sermons feature 35-40 minutes of expository preaching through books of the Bible.",
+      "worship_style": "contemporary",
+      "worship_style_detail": "Worship is led by a full band with drums, electric guitar, keys, and vocals, featuring original songs and modern arrangements of hymns.",
+      "pull_quote": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+      "statement_of_faith": []
+    },
+    "confidence": {
+      "denomination": 1.0,
+      "programs": 0.9,
+      "vibe_tags": 0.8,
+      "community_summary": 0.9,
+      "theology_summary": 0.9,
+      "worship_style": 0.9,
+      "worship_style_detail": 0.9,
+      "pull_quote": 1.0
+    },
+    "snippets": {
+      "denomination": "Sojourn is a non-denominational church",
+      "programs": "Programs: Sojourn Kids (newborn through 5th grade), middle and high school youth, men's and women's groups, recovery ministry.",
+      "vibe_tags": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns. Sermons are 35-40 minutes o",
+      "theology_summary": "Sermons are 35-40 minutes of expository preaching through books of the Bible.",
+      "worship_style": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+      "worship_style_detail": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+      "pull_quote": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns."
+    }
+  }
+}

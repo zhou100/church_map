@@ -1,0 +1,158 @@
+{
+  "summary": {
+    "n": 4,
+    "fields": {
+      "denomination": 1.0,
+      "theological_stance": 1.0,
+      "service_languages": 0.75,
+      "programs": 1.0,
+      "vibe_tags": 0.5,
+      "worship_style": 1.0,
+      "community_summary": 1.0,
+      "pull_quote": 1.0,
+      "theology_summary": 1.0,
+      "statement_of_faith": 1.0,
+      "worship_style_detail": 1.0
+    }
+  },
+  "examples": [
+    {
+      "name": "Example: Park Slope Methodist",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": true,
+        "community_summary": true,
+        "pull_quote": true
+      },
+      "fields": {
+        "denomination": "United Methodist",
+        "theological_stance": "progressive",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "youth group"
+        ],
+        "vibe_tags": [
+          "open and affirming",
+          "inclusive",
+          "intergenerational"
+        ],
+        "community_summary": "Park Slope United Methodist Church is an open and affirming community in Brooklyn that welcomes all regardless of sexual orientation, race, or background.",
+        "theology_summary": "This church emphasizes radical inclusivity and welcomes individuals at any stage of their spiritual journey.",
+        "worship_style": "traditional-hymns",
+        "worship_style_detail": "Services feature traditional hymns accompanied by a pipe organ and a robe-wearing choir.",
+        "pull_quote": "No matter where you are on your journey, you are welcome here.",
+        "statement_of_faith": []
+      }
+    },
+    {
+      "name": "Example: First Baptist Conservative",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": false,
+        "worship_style": true,
+        "theology_summary": true,
+        "statement_of_faith": true
+      },
+      "fields": {
+        "denomination": "Southern Baptist",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English"
+        ],
+        "programs": [
+          "children's ministry",
+          "AWANA",
+          "men's Bible studies",
+          "women's Bible studies"
+        ],
+        "vibe_tags": [],
+        "community_summary": "",
+        "theology_summary": "This church believes in the inerrancy of Scripture, salvation by grace through faith, and the autonomy of the local church.",
+        "worship_style": "traditional-hymns",
+        "worship_style_detail": "Sunday services feature hymnal worship led by piano.",
+        "pull_quote": "First Baptist Church holds firmly to the inerrancy of Scripture and the historic Baptist Faith and Message.",
+        "statement_of_faith": [
+          "The Bible is God's inspired and inerrant Word.",
+          "Salvation is by grace through faith in Christ alone.",
+          "Marriage is between one man and one woman.",
+          "The local church is autonomous under Christ's headship."
+        ]
+      }
+    },
+    {
+      "name": "Example: Bilingual Catholic",
+      "scores": {
+        "denomination": true,
+        "theological_stance": true,
+        "service_languages": true,
+        "programs": true,
+        "vibe_tags": false,
+        "worship_style": true
+      },
+      "fields": {
+        "denomination": "Roman Catholic",
+        "theological_stance": "traditional",
+        "service_languages": [
+          "English",
+          "Spanish"
+        ],
+        "programs": [
+          "CCD program",
+          "RCIA",
+          "Knights of Columbus"
+        ],
+        "vibe_tags": [],
+        "community_summary": "St. Joseph Catholic Church serves its parish with regular Mass services and various programs for children and adults.",
+        "theology_summary": "The church celebrates Mass according to the Roman Missal, indicating adherence to traditional Catholic doctrine.",
+        "worship_style": "liturgical",
+        "worship_style_detail": "Mass is celebrated with the Roman Missal, accompanied by organ and a cantor.",
+        "pull_quote": "St. Joseph Catholic Church serves the parish with Mass in English on Saturdays at 5pm and Sunday at 8am, and in Spanish on Sundays at 11am and 1pm.",
+        "statement_of_faith": []
+      }
+    },
+    {
+      "name": "Example: Contemporary Non-denom",
+      "scores": {
+        "denomination": true,
+        "service_languages": false,
+        "programs": true,
+        "vibe_tags": true,
+        "worship_style": true,
+        "worship_style_detail": true
+      },
+      "fields": {
+        "denomination": "Non-denominational",
+        "theological_stance": null,
+        "service_languages": [],
+        "programs": [
+          "Sojourn Kids",
+          "youth group",
+          "men's groups",
+          "women's groups",
+          "recovery ministry"
+        ],
+        "vibe_tags": [
+          "modern",
+          "band-led",
+          "expository preaching"
+        ],
+        "community_summary": "Sojourn is a church planted in 2014 in East Austin, meeting in a renovated warehouse.",
+        "theology_summary": "Sermons feature 35-40 minutes of expository preaching through books of the Bible.",
+        "worship_style": "contemporary",
+        "worship_style_detail": "Worship is led by a full band with drums, electric guitar, keys, and vocals, featuring original songs and modern arrangements of hymns.",
+        "pull_quote": "Our worship is led by a full band \u2014 drums, electric guitar, keys, and vocals \u2014 with original songs and modern arrangements of hymns.",
+        "statement_of_faith": []
+      }
+    }
+  ],
+  "prompt_version": "2026-05-08.v3"
+}
