@@ -1,0 +1,51 @@
+name: evals
+
+# Prompt-regression gate for the website extractor.
+#
+# Scores the golden set from cached extractions and cached judge verdicts
+# (evals/website_extraction/baselines/<CURRENT>.cache.json), so this runs
+# offline: no OPENROUTER_API_KEY, no DATABASE_URL, no network, no spend.
+# The gate refuses to run — rather than passing vacuously — if the cache is
+# stale relative to the prompt or the golden set. See evals/website_extraction/gate.py.
+#
+# Changing the prompt therefore means: bump PROMPT_VERSION, regenerate the
+# cache and baseline with --save-cache/--save, point baselines/CURRENT at
+# them, and commit all three together.
+
+on:
+  pull_request:
+    paths:
+      - 'backend/scrapers_v2/prompts/**'
+      - 'evals/**'
+      - '.github/workflows/evals.yml'
+  workflow_dispatch:
+    inputs:
+      threshold:
+        description: 'Per-field precision drop that counts as a regression'
+        required: false
+        default: '0.10'
+
+permissions:
+  contents: read
+
+jobs:
+  website-extraction:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Unit tests (scorer, judge, bootstrap, gate)
+        run: python -m pytest tests/test_eval_*.py -q
+
+      - name: Eval gate — per-field regression vs baseline
+        run: |
+          python -m evals.website_extraction.gate \
+            --threshold "${{ github.event.inputs.threshold || '0.10' }}"

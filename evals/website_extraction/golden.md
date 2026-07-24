@@ -53,7 +53,32 @@ verbatim (whitespace-normalized) match in the source text.
 > Examples named `DRAFT: ...` are awaiting human review — bootstrap uses
 > this for pages where the production model disagrees with the reference
 > labels. Review the disagreement, fix `expected` if the reference was
-> wrong, then rename to `Example: ...`.
+> wrong, then rename to `Example: ...`. Promoted sections keep a
+> `Reviewed:` line recording the call that was made.
+
+### Labeling conventions settled 2026-07-24
+
+- **`service_languages`** — the page's own language counts as evidence for
+  the primary service language unless the page says otherwise. Every
+  golden follows this (English pages → `["English"]`, Russian pages →
+  `["Russian"]`), so the eval reports production's habit of returning `[]`
+  whenever no language is named in so many words. That is a real gap, not
+  scorer noise: fixing it is a prompt change (v3 currently says "Empty
+  list if unclear"), which is exactly what the CI gate exists to measure.
+- **`worship_style`** — only assert a value that exists in
+  `WORSHIP_STYLES` (`liturgical`, `traditional-hymns`, `blended`,
+  `contemporary`, `charismatic`). Two hand-written goldens used to expect
+  `gospel` and `silent`, which no schema-valid extraction could ever
+  return; both were unsatisfiable-by-construction. Where the schema has no
+  bucket for what a church actually does, assert
+  `worship_style_detail_must_include_any` instead.
+- **Synthetic canaries** — a handful of `URL: synthetic` examples are kept
+  on purpose: they cover cases the real-page corpus doesn't (a should-return-
+  nothing sparse page, unprogrammed/silent worship, a multi-site megachurch
+  that hides its denomination). Real pages were fetched for these categories
+  first; where the real page extracted to less signal than the canary tests,
+  the canary stayed. Don't grow this group — new examples come from
+  `bootstrap.py`.
 
 ---
 
@@ -149,10 +174,15 @@ Sojourn is a non-denominational church planted in 2014 in East Austin. Our worsh
 
 ---
 
-## DRAFT: Megachurch multi-site
+## Example: Megachurch multi-site
 
-- URL: _(fill in — e.g. a real Lifepoint / Elevation / North Point campus page)_
+- URL: synthetic
 - Church ID: null
+- Reviewed 2026-07-24: kept as a synthetic canary. A real multi-site
+  megachurch homepage was fetched (lifepoint.church) and extracted to almost
+  no structured signal — marketing fragments, no denomination — so it would
+  have tested less than this does. The case worth covering is a church that
+  is denominationally affiliated but deliberately doesn't say so on the sign.
 
 ```text
 Lifepoint Church is one church in eleven locations across the Nashville area. Each weekend, more than 12,000 people gather at one of our campuses or watch online. Our message is delivered live at the Smyrna campus and shown via video at the others, with live worship bands at every site. Weekend experiences are 70 minutes — modern worship, a 35-minute teaching from Pastor Pat, and prayer response. Lifepoint Kids serves birth through 5th grade with age-graded environments. Middle and high schoolers meet midweek. Small groups meet in homes throughout the week — we say 'circles are better than rows.' We're a Southern Baptist Convention church but you won't see that on the sign; we want to remove every unnecessary barrier between people and Jesus.
@@ -171,74 +201,18 @@ Lifepoint Church is one church in eleven locations across the Nashville area. Ea
 
 ---
 
-## DRAFT: AME historically Black
+## Example: Quaker meeting
 
-- URL: _(fill in — e.g. an AME church in Harlem or Atlanta)_
+- URL: synthetic
 - Church ID: null
-
-```text
-St. Paul African Methodist Episcopal Church has served the Harlem community since 1887. Our Sunday morning worship at 10:45am is a Spirit-filled celebration of gospel music led by the Voices of St. Paul choir, with hammond organ, drums, and praise dancers. Communion is the first Sunday of each month. Reverend Dr. Carla Williams preaches the historic AME tradition of liberation and uplift — 'God Our Father, Christ Our Redeemer, the Holy Spirit Our Comforter, Humankind Our Family.' Ministries include the Sons of Allen men's group, Women's Missionary Society, Class Leaders Council, and a robust scholarship fund for Harlem youth pursuing HBCU education.
-```
-
-```json
-{
-  "denomination": "African Methodist Episcopal",
-  "service_languages": ["English"],
-  "programs_must_include_any": ["scholarship", "missionary", "men", "women"],
-  "vibe_tags_must_include_any": ["gospel", "historically Black", "spirited", "traditional"],
-  "worship_style": "gospel"
-}
-```
-
----
-
-## DRAFT: Eastern Orthodox
-
-- URL: _(fill in — e.g. holytrinitynyc.org or any GOARCH parish)_
-- Church ID: null
-
-```text
-Holy Trinity Greek Orthodox Cathedral has been the spiritual home of the Greek Orthodox community for over a century. Divine Liturgy is celebrated every Sunday at 9:30am, primarily in Greek with English readings of the Epistle and Gospel. Vespers Saturday evening, Orthros precedes Sunday Liturgy. The choir chants Byzantine music a cappella in the traditional Greek style. Holy Communion is offered only to baptized Orthodox Christians in good standing who have prepared through prayer, fasting, and recent confession. Greek school for children meets Tuesday and Thursday evenings; the Philoptochos Society serves the poor; the GOYA youth group is active. We confess the faith of the Seven Ecumenical Councils, the unbroken Tradition of the undivided Church.
-```
-
-```json
-{
-  "denomination": "Greek Orthodox",
-  "theological_stance": "traditional",
-  "service_languages": ["Greek", "English"],
-  "programs_must_include_any": ["Greek school", "Philoptochos", "GOYA"],
-  "vibe_tags_must_include_any": ["liturgical", "Orthodox", "traditional"],
-  "worship_style": "liturgical"
-}
-```
-
----
-
-## DRAFT: Korean immigrant bilingual
-
-- URL: _(fill in — e.g. a KAPC church in NoVA or Queens)_
-- Church ID: null
-
-```text
-은혜한인교회 / Grace Korean Church is a multigenerational Korean-American congregation in Northern Virginia. We hold two Sunday services: the 9:00am Korean-language service for first-generation members with hymnal worship and traditional preaching, and the 11:30am English Ministry (EM) service for the 1.5 and second generation with contemporary praise band worship. We are part of the Korean American Presbyterian Church (KAPC) denomination, holding to the Westminster Confession. Our EM is led by Pastor David Kim. Programs include Korean language school for children on Saturdays, college fellowship (KCF), young adult ministry (YA), and dawn prayer (새벽기도) Tuesday through Saturday at 5:30am.
-```
-
-```json
-{
-  "denomination": "Korean American Presbyterian",
-  "theological_stance": "traditional",
-  "service_languages": ["Korean", "English"],
-  "programs_must_include_any": ["Korean language school", "college", "young adult", "dawn prayer"],
-  "vibe_tags_must_include_any": ["bilingual", "Korean", "intergenerational", "immigrant"]
-}
-```
-
----
-
-## DRAFT: Quaker meeting
-
-- URL: _(fill in — e.g. fmcquaker.org)_
-- Church ID: null
+- Reviewed 2026-07-24: kept as a synthetic canary. fmcquaker.org was fetched
+  and cleaned to seven lines of duplicated calendar notices — labeling it
+  would have tested guessing the denomination from the meeting's name, not
+  extraction. Unprogrammed/silent worship is covered nowhere else.
+  `worship_style: "silent"` removed from `expected`: it is not in
+  `WORSHIP_STYLES`, so no schema-valid extraction could ever match it. The
+  signal is asserted through `worship_style_detail` instead, and null is the
+  correct `worship_style` for a meeting with no bucket that fits.
 
 ```text
 Friends Meeting at Cambridge is an unprogrammed Quaker meeting in the tradition of the Religious Society of Friends. Meeting for Worship is held every First Day (Sunday) at 10:30am in silent waiting upon the Spirit — anyone moved by the Spirit may rise and offer vocal ministry. There is no paid pastor and no prepared sermon. Following worship, we share announcements and a simple meal. We affirm the testimonies of Simplicity, Peace, Integrity, Community, Equality, and Stewardship (SPICES). All are welcome regardless of belief, background, gender identity, or sexual orientation. First Day School for children meets concurrently with worship. We are members of New England Yearly Meeting.
@@ -251,16 +225,21 @@ Friends Meeting at Cambridge is an unprogrammed Quaker meeting in the tradition 
   "service_languages": ["English"],
   "programs_must_include_any": ["First Day School", "children"],
   "vibe_tags_must_include_any": ["silent", "unprogrammed", "peace", "inclusive"],
-  "worship_style": "silent"
+  "worship_style_detail_must_include_any": ["silen", "waiting", "no prepared sermon", "vocal ministry"]
 }
 ```
 
 ---
 
-## DRAFT: Sparse low-info page
+## Example: Sparse low-info page
 
-- URL: _(fill in — a real bare-bones church website)_
+- URL: synthetic
 - Church ID: null
+- Reviewed 2026-07-24: kept as a synthetic canary — the set's only negative
+  test. `expected` is empty on purpose; the judge is what grades this one,
+  by checking that a page with no signal produces no invented programs,
+  tags, or summaries. Production returns all-null/empty here, which is
+  correct.
 
 ```text
 Riverside Community Church. Sunday services: 9am and 11am. 1247 Riverside Drive, Springfield, IL 62701. (217) 555-0184. office@riverside.org. Pastor Tom Reynolds. Established 1962.
@@ -272,12 +251,18 @@ Riverside Community Church. Sunday services: 9am and 11am. 1247 Riverside Drive,
 
 ---
 
-## DRAFT: Saint Francis of Assisi Church (auto)
+## Example: Saint Francis of Assisi Church (auto)
 
 - URL: https://www.sfa-stb.org/
 - Church ID: 111183
 - Labeled by: google/gemini-2.5-pro on 2026-07-16 (bootstrap)
 - Disagreements vs google/gemini-2.5-flash: service_languages (production: ["English", "Spanish", "Kreyol"] / reference: ["English", "Spanish", "Haitian Kreyol"])
+- Reviewed 2026-07-24: reference kept. The page writes "Haitian Kreyol"
+  verbatim ("Sunday: 5:00 p.m. Haitian Kreyol"); production shortened it to
+  "Kreyol", which the subset scorer reads as a different language. A near
+  miss rather than a real error, but the source's own term is the right
+  label — and the eval is a poor place to reward paraphrase, since a
+  downstream language filter has to match on something.
 
 ```text
 Weekday and Weekend Masses
@@ -582,12 +567,20 @@ Large Visitor Globe
 
 ---
 
-## DRAFT: The Gospel Tabernacle Church (auto)
+## Example: The Gospel Tabernacle Church (auto)
 
 - URL: https://gtcfranklinave.com
 - Church ID: 113184
 - Labeled by: google/gemini-2.5-pro on 2026-07-16 (bootstrap)
 - Disagreements vs google/gemini-2.5-flash: denomination (production: "Non-denominational" / reference: "Pentecostal"); service_languages (production: [] / reference: ["English"]); worship_style (production: null / reference: "charismatic")
+- Reviewed 2026-07-24: denomination and service_languages kept — the text
+  says "Gospel Tabernacle embrace the PENTECOSTAL BORN AGAIN EXPERIENCE",
+  so "Non-denominational" is a real production miss, and the page is
+  entirely in English. **`worship_style: "charismatic"` dropped**: the
+  reference inferred it from the denomination, but the page never describes
+  a service — no instruments, no music, no liturgy. v3 says to bucket
+  worship style "from explicit cues" only, so production's null is the
+  correct answer and the reference was wrong to assert one.
 
 ```text
 Dear Reader:
@@ -612,8 +605,7 @@ You are here on “Purpose”. Your life and your God-Given Gift is Valuable and
   "theological_stance": "traditional",
   "service_languages": [
     "English"
-  ],
-  "worship_style": "charismatic"
+  ]
 }
 ```
 
@@ -659,12 +651,18 @@ You are here on “Purpose”. Your life and your God-Given Gift is Valuable and
 
 ---
 
-## DRAFT: First Church of Christ, Scientist (auto)
+## Example: First Church of Christ, Scientist (auto)
 
 - URL: https://christiansciencebrooklyn.org
 - Church ID: 113730
 - Labeled by: google/gemini-2.5-pro on 2026-07-16 (bootstrap)
 - Disagreements vs google/gemini-2.5-flash: denomination (production: "Christian Science" / reference: "Church of Christ, Scientist"); service_languages (production: [] / reference: ["English"])
+- Reviewed 2026-07-24: **reference corrected to "Christian Science"**. The
+  reference model echoed this congregation's *name* ("First Church of
+  Christ, Scientist in Brooklyn") back as its denomination; the
+  denomination is Christian Science. Production was right and the label was
+  wrong. service_languages kept — an English page listing English service
+  times, where production returned [].
 
 ```text
 Welcome to the First Church of Christ, Scientist in Brooklyn, New York.
@@ -688,7 +686,7 @@ Sun: 12-1 pm
 
 ```json
 {
-  "denomination": "Church of Christ, Scientist",
+  "denomination": "Christian Science",
   "service_languages": [
     "English"
   ]
@@ -697,12 +695,18 @@ Sun: 12-1 pm
 
 ---
 
-## DRAFT: Church of Gethsemane (auto)
+## Example: Church of Gethsemane (auto)
 
 - URL: https://churchofgethsemane.org
 - Church ID: 113956
 - Labeled by: google/gemini-2.5-pro on 2026-07-16 (bootstrap)
 - Disagreements vs google/gemini-2.5-flash: theological_stance (production: null / reference: "progressive"); service_languages (production: [] / reference: ["English"])
+- Reviewed 2026-07-24: reference kept on both. "Welcoming, diverse and
+  inclusive… persons from all racial, ethnic, economic and educational
+  backgrounds" plus a two-decade prison ministry is explicit social-issue
+  language, which is what v3 asks theological_stance to key on — this is
+  the thin end of the progressive bucket, but it is on the right side of
+  it. English page, English service times.
 
 ```text
 We are welcoming, diverse and inclusive. We are a unique intentional congregation of persons from all racial, ethnic, economic and educational backgrounds.
@@ -770,12 +774,15 @@ Russian Orthodox Church
 
 ---
 
-## DRAFT: The Bridge Church (auto)
+## Example: The Bridge Church (auto)
 
 - URL: https://bridgechurchnyc.com
 - Church ID: 115233
 - Labeled by: google/gemini-2.5-pro on 2026-07-16 (bootstrap)
 - Disagreements vs google/gemini-2.5-flash: service_languages (production: [] / reference: ["English"])
+- Reviewed 2026-07-24: reference kept. Long English page, English sermons
+  and livestream, no other language anywhere on it; production returned []
+  purely because no sentence names a language.
 
 ```text
 Sundays
@@ -810,3 +817,182 @@ Whether you’re exploring the Bible and its relevance in your life or you’re 
   ]
 }
 ```
+
+---
+
+## Example: Mother Bethel A.M.E. Church (auto)
+
+- URL: https://www.motherbethel.org
+- Church ID: null
+- Labeled by: google/gemini-2.5-pro on 2026-07-24 (bootstrap)
+- Disagreements vs google/gemini-2.5-flash: service_languages (production: [] / reference: ["English"])
+- Reviewed 2026-07-24: reference kept; replaces the hand-written
+  "AME historically Black" template. Philadelphia's Mother Bethel, the
+  founding AME congregation — denomination stated outright, and
+  "lifting up spiritual, social, and civic causes" / "those whom society
+  has too often overlooked" carries the progressive stance. Production
+  returned [] for service_languages on an English-only page.
+
+```text
+Juneteenth Community Breakfast & Conversation with State Representative Chris Rabb
+Mother Bethel, 419 S. 6th Street; Philadelphia, PA
+419 South 6th Street
+Philadelphia, PA 19147
+Welcome to
+Mother
+Bethel
+African Methodist Episcopal Church
+Visit the
+Museum
+Tours are also available by appointment.
+View Upcoming
+Events
+Stay connected—see what’s happening next in worship, learning, and community life.
+Explore
+AME History
+From a freed blacksmith’s vision to a global movement — discover the faith, resilience, and legacy that built the AME Church.
+Mother Bethel, 419 S. 6th Street; Philadelphia, PA
+Mother Bethel, 419 S. 6th Street; Philadelphia, PA
+Mother Bethel celebrates America’s 250th with events honoring our enduring legacy.
+Mother Bethel’s mission is simple: to care for people in every way—spiritually, mentally, physically, emotionally, and even in how we live in our communities—by sharing Christ’s message of freedom through both our words and our actions.
+Our story began in 1791 with the purchase of a small piece of land. More than 200 years and four church buildings later, Mother Bethel is still a vibrant force, lifting up spiritual, social, and civic causes that matter to African Americans and to all people seeking hope and justice.
+And just as it has from the beginning, Mother Bethel keeps its doors open to everyone—especially those whom society has too often overlooked or pushed aside.
+Whether you want to join a ministry, meet our staff, attend an event, or give back, this is where you’ll find meaningful ways to engage and make an impact.
+See upcoming services, programs, and gatherings that bring our church family together.
+Explore groups and programs that help you grow in faith and serve the community.
+Meet the pastors and staff who lead, support, and care for the Mother Bethel family.
+Learn how your generosity fuels our mission and supports our work in the community.
+Feel the freedom, live the moment – Join The Excitement Today!
+Stay connected with church news, upcoming events, and inspiring messages delivered straight to your inbox.
+419 S. 6th Street Philadelphia, PA 19147
+Copyright © 2026 All Rights Reserved.
+```
+
+```json
+{
+  "denomination": "African Methodist Episcopal",
+  "theological_stance": "progressive",
+  "service_languages": [
+    "English"
+  ]
+}
+```
+
+---
+
+---
+
+## Example: Greek Orthodox Cathedral of the Holy Trinity (auto)
+
+- URL: https://www.thecathedralnyc.org
+- Church ID: null
+- Labeled by: google/gemini-2.5-pro on 2026-07-24 (bootstrap)
+- Disagreements vs google/gemini-2.5-flash: service_languages (production: [] / reference: ["English", "Greek"])
+- Reviewed 2026-07-24: **reference trimmed to ["English"]**; replaces the
+  hand-written "Eastern Orthodox" template. Greek in the liturgy is a
+  near-certainty for a Greek Orthodox cathedral, but this page never
+  says it — the only Greek it mentions is the afternoon school and Greek
+  classes, which are not services. Asserting it would grade the model on
+  world knowledge instead of the text. Production still returned [].
+
+```text
+Welcome to the Greek Orthodox Archdiocesan Cathedral of the Holy Trinity Website
+Welcome to the website of the Greek Orthodox Archdiocesan Cathedral of the Holy Trinity! The Greek Orthodox Archdiocesan Cathedral of the Holy Trinity is under the spiritual and ecclesiastical shepherding of His Eminence Archbishop Elpidophoros of America of the Greek Orthodox Archdiocese of America, under the jurisdiction of the Ecumenical Patriarch of Constantinople.
+Our parish has the distinguished honor to serve as the seat of the His Eminence, Archbishop Elpidophoros of America. As such, we are designated as the 'National Cathedral' of the Greek Orthodox Archdiocese of America, and frequently host hierarchs, diplomats, cultural figures, dignitaries and visitors from throughout the world.
+In addition, we offer a full schedule of Sunday and weekday divine services, sacraments and funerals. We also support a thriving parochial school, The Cathedral School (an accredited institution of learning offering grades N-8), Hellenic Afternoon School, Philoptochos, Youth Programs, Bible Study, Greek classes, cultural events, social services, and fellowship.
+Our offices are open 9am-5pm Monday through Friday.
+Summer Sunday Service Hours:
+Orthros (Matins): 8:00 a.m.
+Divine Liturgy: 9:30 a.m.
+Kindly contact the office by Wednesday at 5:00 p.m. for any memorials to be performed the following Sunday. Please reach us by telephone at 212-288-3215 or via email at alexandra@thecathedralnyc.org
+Click here to learn more on how to become a steward.
+```
+
+```json
+{
+  "denomination": "Greek Orthodox",
+  "theological_stance": "traditional",
+  "service_languages": [
+    "English"
+  ],
+  "worship_style": "liturgical"
+}
+```
+
+---
+
+---
+
+## Example: Korean Central Presbyterian Church (auto)
+
+- URL: https://www.kcpc.org
+- Church ID: null
+- Labeled by: google/gemini-2.5-pro on 2026-07-24 (bootstrap)
+- Agreement: google/gemini-2.5-flash matched all structured reference labels
+- Reviewed 2026-07-24: both models agreed; replaces the hand-written
+  "Korean immigrant bilingual" template. A genuinely bilingual page —
+  Korean throughout, with "한어권 회중 (Korean Congregation)" and "영어권
+  회중 (English Congregation)" named explicitly.
+
+```text
+주일예배안내
+1부 8:00 am | 2부 10:00 am | 3부 12:15 pm | 4부 2:30 pm
+-
+KCPC 교사모집
+-
+금쪽 같은 내 사춘기 자녀 세미나
+-
+리딩지저스 은혜 나눔
+-
+2026 여름단기선교 안내
+-
+류응렬 담임목사 신간 저서 출간
+-
+불우이웃과 노숙자를 위한 물품 도네이션
+KCPC 주간뉴스 | 교회 행사
+.
+| 새아기 축복기도
+한 주간 KCPC 소식을 전달해 드립니다
+-
+언론보도자료
+언론에 소개된 KCPC 보도 자료들을 보실 수 있습니다.
+-
+제자들 - The Disciples
+<제자들>을 주변 분들과 함께 나눠보시고 하나님의 사랑을 전하는 전도용으로도 사용하시기 바랍니다.
+-
+온라인 헌금
+간단하고 안전한 온라인 헌금 플랫폼을 통해 감사의 마음을 담아 헌금과 십일조를 하나님에게 드릴 수 있습니다.
+처음 방문하셨나요?
+환영합니다.
+여러분의 시작을 돕겠습니다.
+아래의 버튼을 누르시면 “새가족 등록” 과정이 자세히 설명되어 있는 페이지로 이동합니다.
+KCPC는 한 사람 한 사람을 그리스도의 제자로 세우려 노력하고 있습니다.
+-
+한어권 회중 (Korean Congregation)
+와싱톤중앙장로교회는 ‘성도를 살리고 훈련해 지역과 세상을 변화시키는 글로컬교회(Glocal Church)’라는 비전으로 예수님의 목회 정신을 따라 말씀, 기도, 전도의 정신으로 그리스도의 제자를 세우려 노력하고 있습니다.
+-
+영어권 회중 (English Congregation)
+우리는 예수 그리스도를 주님, 구원자, 왕으로 고백하고 따르는 사람들의 공동체입니다. 우리는 신령과 진정으로 하나님을 예배하고, 복음으로 변화되고 전하며, 함께 믿음을 실천하는 사랑의 공동체입니다.
+-
+DC 캠퍼스 (KCPC DC Campus)
+KCPC DC는 복음 전도와 지역사회 봉사의 유산을 가진 교회로서 D.C. 수도권에 위치합니다. 하나님은 예수 그리스도를 통해서 우리를 참된 삶과 새로운 사명으로 회복하실 것입니다. 우리 모두는 예수님을 바로 알기 원합니다.
+예배 안내
+주일예배
+1부 8:00 am | 2부 10:00 am | 3부 12:15 pm | 4부 2:30 pm
+새벽기도회
+월~금 6:00 am
+토요새벽기도회
+토 6:30 am
+```
+
+```json
+{
+  "denomination": "Presbyterian",
+  "service_languages": [
+    "Korean",
+    "English"
+  ]
+}
+```
+
+---

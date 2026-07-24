@@ -35,6 +35,7 @@ from __future__ import annotations
 
 import argparse
 import asyncio
+import hashlib
 import json
 import sys
 from pathlib import Path
@@ -44,7 +45,7 @@ from backend.env_loader import load_env_local
 load_env_local()
 
 from backend.scrapers_v2.extract import call_llm, normalize_extraction
-from backend.scrapers_v2.prompts.website_v3 import PROMPT_VERSION
+from backend.scrapers_v2.prompts.website_v3 import PROMPT_VERSION, SYSTEM_PROMPT
 from evals.website_extraction.judge import (
     JUDGE_MODEL,
     JUDGE_VERSION,
@@ -53,6 +54,22 @@ from evals.website_extraction.judge import (
 )
 
 GOLDEN = Path(__file__).parent / "golden.jsonl"
+
+
+def prompt_fingerprint() -> str:
+    """Short hash of the exact prompt that produced a report.
+
+    Cached extractions are only meaningful for the prompt they were made
+    with, and PROMPT_VERSION is a hand-maintained string that an edit can
+    forget to bump. Stamping the real content hash into every report lets
+    the CI gate (gate.py) refuse to score a changed prompt against a stale
+    cache instead of passing vacuously.
+    """
+    h = hashlib.sha256()
+    h.update(PROMPT_VERSION.encode())
+    h.update(b"\0")
+    h.update(SYSTEM_PROMPT.encode())
+    return h.hexdigest()[:16]
 
 
 def _load_golden(path: Path) -> list[dict]:
@@ -136,15 +153,27 @@ def merge_judge_scores(
 
 
 def load_cache(path: Path) -> dict[str, dict]:
-    """Load a cache file, upgrading v1 entries ({name: <norm>}) to v2."""
+    """Load a cache file, upgrading v1 entries ({name: <norm>}) to v2.
+
+    Underscore-prefixed keys are metadata (`_meta`), not examples.
+    """
     raw = json.loads(path.read_text())
     cache: dict[str, dict] = {}
     for name, entry in raw.items():
+        if name.startswith("_"):
+            continue
         if isinstance(entry, dict) and "extraction" in entry:
             cache[name] = entry
         else:
             cache[name] = {"extraction": entry, "judge": None}
     return cache
+
+
+def cache_meta(path: Path) -> dict:
+    """The `_meta` block of a cache file, or {} for caches written before it."""
+    raw = json.loads(path.read_text())
+    meta = raw.get("_meta")
+    return meta if isinstance(meta, dict) else {}
 
 
 async def _extract_live(text: str) -> dict:
@@ -194,6 +223,15 @@ async def _run(
             new_cache[name] = {"extraction": norm, "judge": verdicts}
 
     if save_cache_to is not None:
+        # Stamp the prompt these extractions came from. Without it, a cache
+        # that outlives a prompt edit looks indistinguishable from a fresh
+        # one and the CI gate would score the new prompt against old output.
+        new_cache["_meta"] = {
+            "prompt_version": PROMPT_VERSION,
+            "prompt_fingerprint": prompt_fingerprint(),
+            "judge_model": JUDGE_MODEL if use_judge else None,
+            "judge_version": JUDGE_VERSION if use_judge else None,
+        }
         save_cache_to.write_text(json.dumps(new_cache, indent=2))
         print(f"cache → {save_cache_to}")
 
@@ -201,7 +239,12 @@ async def _run(
         "n": len(examples),
         "fields": {f: sum(xs) / len(xs) for f, xs in field_totals.items()},
     }
-    report = {"summary": summary, "examples": per_example, "prompt_version": PROMPT_VERSION}
+    report = {
+        "summary": summary,
+        "examples": per_example,
+        "prompt_version": PROMPT_VERSION,
+        "prompt_fingerprint": prompt_fingerprint(),
+    }
     if use_judge:
         report["judge_model"] = JUDGE_MODEL
         report["judge_version"] = JUDGE_VERSION

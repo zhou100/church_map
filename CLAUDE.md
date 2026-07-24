@@ -144,6 +144,14 @@ Identify the failure mode before patching on top: misread product intent, edited
 - **Pool config:** `psycopg_pool.AsyncConnectionPool` is configured with `prepare_threshold=None`. This is required for Supabase's transaction-mode pooler; do not remove without testing connection reuse under load.
 - **Scrapers v2 live, v1 frozen:** Active crawl pipeline is `backend/scrapers_v2/` (R2-backed, async psycopg, three stages: fetch → extract → tag). Schema in `migrations/0004_crawl_artifacts.sql` (`raw_crawl_artifacts`, `crawl_runs`, `robots_cache`). Driven by `.github/workflows/crawl.yml` calling `X-Crawl-Token`-protected `/api/admin/crawl/*` endpoints. `backend/scrapers/` (v1) is reference-only — do not import; the CI grep test will fail. Port forward, don't "fix" v1.
 - **Crawl admin auth:** `/api/admin/crawl/*` is not GSI-protected. Static `CRAWL_TOKEN` (env on Render, repo secret in GH Actions) compared with `secrets.compare_digest`. Don't reuse for user-facing endpoints.
+- **Extraction prompt changes are eval-gated:** editing
+  `backend/scrapers_v2/prompts/website_v3.py` invalidates every cached extraction
+  in `evals/website_extraction/baselines/`. CI (`.github/workflows/evals.yml`)
+  hashes the prompt and refuses to score a changed prompt against a stale cache,
+  so the change is: bump `PROMPT_VERSION` → re-run `run.py --judge --save-cache
+  --save` → point `baselines/CURRENT` at the new stem → commit cache, baseline
+  and CURRENT together. Read the score diff before committing a new baseline;
+  saving one from a worse prompt makes the regression permanent and invisible.
 - **R2 keys:** `raw_html/{church_id}/{YYYY-MM-DD}/{content_hash}.html`. content_hash is sha256 of *cleaned trafilatura text*, not raw HTML, so cookies/timestamps in HTML don't bust dedup. Idempotency is enforced at both layers: R2 HEAD before PUT, and `UNIQUE(church_id, url, content_hash)` on `raw_crawl_artifacts`.
 
 ---

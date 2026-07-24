@@ -11,6 +11,12 @@ name: crawl
 # `stage=all` dispatch runs the three sequentially. Scheduled crons hit a
 # single stage at a time; `always()` lets the downstream job run even when
 # its upstream is skipped (because the upstream's `if:` evaluated false).
+#
+# Failure alerting: the `alert` job opens (or comments on) a GitHub issue
+# whenever a stage fails, so a bad CRAWL_TOKEN or a Render outage surfaces
+# instead of the pipeline going quiet. Silence used to be indistinguishable
+# from success here — see .github/workflows/keepalive.yml for the other half
+# of that story.
 
 on:
   schedule:
@@ -29,6 +35,9 @@ on:
         description: 'Batch size'
         required: false
         default: ''
+
+permissions:
+  contents: read
 
 jobs:
   fetch:
@@ -87,3 +96,53 @@ jobs:
           curl -fsS --max-time 300 -X POST \
             -H "X-Crawl-Token: $CRAWL_TOKEN" \
             "$BACKEND_URL/api/admin/crawl/tag?batch=$BATCH"
+
+  # Needs GITHUB_TOKEN write access to issues. If this job 403s, flip
+  # Settings → Actions → General → Workflow permissions to "Read and write".
+  alert:
+    needs: [fetch, extract, tag]
+    if: failure()
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Open or update the crawl-failure issue
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          # No checkout in this job, so gh has no git remote to infer from.
+          GH_REPO: ${{ github.repository }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+          TRIGGER: ${{ github.event_name == 'schedule' && format('schedule ({0})', github.event.schedule) || github.event_name }}
+        run: |
+          set -euo pipefail
+          # Idempotent: the label may or may not exist yet.
+          gh label create crawl-alert \
+            --color B60205 \
+            --description "Crawl pipeline stage failed" >/dev/null 2>&1 || true
+
+          body=$(printf '%s\n' \
+            "A crawl stage failed." \
+            "" \
+            "- Run: $RUN_URL" \
+            "- Trigger: $TRIGGER" \
+            "- Failed jobs: fetch=${{ needs.fetch.result }}, extract=${{ needs.extract.result }}, tag=${{ needs.tag.result }}" \
+            "" \
+            "Usual suspects: an expired or rotated \`CRAWL_TOKEN\`, the Render backend" \
+            "cold-starting past the curl timeout, or Supabase refusing connections." \
+            "" \
+            "Close this issue once the next run is green — it is reopened per incident," \
+            "and further failures comment here instead of filing duplicates.")
+
+          existing=$(gh issue list \
+            --label crawl-alert --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+
+          if [ -n "$existing" ]; then
+            gh issue comment "$existing" --body "$body"
+            echo "commented on #$existing"
+          else
+            gh issue create \
+              --title "crawl pipeline failing" \
+              --label crawl-alert \
+              --body "$body"
+          fi

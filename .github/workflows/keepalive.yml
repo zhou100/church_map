@@ -1,0 +1,89 @@
+name: keepalive
+
+# Why this exists
+#
+# GitHub automatically disables a repository's scheduled workflows after 60
+# days without repository activity. That is exactly what happened on
+# 2026-07-08: the crawl pipeline stopped, nothing was sent to anyone, and it
+# was noticed 8 days later by accident. Re-enabling it fixed the symptom;
+# the 60-day clock just started over.
+#
+# Two defenses, in order of importance:
+#
+# 1. Keep the clock from running out. This job pushes an empty commit when
+#    the repo has been quiet for a while, which counts as activity. During
+#    normal development it does nothing at all — real commits already reset
+#    the timer, and there is no point adding noise to the log to prove it.
+# 2. Recover if something got disabled anyway (a manual disable, or the
+#    clock running out because this workflow itself was broken). Re-enabling
+#    an already-active workflow is a no-op, so this is safe to run always.
+#
+# The one failure this cannot fix by itself is *this* workflow being
+# disabled at the same time as the others — hence the failure alerting in
+# crawl.yml, so a quiet pipeline gets noticed in days rather than weeks.
+#
+# Requires GITHUB_TOKEN write access. If the run fails with 403, flip
+# Settings → Actions → General → Workflow permissions to "Read and write".
+
+on:
+  schedule:
+    - cron: '23 5 1,11,21 * *'   # ~every 10 days
+  workflow_dispatch:
+    inputs:
+      force_commit:
+        description: 'Commit even if the repo is not quiet yet'
+        type: boolean
+        required: false
+        default: false
+
+permissions:
+  contents: write
+  actions: write
+
+# Commit age past which the repo counts as quiet. Well inside GitHub's
+# 60-day limit, so several runs can fail before anything is disabled.
+env:
+  QUIET_AFTER_DAYS: 30
+
+jobs:
+  keepalive:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          fetch-depth: 0    # full history: pushing from a shallow clone is fragile
+
+      - name: Re-enable any auto-disabled scheduled workflow
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          set -euo pipefail
+          gh api "repos/$GITHUB_REPOSITORY/actions/workflows" \
+            --jq '.workflows[] | select(.state | startswith("disabled_")) | "\(.path)\t\(.state)"' \
+            > disabled.txt || true
+          if [ ! -s disabled.txt ]; then
+            echo "all workflows active"
+            exit 0
+          fi
+          while IFS=$'\t' read -r path state; do
+            echo "::warning::$path was $state — re-enabling"
+            gh api -X PUT "repos/$GITHUB_REPOSITORY/actions/workflows/$(basename "$path")/enable"
+          done < disabled.txt
+
+      - name: Push an empty commit if the repo has gone quiet
+        env:
+          FORCE: ${{ github.event.inputs.force_commit }}
+        run: |
+          set -euo pipefail
+          age_days=$(( ( $(date +%s) - $(git log -1 --format=%ct) ) / 86400 ))
+          echo "last commit ${age_days}d ago (quiet after ${QUIET_AFTER_DAYS}d)"
+          if [ "$age_days" -lt "$QUIET_AFTER_DAYS" ] && [ "$FORCE" != "true" ]; then
+            echo "repo is active — the 60-day timer is already being reset by real commits"
+            exit 0
+          fi
+          git config user.name  "github-actions[bot]"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git commit --allow-empty \
+            -m "chore(ci): keepalive — reset the 60-day scheduled-workflow timer" \
+            -m "No code change. GitHub disables scheduled workflows after 60 days without repository activity; the crawl pipeline died that way once already. See .github/workflows/keepalive.yml."
+          git push
