@@ -144,6 +144,13 @@ async def call_llm(
                     content = body["choices"][0]["message"]["content"]
                 except (KeyError, IndexError) as e:
                     raise ExtractionError(f"unexpected response shape: {e}")
+                # A 200 with null/empty content happens (upstream filtering, a
+                # reasoning-only completion). Retry it like any other blip
+                # rather than dying on `None.strip()` — an empty completion is
+                # exactly the kind of thing that succeeds on the next attempt.
+                if not isinstance(content, str) or not content.strip():
+                    last_err = "empty-content"
+                    continue
                 return _parse_json_object(content)
             if r.status_code in RETRYABLE_STATUS:
                 last_err = f"upstream-{r.status_code}"
