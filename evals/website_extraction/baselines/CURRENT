@@ -1,0 +1,4 @@
+# Baseline stem the CI gate scores against (see gate.py).
+# Resolves to <stem>.json (report) and <stem>.cache.json (extractions + judge verdicts).
+# Change this only together with a regenerated cache + baseline, in one commit.
+2026-07-24.v3
