@@ -1,7 +1,16 @@
-# ChurchMap — Status Report (2026-07-16)
+# ChurchMap — Status Report (2026-07-16, updated 2026-07-24)
 
 Written after a repo + live-system audit on 2026-07-16. Previous activity: last commit
 2026-05-08 (`f428db2`), crawl pipeline ran unattended since then.
+
+**2026-07-24 update:** PR [#13](https://github.com/zhou100/church_map/pull/13) (eval
+harness) merged 2026-07-16. Two more commits landed on `main` the same window:
+`c46a56f` (fixes a real fetch-queue bug — malformed-URL churches were burning entire
+batches on instant fast-fails because their attempts never got recorded) and `ecac87b`
+(frontend cleanup). The crawl workflow has run cleanly for 8 straight days since
+re-enabling — see [§5](#5-2026-07-24-follow-up) for current numbers and the updated
+next-steps list. Sections 1–4 below are left as originally written (2026-07-16) for
+the historical record; §5 is the current state.
 
 ---
 
@@ -175,6 +184,173 @@ self-healing, observable, and pointed at the cities people actually search.
 
 ---
 
+---
+
+## 5. 2026-07-24 follow-up
+
+### What changed since the audit
+
+- **PR #13 merged** (2026-07-16): LLM-bootstrapped golden set + judge scoring for the
+  extraction eval (see below). Also reset GitHub's 60-day inactivity clock.
+- **Crawl workflow: stable for 8 days.** 39 stage-runs from Jul 21–24 alone, all
+  `success`, still running on the same three-cron schedule. No re-disable, no
+  intervention needed.
+- **A real fetch-queue bug got fixed in-flight** (`c46a56f`, landed the same day as
+  the merge, not part of this session's work): churches with malformed website URLs
+  hit an early-return in `fetch_church` that never wrote an artifact row, so
+  `churches_due_for_fetch`'s 48h backoff never kicked in — those churches got
+  re-picked every single cron run and burned whole batches in ~90ms with zero actual
+  work done. Now every bad-URL attempt writes `http_status=0, fetch_error="bad-url"`
+  so the backoff evicts them properly. This directly explains why coverage moved
+  as much as it did this week (see below) — batches are no longer being wasted.
+
+### Coverage, re-sampled today
+
+| City | with website | with `website_summary` | Jul 16 → Jul 24 |
+|---|---|---|---|
+| New York, NY | 30 | **15** | 1 → 15 |
+| Brooklyn, NY | 27 | **14** | 0 → 14 |
+| Chicago, IL | 77 | 47 | 47 → 47 (already saturated) |
+| Seattle, WA | 24 | 0 | 0 → 0 (queue hasn't reached it yet) |
+
+**Brooklyn and NYC — the demo cities — went from essentially zero coverage to roughly
+half their website-having churches extracted in 8 days**, entirely from the bad-URL
+backoff fix plus normal table-order crawling catching up. P3 (crawl order ignores
+demand) is still real — Seattle is still untouched, and this was luck-of-table-order,
+not a deliberate priority change — but the most visible instance of it (the city the
+search page suggests) has resolved itself.
+
+### Eval harness: landed, review queue confirmed
+
+`golden.md` on `main` now has **18 compiled examples**: 4 original hand-written
+(`Example:`), 6 pre-existing hand-authored templates that were already marked
+`DRAFT:` before this session (Megachurch multi-site, AME, Eastern Orthodox, Korean
+immigrant bilingual, Quaker meeting, Sparse low-info page — these need real source
+URLs, not disagreement review), and 8 auto-bootstrapped from real Brooklyn churches
+(3 landed as trusted `Example:`, 5 as `DRAFT:` from production/reference
+disagreement). **11 DRAFT entries total** are the open review queue — two different
+kinds mixed together, see next steps below.
+
+### Next steps (supersedes §4 — current priority order)
+
+| # | Action | Effort | Why |
+|---|---|---|---|
+| 1 | ~~Clear the 11-item `DRAFT:` backlog in `golden.md`~~ **done 2026-07-24** — see [§6](#6-2026-07-24-delivery) | — | Baseline is only as trustworthy as the reviewed fraction; also unblocks #2 |
+| 2 | ~~Wire the CI gate~~ **done 2026-07-24** — `.github/workflows/evals.yml` + `gate.py` | — | Mechanics all exist (`run.py`, cached verdicts) — this is the piece that makes the eval enforce itself instead of relying on memory |
+| 3 | ~~Add a crawl keepalive + failure notification~~ **done 2026-07-24** — `.github/workflows/keepalive.yml` + an `alert` job in `crawl.yml` | — | The Jul 8 disable was silent; nothing prevents a repeat once the 60-day clock runs out again, and there's still no alert on a failed run (bad `CRAWL_TOKEN`, Render outage) |
+| 4 | `/api/stats` endpoint (total churches, % with websites, % extracted, last crawl time) + a small status surface | S | No live observability today outside token-gated admin endpoints or manual API sampling like this report did |
+| 5 | Demand-driven fetch priority — seed/reorder `churches_due_for_fetch` toward top-N metro areas instead of relying on table order + luck (Seattle is still at 0) | S | Brooklyn/NYC catching up was incidental (bug fix + table order), not by design; the next demo city might not be so lucky |
+| 6 | Search/filter on `extracted_tags` (languages, worship style, vibe) in `list_churches`; surface extracted tags on result cards when review-derived tags are empty | M | The actual product payoff of Phase B — extraction coverage doubling in NYC/Brooklyn this week doesn't help users until search uses it |
+| 7 | Refresh `TODOS.md` (done alongside this update — replaced pre-Phase-A content with the active backlog) and `OVERVIEW.md` (crawl numbers are stale — still says the pipeline is aspirational/"adds", not that it's been running successfully for months) | S | Docs undersell working infrastructure |
+
+Item 6 is now the highest-leverage *product* item — the data exists, coverage in the
+demo cities is real, and nothing downstream of extraction uses it yet.
+
+---
+
+## 6. 2026-07-24 delivery
+
+Items 1–3 of §5 shipped. Items 4–6 (`/api/stats`, demand-driven fetch priority,
+search on `extracted_tags`) are untouched and remain the queue.
+
+### Golden set: 11 DRAFTs → 0, still n=18
+
+Two kinds of DRAFT, handled differently:
+
+**The 5 auto-bootstrapped disagreements** were adjudicated one at a time; each
+section now carries a `Reviewed 2026-07-24:` line saying which way it went and why.
+Three kept the reference labels (real production misses), two corrected them:
+
+- *First Church of Christ, Scientist* — the reference model had echoed the
+  congregation's **name** back as its denomination. Corrected to "Christian
+  Science"; production was right.
+- *The Gospel Tabernacle* — `worship_style: "charismatic"` dropped. The reference
+  inferred it from "Pentecostal", but the page never describes a service, and v3
+  says to bucket worship style from explicit cues only. Production's `null` was
+  correct.
+
+**The 6 hand-authored templates** were "chase down a real URL, or delete". All six
+categories were chased: real pages were fetched and labeled for each. Three
+replaced their template outright — Mother Bethel A.M.E. (Philadelphia), the Greek
+Orthodox Cathedral of the Holy Trinity (NYC), and Korean Central Presbyterian
+(Vienna VA), which is genuinely bilingual and names both congregations explicitly.
+Three did not: lifepoint.church cleaned to marketing fragments with no structured
+signal, fmcquaker.org to seven lines of duplicated calendar notices, and there is
+no real page that reliably tests "returns nothing when there's nothing there". Those
+three stayed as `URL: synthetic` canaries with the reasoning written into the file.
+
+Two goldens turned out to be **unsatisfiable by construction**: they expected
+`worship_style: "gospel"` and `"silent"`, neither of which is in `WORSHIP_STYLES`,
+so no schema-valid extraction could ever have matched them. They had been quietly
+costing 2 of the 12 `worship_style` scores since they were written.
+
+### What the baseline says now (`baselines/2026-07-24.v3.json`)
+
+| field | Jul 16 | Jul 24 | |
+|---|---|---|---|
+| worship_style | 0.750 | **1.000** | the two impossible goldens are gone |
+| statement_of_faith | 0.944 | **1.000** | |
+| community_summary | 0.889 | 0.944 | |
+| denomination | 0.867 | 0.867 | |
+| theological_stance | 0.909 | 0.909 | |
+| theology_summary | 0.833 | 0.833 | |
+| worship_style_detail | 0.944 | 0.944 | |
+| programs / vibe_tags / pull_quote | 1.000 / 0.833 / 0.833 | 0.944 / 0.778 / 0.778 | one example each, on harder real pages |
+| **service_languages** | 0.706 | **0.588** | ← the finding |
+
+The two baselines aren't strictly comparable (three examples were swapped), but
+the direction on `service_languages` is not noise. **Production returns `[]` for
+any page that doesn't name a language in so many words**, which is most pages: 7 of
+17 goldens now fail this field, including three where the page is unambiguously
+English end to end. v3 says "Empty list if unclear" and the model takes it
+literally. That single line is why a language filter would find almost nothing —
+and it's a prompt fix, now scoped in TODOS.md as the v4 batch, along with KCPC
+extracting `denomination: "장로교회"` (correct, and useless to an English facet).
+
+This is the eval doing its job: it turned "search on extracted tags" from a feature
+request into a measured, named defect with a number attached.
+
+### CI gate (`.github/workflows/evals.yml`, `evals/website_extraction/gate.py`)
+
+Runs on PRs touching `evals/**` or `backend/scrapers_v2/prompts/**`. Scores from
+cached extractions and cached judge verdicts, so it needs no API key, no database
+and no network, and costs nothing.
+
+The trap it exists to avoid is that `--from-cache` **cannot fail** on a stale
+cache — it would score the old prompt's output and report no regression. So the
+gate refuses to run at all unless three things hold: `golden.jsonl` matches
+`golden.md`, every golden has a cache entry (otherwise `run.py` silently falls
+back to live LLM calls and CI dies on a missing key instead of saying what's
+wrong), and the prompt's content hash matches the one stamped into both the
+baseline and the cache. Verified by editing the prompt without bumping
+`PROMPT_VERSION` — the gate caught it on the content hash and exited 2.
+
+`baselines/CURRENT` names the active baseline stem, so re-baselining is a one-line
+change rather than a workflow edit. 14 tests in `tests/test_eval_gate.py` cover the
+refusal paths, including the one defeat move worth blocking: refreshing a baseline
+from extractions that predate the prompt edit.
+
+### Crawl keepalive + alerting
+
+`keepalive.yml` runs every ~10 days and does two things. It re-enables any workflow
+sitting in a `disabled_*` state (a no-op when everything is active), and it pushes
+an **empty commit only if the last commit is more than 30 days old** — resetting
+GitHub's 60-day inactivity clock without adding a single line of log noise during
+normal development. The 30-day threshold leaves several runs of slack before
+anything could be disabled.
+
+`crawl.yml` gains an `alert` job (`if: failure()`, `needs` all three stages) that
+opens a `crawl-alert` issue on failure, or comments on the open one rather than
+filing duplicates. No new secrets — `GITHUB_TOKEN` only.
+
+**One manual step remains**: the repo's default workflow permission is `read`. Both
+new jobs request more explicitly (`issues: write`, `contents: write`,
+`actions: write`). If either 403s on its first run, flip Settings → Actions →
+General → Workflow permissions to "Read and write". Dispatching `keepalive`
+manually is the cheapest way to find out — it no-ops while the repo is active.
+
+---
+
 ## Appendix: how this was verified (2026-07-16)
 
 - `gh run list` / `gh run view <id> --log` — run history + stage JSON results
@@ -185,3 +361,21 @@ self-healing, observable, and pointed at the cities people actually search.
 - No local `DATABASE_URL`, so exact DB counts (total artifacts in R2/`raw_crawl_artifacts`,
   extraction totals) are estimates from API sampling; run `/api/admin/crawl/status`
   with the `CRAWL_TOKEN` or query Supabase directly for exact numbers.
+
+**2026-07-24 delivery verification:** `pytest -q` (103 passed, 11 DB-gated skips),
+`python -m evals.website_extraction.gate` (exit 0 against its own baseline, and
+exit 2 with a content-hash mismatch after a simulated prompt edit — reverted),
+`python -m evals.website_extraction.bootstrap --urls ... --dry-run` (5 real pages
+fetched and labeled before any of them were committed to the set), `yaml.safe_load`
++ `bash -n` over every workflow and every `run:` block,
+`gh api repos/.../actions/permissions/workflow` (default is `read` — hence the
+manual step above). The new baseline was re-scored from cache, so the only live
+LLM calls in this session were the bootstrap labeling of 5 candidate pages and the
+extract+judge of the 3 that were kept.
+
+**2026-07-24 re-verification:** `gh pr view 13` (merged), `git log` on `main` (confirmed
+`c46a56f`/`ecac87b` landed alongside the merge), `gh run list --limit 50` (39 successful
+runs Jul 21–24, no gaps), re-sampled `/api/churches?city=...` for NYC/Brooklyn/Chicago/
+Seattle, `grep -c "^## DRAFT:\|^## Example:"` + a full listing of `golden.md` headings
+against the compiled `golden.jsonl` to confirm the 11-item DRAFT backlog and its two
+distinct origins (pre-existing hand templates vs. auto-bootstrapped disagreements).
