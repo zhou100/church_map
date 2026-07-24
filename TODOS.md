@@ -15,18 +15,16 @@ verification trail: [STATUS.md](STATUS.md).
       if either 403s, flip Settings → Actions → General → Workflow permissions to
       "Read and write". Verify by running `keepalive` via `workflow_dispatch` with
       `force_commit: false` — it should re-check workflow states and no-op.
-- [ ] **Prompt v4: fix `service_languages`.** The eval now measures this at
-      **0.588**, the worst field by a wide margin, and the cause is one line of v3:
-      "Empty list if unclear." Production returns `[]` for any page that doesn't
-      name a language in so many words — which is most of them — so a
-      language filter would find almost nothing. The goldens encode the rule the
-      product needs (the page's own language is evidence for the primary service
-      language). Changing the prompt means a `PROMPT_VERSION` bump plus a
-      regenerated cache/baseline; the CI gate enforces that.
-- [ ] **Prompt v4: denomination in the page's language.** KCPC (a Korean-language
-      site) extracts `denomination: "장로교회"` — correct, and useless for any
-      English-facing filter or facet. v3 never says what language the *output*
-      should be in. Same v4 batch as above.
+- [ ] **Backfill the v3-era extractions.** Prompt v3.1 fixed `service_languages`
+      (0.588 → 1.000) and English output, but extraction is driven by
+      `extract_status = 'pending'`, not by prompt version — so every church
+      already extracted keeps its v3 values: empty languages, and Korean/Russian
+      denomination and program strings. Re-extracting means re-queueing artifacts
+      whose `extracted_prompt_version` is older than `2026-07-24.v3.1`. No
+      re-crawling (the R2 archive covers that), but it is real LLM spend, so
+      size it first: `SELECT extracted_prompt_version, COUNT(*) FROM churches
+      GROUP BY 1`. **Search/filter on `extracted_tags` is worth much less until
+      this runs** — the fix is in the prompt, not yet in the data.
 
 ## Next (this month)
 
@@ -54,18 +52,18 @@ verification trail: [STATUS.md](STATUS.md).
 ## Backlog (not urgent, revisit on trigger)
 
 - [ ] **Synonym-tolerant scoring for `service_languages`.** `score_one` compares
-      normalized strings exactly, so "Kreyol" ≠ "Haitian Kreyol" (Saint Francis of
-      Assisi) even though both name the same language and both appear on the page.
-      `denomination` already does substring-either-direction and would have caught
-      it. Left alone deliberately during the 2026-07-24 golden-set pass — it moves
-      baseline numbers, so it wants its own commit and its own re-baseline. Worth
-      doing before the gate's threshold gets tightened below 0.10, since a
-      paraphrase shouldn't read as a regression.
-- [ ] **Grow the golden set past 18.** Deterministic per-field precision on n=17-18
-      moves in ~0.06 steps, which is most of the way to the 0.10 regression
-      threshold — one example flipping looks like a real regression. `bootstrap.py`
-      makes this cheap (`--city <X> --state <Y> --n 10`, review only the DRAFTs).
-      Aim for 30+, weighted toward cities that are actually crawled.
+      normalized strings exactly, so "Kreyol" ≠ "Haitian Kreyol". v3.1 sidestepped
+      the live instance by requiring English language names, but the brittleness
+      is still there for the next near-synonym ("Mandarin" vs "Chinese"),
+      and `denomination` already does substring-either-direction. Low urgency now,
+      not zero.
+- [ ] **Grow the golden set past 18 — the gate's accuracy depends on it.**
+      Measured 2026-07-24: running the *identical* prompt twice moved `vibe_tags`
+      0.667 → 0.778, a 0.111 swing from sampling alone, which is why judged fields
+      now get a 0.15 band instead of 0.10. One example is worth ~0.056 at n=18; at
+      n=40 it's 0.025 and both bands could tighten. `bootstrap.py` makes this cheap
+      (`--city <X> --state <Y> --n 10`, review only the DRAFTs). Weight toward
+      cities that are actually crawled.
 - [ ] **Sermon transcript embeddings** — Whisper-transcribe published sermon
       audio/video, embed, rank by what's actually preached. Effort ~3-5 days for a
       10-church v1; ~$3 in Whisper cost for 50 ten-minute sermons. Needs an
