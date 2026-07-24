@@ -137,7 +137,9 @@ def main(argv: list[str]) -> int:
     parser = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     parser.add_argument("--baseline-stem", help="Override baselines/CURRENT")
     parser.add_argument("--threshold", type=float, default=0.10,
-                        help="Per-field precision drop that counts as a regression (default 0.10)")
+                        help="Precision drop that counts as a regression for deterministic fields (default 0.10)")
+    parser.add_argument("--judge-threshold", type=float, default=0.15,
+                        help="Same, for LLM-judged prose fields (default 0.15 — see run.threshold_for)")
     args = parser.parse_args(argv)
 
     stem = args.baseline_stem or read_current()
@@ -166,13 +168,15 @@ def main(argv: list[str]) -> int:
     print(
         f"gate: baseline {stem}, {len(golden)} examples, "
         f"prompt {baseline['prompt_version']} ({baseline['prompt_fingerprint']}), "
-        f"threshold {args.threshold:.2f} — scoring from cache, no LLM calls"
+        f"threshold {args.threshold:.2f} deterministic / {args.judge_threshold:.2f} judged "
+        "— scoring from cache, no LLM calls"
     )
     return run_main([
         "--judge",
         "--from-cache", str(cache_path),
         "--baseline", str(baseline_path),
         "--threshold", str(args.threshold),
+        "--judge-threshold", str(args.judge_threshold),
     ])
 
 
