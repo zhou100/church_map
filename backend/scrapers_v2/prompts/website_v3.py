@@ -7,10 +7,26 @@ so the eval harness can baseline against prior versions.
 
 The prompt is the IP. Don't edit it without bumping the version string and
 re-running representative churches through the eval harness.
+
+Revision v3.1 (2026-07-24) — same schema, two rule fixes the eval measured:
+
+- service_languages was scoring 0.588, the worst field. "Empty list if
+  unclear" was taken literally, so any page that didn't name a language in
+  so many words returned [] — most pages. A congregation publishes in the
+  language it worships in, and that inference is what a language filter
+  needs to exist at all.
+- Values came back in the source page's language: a Korean parish extracted
+  denomination "장로교회" and programs ["교사모집", …]. Correct, and useless
+  to an English-facing facet or filter. pull_quote is exempt — it is
+  validated as a verbatim substring of the source.
+
+Extraction is driven by `extract_status = 'pending'`, not by prompt
+version, so this only affects churches extracted from here on. Existing
+rows keep their v3 values until something deliberately re-queues them.
 """
 from __future__ import annotations
 
-PROMPT_VERSION = "2026-05-08.v3"
+PROMPT_VERSION = "2026-07-24.v3.1"
 MODEL = "google/gemini-2.5-flash"
 
 WORSHIP_STYLES = {
@@ -54,10 +70,12 @@ Return STRICT JSON matching this schema (no prose, no markdown):
   "_source_snippets": { "<field_name>": string, ... }
 }
 
+Write every extracted value in English, even when the source page is in another language — this data is read by English-speaking users and filtered on. That covers denomination ("Presbyterian", not "장로교회"), language names ("Haitian Creole", not "Kreyol"), programs, vibe_tags and the summaries. The ONE exception is pull_quote, which must stay exactly as written in the source.
+
 Field rules:
-- denomination: specific affiliation if explicitly stated (e.g., "Southern Baptist", "PCA", "ELCA", "Roman Catholic", "Non-denominational"). Null if not clear from text.
+- denomination: specific affiliation if explicitly stated (e.g., "Southern Baptist", "PCA", "ELCA", "Roman Catholic", "Non-denominational"). Give the denomination, not the congregation's own name — a church called "First Church of Christ, Scientist" is denomination "Christian Science". Null if not clear from text.
 - theological_stance: one of three buckets, inferred only from explicit doctrinal/social-issue language. Null if no signal.
-- service_languages: language names used in services (e.g., ["English"], ["English", "Spanish"]). Empty list if unclear.
+- service_languages: language names used in services (e.g., ["English"], ["English", "Spanish"]). List every language the text names for a service. If it names none, use the language the page itself is written in — a congregation almost always publishes in the language it worships in. Empty list only when the text is too short or too garbled to tell.
 - programs: 3-8 short noun phrases for active ministries (e.g., "youth group", "food pantry", "small groups"). Empty list if none mentioned.
 - vibe_tags: 3-7 short adjectives/tags describing community feel (e.g., "family-friendly", "intergenerational"). Avoid generic words like "Christian" or "welcoming".
 - community_summary: ONE or TWO sentences (60-200 chars) describing WHO this congregation is. No hype, no marketing language. Empty string "" if text gives no signal.

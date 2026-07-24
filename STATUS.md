@@ -351,6 +351,66 @@ manually is the cheapest way to find out — it no-ops while the repo is active.
 
 ---
 
+## 7. Prompt v3.1 — the eval's first real catch
+
+The `service_languages` finding from §6 turned into a prompt fix, and the gate
+built in §6 blocked it until the cache was regenerated, exactly as designed.
+
+**Two rule changes, same schema** (so `v3.1`, not `v4` — no new module, no import
+churn): `service_languages` now falls back to the language the page is written in
+when no service language is named, and every extracted value must be in English
+except `pull_quote`, which stays verbatim because it's validated as a substring
+of the source.
+
+| field | v3 | v3.1 run 1 | v3.1 run 2 | |
+|---|---|---|---|---|
+| **service_languages** | 0.588 | **1.000** | **1.000** | the target |
+| **denomination** | 0.867 | **1.000** | **1.000** | |
+| theology_summary | 0.833 | 0.944 | 0.944 | |
+| pull_quote | 0.778 | 0.889 | 0.889 | |
+| theological_stance | 0.909 | 0.818 | 0.818 | consistent 1-example loss |
+| vibe_tags | 0.778 | 0.667 | 0.778 | **noise** |
+
+Concretely: `"장로교회"` → `"Presbyterian"`, `["교사모집", "자녀 세미나", …]` →
+`["teacher recruitment", "parenting seminar", …]`, `"Kreyol"` → `"Haitian Creole"`,
+and Gospel Tabernacle's `"Non-denominational"` → `"Pentecostal"`. The one
+consistent loss is Mother Bethel's `theological_stance` going `"progressive"` →
+`null` — an example flagged as borderline when it was first reviewed. It was left
+as a recorded miss rather than softening the golden to match the new prompt.
+
+### The gate needed calibrating, and now there's a number behind it
+
+The first v3.1 run tripped the gate on `vibe_tags` (0.778 → 0.667). Rather than
+wave it through, the identical prompt was run a second time: every
+deterministically scored field came back bit-identical, while `vibe_tags` moved
+0.111 — wider than the gate's own 0.10 threshold. **The regression was sampling
+noise, and as shipped the gate would have failed this PR, and every future prompt
+PR, on nothing.**
+
+So judged fields now get a 0.15 band and deterministic fields stay at 0.10
+(`run.threshold_for`, with the measurement in its docstring). Verified from both
+sides: the noisy second run passes, and an injected 0.182 drop on a deterministic
+field still fails. The real fix is more examples — one is worth ~0.056 at n=18 —
+which is now filed with the measurement attached rather than as a vague "more
+would be better".
+
+### Two things worth knowing
+
+**A prompt fix is not a data fix.** Extraction is driven by
+`extract_status = 'pending'`, not by prompt version, so every already-extracted
+church keeps its v3 values — empty languages, Korean denomination strings. Filed
+as a backfill task, and it's a prerequisite for search/filter on `extracted_tags`
+being worth much.
+
+**`call_llm` crashed on an empty completion.** A 200 response carrying
+`"content": null` hit `None.strip()` and took a whole eval run with it — ~17
+completed extractions of spend, discarded. In production that raised an
+`AttributeError`, which is neither of the two error classes the extract loop
+routes on. It now retries like any other blip, with tests. Found by hitting it,
+not by reading for it.
+
+---
+
 ## Appendix: how this was verified (2026-07-16)
 
 - `gh run list` / `gh run view <id> --log` — run history + stage JSON results

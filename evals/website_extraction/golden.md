@@ -50,6 +50,10 @@ from `expected` always wins over the judge for the same field, so the
 legacy keys above keep working. `pull_quote` additionally requires a
 verbatim (whitespace-normalized) match in the source text.
 
+Judged fields are also noisier, and the CI gate allows them a wider
+regression band as a result (0.15 vs 0.10) — see `run.threshold_for` for
+the measurement behind that number.
+
 > Examples named `DRAFT: ...` are awaiting human review — bootstrap uses
 > this for pages where the production model disagrees with the reference
 > labels. Review the disagreement, fix `expected` if the reference was
@@ -61,10 +65,11 @@ verbatim (whitespace-normalized) match in the source text.
 - **`service_languages`** — the page's own language counts as evidence for
   the primary service language unless the page says otherwise. Every
   golden follows this (English pages → `["English"]`, Russian pages →
-  `["Russian"]`), so the eval reports production's habit of returning `[]`
-  whenever no language is named in so many words. That is a real gap, not
-  scorer noise: fixing it is a prompt change (v3 currently says "Empty
-  list if unclear"), which is exactly what the CI gate exists to measure.
+  `["Russian"]`). Prompt v3 said "Empty list if unclear" and returned `[]`
+  for most pages, which the eval caught at 0.588; **v3.1 adopts the rule
+  above and the field now scores 1.000.** Values are English names
+  ("Haitian Creole", not the page's "Kreyol") because that is what a
+  language filter has to match on.
 - **`worship_style`** — only assert a value that exists in
   `WORSHIP_STYLES` (`liturgical`, `traditional-hymns`, `blended`,
   `contemporary`, `charismatic`). Two hand-written goldens used to expect
@@ -263,6 +268,10 @@ Riverside Community Church. Sunday services: 9am and 11am. 1247 Riverside Drive,
   miss rather than a real error, but the source's own term is the right
   label — and the eval is a poor place to reward paraphrase, since a
   downstream language filter has to match on something.
+- Revised for prompt v3.1: **"Haitian Kreyol" → "Haitian Creole"**. v3.1
+  requires values in English, which settles the question the note above
+  left open — the filter matches on the English name, and the page's own
+  spelling stops being the target.
 
 ```text
 Weekday and Weekend Masses
@@ -352,7 +361,7 @@ St. Francis of Assisi Catholic Academy
   "service_languages": [
     "English",
     "Spanish",
-    "Haitian Kreyol"
+    "Haitian Creole"
   ],
   "worship_style": "liturgical"
 }

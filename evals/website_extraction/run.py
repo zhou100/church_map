@@ -47,6 +47,7 @@ load_env_local()
 from backend.scrapers_v2.extract import call_llm, normalize_extraction
 from backend.scrapers_v2.prompts.website_v3 import PROMPT_VERSION, SYSTEM_PROMPT
 from evals.website_extraction.judge import (
+    JUDGE_FIELDS,
     JUDGE_MODEL,
     JUDGE_VERSION,
     judge_example,
@@ -70,6 +71,21 @@ def prompt_fingerprint() -> str:
     h.update(b"\0")
     h.update(SYSTEM_PROMPT.encode())
     return h.hexdigest()[:16]
+
+
+def threshold_for(field: str, strict: float, judged: float) -> float:
+    """Regression band for one field. Judged fields get a wider one.
+
+    Measured 2026-07-24 by running the identical prompt twice over the same
+    18 goldens: every deterministically scored field was bit-identical across
+    runs, while `vibe_tags` moved 0.667 → 0.778. A 0.111 swing from nothing
+    but sampling is already wider than the 0.10 default, so a single band
+    would fail prompt PRs on noise — the fastest way to teach everyone to
+    ignore the gate. The real fix is more examples (each one is worth ~0.056
+    at n=18); until then, judged fields get room and the deterministic
+    fields, which are the ones with a defensible right answer, stay strict.
+    """
+    return judged if field in JUDGE_FIELDS else strict
 
 
 def _load_golden(path: Path) -> list[dict]:
@@ -256,7 +272,9 @@ def main(argv: list[str]) -> int:
     parser.add_argument("--save", type=Path, help="Write the full report (use for baselines)")
     parser.add_argument("--baseline", type=Path, help="Compare against prior report; gate on >threshold drop")
     parser.add_argument("--threshold", type=float, default=0.10,
-                        help="Per-field precision drop that counts as a regression (default 0.10)")
+                        help="Precision drop that counts as a regression for deterministically scored fields (default 0.10)")
+    parser.add_argument("--judge-threshold", type=float, default=0.15,
+                        help="Same, for LLM-judged prose fields, which are noisier (default 0.15)")
     parser.add_argument("--from-cache", type=Path,
                         help="Score from cached extractions instead of calling the LLM (CI-safe)")
     parser.add_argument("--save-cache", type=Path,
@@ -283,12 +301,13 @@ def main(argv: list[str]) -> int:
         prev = json.loads(args.baseline.read_text())["summary"]["fields"]
         regressed = []
         for f, score in report["summary"]["fields"].items():
-            if f in prev and score < prev[f] - args.threshold:
+            if f in prev and score < prev[f] - threshold_for(f, args.threshold, args.judge_threshold):
                 regressed.append((f, prev[f], score))
         if regressed:
             print("REGRESSION vs baseline:")
             for f, p, n in regressed:
-                print(f"  {f}: {p:.2f} → {n:.2f}")
+                band = threshold_for(f, args.threshold, args.judge_threshold)
+                print(f"  {f}: {p:.2f} → {n:.2f} (allowed drop {band:.2f})")
             return 1
     return 0
 

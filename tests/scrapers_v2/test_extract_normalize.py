@@ -1,8 +1,15 @@
 """Normalization + schema validation for the v3 extraction prompt."""
+import asyncio
+
+import httpx
+import pytest
+
+from backend.scrapers_v2 import extract as extract_mod
 from backend.scrapers_v2.extract import (
     ExtractionError,
     TransientExtractionError,
     _parse_json_object,
+    call_llm,
     normalize_extraction,
 )
 
@@ -20,6 +27,58 @@ SOURCE = (
     "downtown Denver. Sunday services blend hymns and contemporary worship. "
     "We believe Scripture is the inspired word of God."
 )
+
+
+def _call_llm_against(handler, **kw):
+    """Drive call_llm over a mocked transport.
+
+    asyncio.run rather than pytest-asyncio: the suite has no async plugin,
+    and an async test without one is silently *skipped*, which is worse than
+    not having it. Retry sleeps are patched out so this stays instant.
+    """
+    async def go():
+        client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+        try:
+            return await call_llm("text", api_key="k", client=client, **kw)
+        finally:
+            await client.aclose()
+
+    return asyncio.run(go())
+
+
+@pytest.fixture(autouse=True)
+def _no_retry_sleep(monkeypatch):
+    async def instant(_seconds):
+        return None
+
+    monkeypatch.setattr(extract_mod.asyncio, "sleep", instant)
+
+
+@pytest.mark.parametrize("content", [None, "", "   "])
+def test_call_llm_retries_empty_content(content):
+    """A 200 carrying null/empty content is a blip, not a crash.
+
+    Seen live: the judge model returned "content": null and the run died on
+    None.strip(), losing every completed extraction with it.
+    """
+    calls = {"n": 0}
+
+    def handler(request: httpx.Request) -> httpx.Response:
+        calls["n"] += 1
+        if calls["n"] == 1:
+            return httpx.Response(200, json={"choices": [{"message": {"content": content}}]})
+        return httpx.Response(200, json={"choices": [{"message": {"content": '{"ok": 1}'}}]})
+
+    assert _call_llm_against(handler) == {"ok": 1}
+    assert calls["n"] == 2
+
+
+def test_call_llm_gives_up_on_persistent_empty_content():
+    def handler(request: httpx.Request) -> httpx.Response:
+        return httpx.Response(200, json={"choices": [{"message": {"content": None}}]})
+
+    with pytest.raises(TransientExtractionError, match="empty-content"):
+        _call_llm_against(handler)
 
 
 def test_parse_json_object_strips_codefence():

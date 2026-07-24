@@ -4,7 +4,23 @@ Pure logic, no LLM calls — runnable in CI without any API keys.
 """
 from __future__ import annotations
 
-from evals.website_extraction.run import score_one
+from evals.website_extraction.run import score_one, threshold_for
+
+
+def test_deterministic_fields_keep_the_strict_band():
+    for f in ("denomination", "theological_stance", "service_languages", "worship_style"):
+        assert threshold_for(f, 0.10, 0.15) == 0.10
+
+
+def test_judged_fields_get_the_wide_band():
+    # Measured: vibe_tags moved 0.111 across two runs of the *same* prompt,
+    # so a 0.10 band would fail prompt PRs on sampling alone.
+    for f in ("vibe_tags", "programs", "community_summary", "pull_quote"):
+        assert threshold_for(f, 0.10, 0.15) == 0.15
+
+
+def test_unknown_field_defaults_to_strict():
+    assert threshold_for("something_new", 0.10, 0.15) == 0.10
 
 
 def test_denomination_substring_match():
