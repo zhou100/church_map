@@ -15,16 +15,45 @@ verification trail: [STATUS.md](STATUS.md).
       if either 403s, flip Settings → Actions → General → Workflow permissions to
       "Read and write". Verify by running `keepalive` via `workflow_dispatch` with
       `force_commit: false` — it should re-check workflow states and no-op.
-- [ ] **Backfill the v3-era extractions.** Prompt v3.1 fixed `service_languages`
-      (0.588 → 1.000) and English output, but extraction is driven by
-      `extract_status = 'pending'`, not by prompt version — so every church
-      already extracted keeps its v3 values: empty languages, and Korean/Russian
-      denomination and program strings. Re-extracting means re-queueing artifacts
-      whose `extracted_prompt_version` is older than `2026-07-24.v3.1`. No
-      re-crawling (the R2 archive covers that), but it is real LLM spend.
-      **`GET /api/stats` now sizes it** — `extraction.stale` is exactly the
-      number of churches involved. **Search/filter on `extracted_tags` is worth
-      much less until this runs** — the fix is in the prompt, not in the data.
+- [ ] **Run the extraction backfill.** The mechanism is built and tested
+      (`POST /api/admin/crawl/requeue`, `X-Crawl-Token`); what remains is running
+      it, which costs money and so is a deliberate call, not something a cron
+      should start on its own. Every church extracted before 2026-07-26 holds
+      v3-era data — empty `service_languages`, Korean/Russian denomination and
+      program strings — because the extract stage selects on `extract_status`,
+      never on prompt version or model. Runbook:
+
+      ```bash
+      # 1. size it — dry_run is the default, nothing is written.
+      #    `GET /api/stats` reports the same number as extraction.stale.
+      curl -sX POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
+        "$BACKEND/api/admin/crawl/requeue?dry_run=true"
+
+      # 2. queue a first pass and let the normal extract cron drain it
+      curl -sX POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
+        "$BACKEND/api/admin/crawl/requeue?dry_run=false&limit=200"
+
+      # 3. repeat until awaiting_queue_after is 0, watching /api/stats
+      ```
+
+      `stale_churches` is the size of the whole job and only falls as churches
+      are actually re-extracted; `awaiting_queue` is what's left to hand to the
+      pipeline and falls per pass. Extraction runs twice daily at 50/batch, so
+      200 queued churches take ~2 days to drain — start small and check the
+      output before scaling the limit. **Search/filter on `extracted_tags` is
+      worth much less until this finishes** — the fix is in the prompt, not yet
+      in the data.
+- [ ] **Watch prose quality after the flash-lite switch.** The model moved to
+      `gemini-2.5-flash-lite` on 2026-07-26. Measured over two runs of the golden
+      set: deterministic fields improved (+0.023 mean; `theological_stance`
+      0.818 → 0.909), but judged prose fields dropped a reproducible −0.044 mean
+      — `programs`, `statement_of_faith`, `worship_style_detail` and
+      `theology_summary` each lose one example in *both* runs, with the judge
+      citing incompleteness. No single field crosses the gate's 0.15 band, so
+      this is a real-but-small tradeoff, not a regression: better structured data
+      (what search filters on) for slightly thinner summaries (what users read on
+      detail pages). Revisit if detail pages start looking sparse; reverting is a
+      one-line `MODEL` change plus a re-baseline.
 
 ## Next (this month)
 

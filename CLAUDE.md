@@ -144,6 +144,13 @@ Identify the failure mode before patching on top: misread product intent, edited
 - **Pool config:** `psycopg_pool.AsyncConnectionPool` is configured with `prepare_threshold=None`. This is required for Supabase's transaction-mode pooler; do not remove without testing connection reuse under load.
 - **Scrapers v2 live, v1 frozen:** Active crawl pipeline is `backend/scrapers_v2/` (R2-backed, async psycopg, three stages: fetch → extract → tag). Schema in `migrations/0004_crawl_artifacts.sql` (`raw_crawl_artifacts`, `crawl_runs`, `robots_cache`). Driven by `.github/workflows/crawl.yml` calling `X-Crawl-Token`-protected `/api/admin/crawl/*` endpoints. `backend/scrapers/` (v1) is reference-only — do not import; the CI grep test will fail. Port forward, don't "fix" v1.
 - **Crawl admin auth:** `/api/admin/crawl/*` is not GSI-protected. Static `CRAWL_TOKEN` (env on Render, repo secret in GH Actions) compared with `secrets.compare_digest`. Don't reuse for user-facing endpoints.
+- **Re-extraction is opt-in, never automatic:** the extract stage selects on
+  `raw_crawl_artifacts.extract_status = 'pending'` and knows nothing about prompt
+  versions or models, so changing either affects new extractions only. Existing
+  rows keep what they were extracted under until `POST /api/admin/crawl/requeue`
+  (`X-Crawl-Token`, `dry_run=true` by default) puts them back in the queue. That
+  costs real money per church — keep it a deliberate call, bounded by `limit`,
+  and never wire it into a cron.
 - **Extraction prompt changes are eval-gated:** editing
   `backend/scrapers_v2/prompts/website_v3.py` invalidates every cached extraction
   in `evals/website_extraction/baselines/`. CI (`.github/workflows/evals.yml`)
@@ -152,6 +159,10 @@ Identify the failure mode before patching on top: misread product intent, edited
   --save` → point `baselines/CURRENT` at the new stem → commit cache, baseline
   and CURRENT together. Read the score diff before committing a new baseline;
   saving one from a worse prompt makes the regression permanent and invisible.
+  **Swapping `MODEL` counts as a prompt change** — the fingerprint hashes both,
+  and `run.py --model <name>` evaluates a candidate model without touching
+  production. Judged prose fields move ±0.111 run-to-run at n=18, so measure a
+  model twice before believing a difference in them.
 - **R2 keys:** `raw_html/{church_id}/{YYYY-MM-DD}/{content_hash}.html`. content_hash is sha256 of *cleaned trafilatura text*, not raw HTML, so cookies/timestamps in HTML don't bust dedup. Idempotency is enforced at both layers: R2 HEAD before PUT, and `UNIQUE(church_id, url, content_hash)` on `raw_crawl_artifacts`.
 
 ---

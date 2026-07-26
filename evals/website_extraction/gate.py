@@ -52,6 +52,7 @@ import sys
 import tempfile
 from pathlib import Path
 
+from backend.scrapers_v2.prompts.website_v3 import MODEL
 from evals.website_extraction.compile import MD, compile_md
 from evals.website_extraction.run import GOLDEN, cache_meta, load_cache, prompt_fingerprint
 from evals.website_extraction.run import main as run_main
@@ -117,12 +118,16 @@ def check_prompt_fresh(baseline: dict, cache_meta: dict | None = None) -> list[s
             continue
         stamped = True
         if got != want:
+            stamped_model = (cache_meta or {}).get("model") or baseline.get("model")
+            detail = ""
+            if stamped_model and stamped_model != MODEL:
+                detail = f" Model changed: {stamped_model} -> {MODEL}."
             problems.append(
-                f"prompt changed since the {label} was saved "
-                f"({label} {got}, working tree {want}). Those extractions came "
-                "from the old prompt, so scoring them proves nothing. Re-run "
-                "with --save-cache/--save and update CURRENT — see the module "
-                "docstring."
+                f"prompt or model changed since the {label} was saved "
+                f"({label} {got}, working tree {want}).{detail} Those extractions "
+                "came from the old prompt/model, so scoring them proves nothing. "
+                "Re-run with --save-cache/--save and update CURRENT — see the "
+                "module docstring."
             )
     if not stamped:
         problems.append(

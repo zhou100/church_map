@@ -20,6 +20,7 @@ from backend.db.repository import CrawlRepository
 from backend.scrapers_v2 import extract as extract_mod
 from backend.scrapers_v2 import fetch as fetch_mod
 from backend.scrapers_v2 import tag as tag_mod
+from backend.scrapers_v2.prompts.website_v3 import MODEL, PROMPT_VERSION
 from backend.scrapers_v2.r2 import R2Client, R2Error
 
 log = logging.getLogger(__name__)
@@ -130,6 +131,64 @@ async def crawl_tag(
         return await tag_mod.run_tag_batch(repo, batch_size=batch, force=force)
 
     return await _run_stage("tag", batch, runner)
+
+
+@router.post("/requeue", dependencies=[Depends(require_crawl_token)])
+async def crawl_requeue(
+    limit: int = Query(default=200, ge=1, le=5000),
+    dry_run: bool = Query(default=True),
+):
+    """Re-queue churches whose extraction predates the current prompt/model.
+
+    Needed because the extract stage selects on `extract_status`, never on
+    prompt version — so a prompt or model change applies to new extractions
+    only, and existing rows keep whatever they were extracted under. This
+    puts them back in the normal queue; the scheduled extract stage then
+    drains it at its usual batch size, with its usual bookkeeping.
+
+    Defaults to `dry_run=true`. Re-extraction costs real money per church,
+    so the safe call is the one that only counts, and spending requires
+    saying so explicitly.
+
+    `limit` bounds churches, not artifacts — run it in passes and watch
+    `/api/stats` (or `/status`) between them rather than queueing the whole
+    corpus at once.
+    """
+    async with pool.acquire() as con:
+        repo = CrawlRepository(con)
+        counts = await repo.count_stale_extractions(PROMPT_VERSION, MODEL)
+        if dry_run:
+            return {
+                "dry_run": True,
+                "current_prompt_version": PROMPT_VERSION,
+                "current_model": MODEL,
+                "stale_churches": counts["total"],
+                "awaiting_queue": counts["awaiting_queue"],
+                "would_requeue_churches": min(counts["awaiting_queue"], limit),
+            }
+        church_ids = await repo.requeue_stale_extractions(
+            PROMPT_VERSION, MODEL, limit=limit
+        )
+        await con.commit()
+
+    unique = sorted(set(church_ids))
+    log.info(
+        "requeued %d artifacts across %d churches for re-extraction (%s / %s)",
+        len(church_ids), len(unique), PROMPT_VERSION, MODEL,
+    )
+    return {
+        "dry_run": False,
+        "current_prompt_version": PROMPT_VERSION,
+        "current_model": MODEL,
+        # Size of the whole backfill. Does NOT drop when you re-queue — a
+        # church stays stale until the extract stage rewrites its row.
+        "stale_churches": counts["total"],
+        "requeued_churches": len(unique),
+        "requeued_artifacts": len(church_ids),
+        # What is left to hand to the pipeline. This is the one that falls
+        # per pass; run again until it reaches zero.
+        "awaiting_queue_after": max(0, counts["awaiting_queue"] - len(unique)),
+    }
 
 
 @router.get("/status", dependencies=[Depends(require_crawl_token)])
