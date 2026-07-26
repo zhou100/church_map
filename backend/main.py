@@ -22,7 +22,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
 
 from backend.db import pool
-from backend.routers import admin, auth, churches, reviews
+from backend.routers import admin, auth, churches, reviews, stats
 
 READ_ONLY = os.environ.get("READ_ONLY", "0") == "1"
 WRITE_METHODS = {"POST", "PUT", "PATCH", "DELETE"}
@@ -84,6 +84,7 @@ app.include_router(churches.router, prefix="/api")
 app.include_router(reviews.router, prefix="/api")
 app.include_router(auth.router, prefix="/api")
 app.include_router(admin.router, prefix="/api")
+app.include_router(stats.router, prefix="/api")
 
 
 @app.get("/api/health")

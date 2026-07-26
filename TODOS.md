@@ -21,19 +21,19 @@ verification trail: [STATUS.md](STATUS.md).
       already extracted keeps its v3 values: empty languages, and Korean/Russian
       denomination and program strings. Re-extracting means re-queueing artifacts
       whose `extracted_prompt_version` is older than `2026-07-24.v3.1`. No
-      re-crawling (the R2 archive covers that), but it is real LLM spend, so
-      size it first: `SELECT extracted_prompt_version, COUNT(*) FROM churches
-      GROUP BY 1`. **Search/filter on `extracted_tags` is worth much less until
-      this runs** — the fix is in the prompt, not yet in the data.
+      re-crawling (the R2 archive covers that), but it is real LLM spend.
+      **`GET /api/stats` now sizes it** — `extraction.stale` is exactly the
+      number of churches involved. **Search/filter on `extracted_tags` is worth
+      much less until this runs** — the fix is in the prompt, not in the data.
 
 ## Next (this month)
 
-- [ ] **`/api/admin/crawl/status`-lite as a public `/api/stats` endpoint** — total
-      churches, % with websites, % extracted, last successful crawl run per stage.
-      No token-gating needed if it's just aggregate counts, not per-church detail.
-      Surface it somewhere visible (README badge, tiny status page). This is the
-      difference between "trust me, there's a pipeline" and a live number — and it
-      would have caught the July workflow disable days earlier.
+- [ ] **Surface `/api/stats` somewhere visible.** The endpoint exists now
+      (aggregate counts, prompt-version split, last successful run per stage,
+      untokened). What's missing is somewhere a human actually looks: a README
+      badge, a small status page, or a line on the frontend footer. A number
+      nobody sees is the same as no number — that's how the July disable went
+      8 days unnoticed.
 - [ ] **Demand-driven fetch priority.** `churches_due_for_fetch` in
       `backend/db/repository.py` currently orders by `last_try ASC NULLS FIRST` —
       pure table order. Seed or reorder toward a top-N metro list (or actual search

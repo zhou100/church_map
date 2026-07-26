@@ -566,3 +566,81 @@ class CrawlRepository:
         """
         async with self.con.cursor() as cur:
             await cur.execute(sql, (status, church_id))
+
+
+class StatsRepository:
+    """Aggregate counts for the public /api/stats endpoint.
+
+    Deliberately aggregate-only: no per-church detail, so it needs no token
+    the way /api/admin/crawl/status does. Every query here is a full scan of
+    a 134k-row table or a small scan of crawl_runs — cheap, but not free,
+    which is why the router caches the result rather than the queries being
+    optimized into unreadability.
+    """
+
+    def __init__(self, con: AsyncConnection):
+        self.con = con
+
+    async def church_counts(self) -> dict:
+        """One pass over churches for every headline count."""
+        sql = """
+            SELECT
+                COUNT(*)                                            AS total,
+                COUNT(*) FILTER (
+                    WHERE website IS NOT NULL AND website <> ''
+                )                                                   AS with_website,
+                COUNT(*) FILTER (WHERE extracted_at IS NOT NULL)    AS extracted,
+                COUNT(*) FILTER (
+                    WHERE website_summary IS NOT NULL AND website_summary <> ''
+                )                                                   AS with_summary,
+                COUNT(*) FILTER (WHERE google_enriched_at IS NOT NULL) AS enriched
+              FROM churches
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql)
+            return await cur.fetchone()
+
+    async def extraction_by_prompt_version(self) -> list[dict]:
+        """Extraction counts per prompt version, newest-largest first.
+
+        This is what sizes a re-extraction backfill: the extract stage
+        selects on artifact status, not prompt version, so churches keep
+        whatever version they were last extracted under.
+        """
+        sql = """
+            SELECT COALESCE(extracted_prompt_version, 'unknown') AS version,
+                   COUNT(*)                                      AS count
+              FROM churches
+             WHERE extracted_at IS NOT NULL
+             GROUP BY 1
+             ORDER BY count DESC, version
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql)
+            return await cur.fetchall()
+
+    async def crawl_health(self, window_days: int = 7) -> dict:
+        """Last successful run per stage, plus recent run outcomes.
+
+        The "last successful run" half is the outage detector: the pipeline
+        going quiet looks exactly like success from the outside, which is
+        how the 2026-07-08 auto-disable went unnoticed for 8 days.
+        """
+        last_sql = """
+            SELECT stage, MAX(finished_at) AS last_success
+              FROM crawl_runs
+             WHERE status = 'ok'
+             GROUP BY stage
+        """
+        window_sql = """
+            SELECT status, COUNT(*) AS count
+              FROM crawl_runs
+             WHERE started_at >= NOW() - make_interval(days => %s)
+             GROUP BY status
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(last_sql)
+            last = await cur.fetchall()
+            await cur.execute(window_sql, (window_days,))
+            window = await cur.fetchall()
+        return {"last_success": last, "window": window, "window_days": window_days}

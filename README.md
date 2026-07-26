@@ -118,6 +118,7 @@ DATABASE_URL=... pytest tests/test_parity.py # endpoint parity against Postgres
 
 ```text
 GET  /api/health
+GET  /api/stats
 GET  /api/churches?city=Brooklyn&state=NY&limit=50&offset=0
 GET  /api/churches?zip_code=11201&limit=50&offset=0
 GET  /api/churches/{church_id}
@@ -127,6 +128,14 @@ GET  /api/reviews/{church_id}
 POST /api/reviews
 POST /api/auth/verify
 ```
+
+`GET /api/stats` reports corpus and crawl-pipeline health — how many churches
+have a website, how many are extracted, which prompt version they were
+extracted under, and the last successful run of each crawl stage. Aggregates
+only, so it needs no token, and cached in-process for 5 minutes. A stage that
+has never succeeded reports `null` rather than being omitted; the crawl going
+quiet is the failure this is meant to make visible (it was auto-disabled for 8
+days in July 2026 and nothing said so).
 
 `POST /api/reviews` requires an `Authorization: Bearer <google_id_token>` header. Reviews are tied to a Google-authenticated user record and store reviewer display metadata.
 
