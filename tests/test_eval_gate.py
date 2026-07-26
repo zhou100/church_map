@@ -10,6 +10,7 @@ from pathlib import Path
 
 import pytest
 
+from backend.scrapers_v2.prompts.website_v3 import MODEL
 from evals.website_extraction import gate
 from evals.website_extraction.run import GOLDEN, cache_meta, load_cache, prompt_fingerprint
 
@@ -90,7 +91,7 @@ def test_current_cache_matches_the_current_prompt():
 def test_changed_prompt_is_reported():
     problems = gate.check_prompt_fresh({"prompt_fingerprint": "0000000000000000"})
     assert len(problems) == 1
-    assert "prompt changed since the baseline" in problems[0]
+    assert "prompt or model changed since the baseline" in problems[0]
 
 
 def test_stale_cache_under_a_refreshed_baseline_is_reported():
@@ -100,7 +101,7 @@ def test_stale_cache_under_a_refreshed_baseline_is_reported():
     stale_cache = {"prompt_fingerprint": "0000000000000000"}
     problems = gate.check_prompt_fresh(fresh_baseline, stale_cache)
     assert len(problems) == 1
-    assert "prompt changed since the cache" in problems[0]
+    assert "prompt or model changed since the cache" in problems[0]
 
 
 def test_unfingerprinted_baseline_and_cache_are_reported():
@@ -120,6 +121,33 @@ def test_cache_meta_is_absent_from_loaded_examples():
 def test_fingerprint_is_stable_and_short():
     assert prompt_fingerprint() == prompt_fingerprint()
     assert len(prompt_fingerprint()) == 16
+
+
+def test_fingerprint_covers_the_model_not_just_the_prompt():
+    """Swapping models changes the output as much as editing the prompt.
+
+    The fingerprint originally hashed only PROMPT_VERSION + SYSTEM_PROMPT,
+    so a model swap scored the new model against the old model's cache and
+    passed — the same vacuous pass the gate exists to stop, reached by a
+    different lever.
+    """
+    assert prompt_fingerprint("google/gemini-2.5-flash") != prompt_fingerprint(
+        "google/gemini-2.5-flash-lite"
+    )
+
+
+def test_model_swap_is_named_in_the_failure_message():
+    problems = gate.check_prompt_fresh(
+        {"prompt_fingerprint": "0000000000000000", "model": "some/other-model"},
+        {"prompt_fingerprint": "0000000000000000", "model": "some/other-model"},
+    )
+    assert any("Model changed: some/other-model ->" in p for p in problems)
+
+
+def test_current_cache_records_which_model_made_it():
+    stem = gate.read_current()
+    meta = cache_meta(gate.BASELINE_DIR / f"{stem}.cache.json")
+    assert meta["model"] == MODEL
 
 
 # --- end to end ------------------------------------------------------------

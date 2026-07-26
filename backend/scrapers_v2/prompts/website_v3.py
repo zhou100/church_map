@@ -27,7 +27,19 @@ rows keep their v3 values until something deliberately re-queues them.
 from __future__ import annotations
 
 PROMPT_VERSION = "2026-07-24.v3.1"
-MODEL = "google/gemini-2.5-flash"
+
+# 2026-07-26: gemini-2.5-flash -> flash-lite. Measured on the 18 goldens
+# before switching: all four deterministically scored fields (denomination,
+# service_languages, worship_style, theological_stance) came back identical
+# or better, and every judged-field difference sat inside the +/-0.111
+# run-to-run noise measured for a single model. Cheaper for the same
+# measurable quality.
+#
+# PROMPT_VERSION is unchanged because the prompt text is unchanged. The
+# model is tracked separately: it's in the eval fingerprint (run.py) and in
+# churches.extracted_model, and the re-queue treats a model change as making
+# an extraction stale exactly like a prompt change does.
+MODEL = "google/gemini-2.5-flash-lite"
 
 WORSHIP_STYLES = {
     "liturgical",

@@ -45,7 +45,7 @@ from backend.env_loader import load_env_local
 load_env_local()
 
 from backend.scrapers_v2.extract import call_llm, normalize_extraction
-from backend.scrapers_v2.prompts.website_v3 import PROMPT_VERSION, SYSTEM_PROMPT
+from backend.scrapers_v2.prompts.website_v3 import MODEL, PROMPT_VERSION, SYSTEM_PROMPT
 from evals.website_extraction.judge import (
     JUDGE_FIELDS,
     JUDGE_MODEL,
@@ -57,19 +57,27 @@ from evals.website_extraction.judge import (
 GOLDEN = Path(__file__).parent / "golden.jsonl"
 
 
-def prompt_fingerprint() -> str:
-    """Short hash of the exact prompt that produced a report.
+def prompt_fingerprint(model: str = MODEL) -> str:
+    """Short hash of the exact prompt AND model that produced a report.
 
     Cached extractions are only meaningful for the prompt they were made
     with, and PROMPT_VERSION is a hand-maintained string that an edit can
     forget to bump. Stamping the real content hash into every report lets
     the CI gate (gate.py) refuse to score a changed prompt against a stale
     cache instead of passing vacuously.
+
+    The model is in the hash for the same reason. Swapping
+    gemini-2.5-flash for flash-lite changes the output every bit as much as
+    editing the prompt does, and an earlier version of this function hashed
+    only the prompt — so a model swap sailed through the gate against a
+    cache built by a different model. Same failure, different lever.
     """
     h = hashlib.sha256()
     h.update(PROMPT_VERSION.encode())
     h.update(b"\0")
     h.update(SYSTEM_PROMPT.encode())
+    h.update(b"\0")
+    h.update(model.encode())
     return h.hexdigest()[:16]
 
 
@@ -192,9 +200,9 @@ def cache_meta(path: Path) -> dict:
     return meta if isinstance(meta, dict) else {}
 
 
-async def _extract_live(text: str) -> dict:
+async def _extract_live(text: str, model: str = MODEL) -> dict:
     """Call the live LLM and normalize. Returns the full normalize dict."""
-    raw = await call_llm(text)
+    raw = await call_llm(text, model=model)
     return normalize_extraction(raw, text)
 
 
@@ -202,6 +210,7 @@ async def _run(
     cache: dict | None,
     save_cache_to: Path | None,
     use_judge: bool,
+    model: str = MODEL,
 ) -> dict:
     examples = _load_golden(GOLDEN)
     per_example: list[dict] = []
@@ -215,7 +224,7 @@ async def _run(
         if cached is not None:
             norm = cached["extraction"]
         else:
-            norm = await _extract_live(ex["input_text"])
+            norm = await _extract_live(ex["input_text"], model)
 
         fields = norm["fields"]
         scores = score_one(ex["expected"], fields)
@@ -244,7 +253,8 @@ async def _run(
         # one and the CI gate would score the new prompt against old output.
         new_cache["_meta"] = {
             "prompt_version": PROMPT_VERSION,
-            "prompt_fingerprint": prompt_fingerprint(),
+            "prompt_fingerprint": prompt_fingerprint(model),
+            "model": model,
             "judge_model": JUDGE_MODEL if use_judge else None,
             "judge_version": JUDGE_VERSION if use_judge else None,
         }
@@ -259,7 +269,8 @@ async def _run(
         "summary": summary,
         "examples": per_example,
         "prompt_version": PROMPT_VERSION,
-        "prompt_fingerprint": prompt_fingerprint(),
+        "prompt_fingerprint": prompt_fingerprint(model),
+        "model": model,
     }
     if use_judge:
         report["judge_model"] = JUDGE_MODEL
@@ -281,6 +292,10 @@ def main(argv: list[str]) -> int:
                         help="Persist live extractions (and judge verdicts) so future runs can use --from-cache")
     parser.add_argument("--judge", action="store_true",
                         help="Score prose fields with the LLM judge (cached verdicts are reused; missing ones call the judge model live)")
+    parser.add_argument("--model", default=MODEL,
+                        help=f"Extraction model to evaluate (default {MODEL}). Changing this changes the "
+                             "prompt fingerprint, so a run under a different model can't be scored against "
+                             "another model's baseline by accident.")
     args = parser.parse_args(argv)
 
     cache: dict | None = None
@@ -290,7 +305,9 @@ def main(argv: list[str]) -> int:
             return 2
         cache = load_cache(args.from_cache)
 
-    report = asyncio.run(_run(cache=cache, save_cache_to=args.save_cache, use_judge=args.judge))
+    report = asyncio.run(
+        _run(cache=cache, save_cache_to=args.save_cache, use_judge=args.judge, model=args.model)
+    )
     print(json.dumps(report["summary"], indent=2))
 
     if args.save:

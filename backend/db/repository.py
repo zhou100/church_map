@@ -557,6 +557,99 @@ class CrawlRepository:
                 ),
             )
 
+    async def count_stale_extractions(self, prompt_version: str, model: str) -> dict:
+        """Churches whose extraction predates the current prompt or model.
+
+        Two numbers, because they answer different questions:
+
+        `total` is the size of the whole backfill. It only falls as churches
+        are actually re-extracted — re-queueing does not change it, because
+        `churches.extracted_prompt_version` keeps its old value right up
+        until the extract stage overwrites it.
+
+        `awaiting_queue` excludes churches that already have an artifact
+        sitting in the queue. That is the number that falls immediately when
+        you re-queue, and the one to drive successive passes off.
+        """
+        sql = """
+            SELECT
+                COUNT(*) AS total,
+                COUNT(*) FILTER (
+                    WHERE NOT EXISTS (
+                        SELECT 1 FROM raw_crawl_artifacts a
+                         WHERE a.church_id = c.church_id
+                           AND a.extract_status = 'pending'
+                    )
+                ) AS awaiting_queue
+              FROM churches c
+             WHERE extracted_at IS NOT NULL
+               AND (extracted_prompt_version IS DISTINCT FROM %s
+                    OR extracted_model IS DISTINCT FROM %s)
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, (prompt_version, model))
+            return await cur.fetchone()
+
+    async def requeue_stale_extractions(
+        self, prompt_version: str, model: str, *, limit: int
+    ) -> list[int]:
+        """Flip already-extracted artifacts back to 'pending' for re-extraction.
+
+        The extract stage picks work up by `extract_status = 'pending'` and
+        knows nothing about prompt versions, so re-extracting after a prompt
+        or model change means putting artifacts back in that queue. Doing it
+        this way rather than with a bespoke script means the backfill inherits
+        everything the normal pipeline already has: batch limits, crawl_runs
+        bookkeeping, error handling, and the GitHub Actions schedule that
+        paces it.
+
+        Only artifacts currently 'ok' are touched:
+          - 'pending' is already queued, and re-queueing would be a no-op
+          - 'error' and 'skipped' failed for a reason that a new prompt won't
+            fix; re-queueing them just spends the same money to fail again
+
+        `limit` bounds the number of *churches*, so this can be run in small
+        passes and watched, rather than dumping the whole corpus into the
+        queue at once. Returns the affected church ids.
+
+        Churches that already have a queued artifact are skipped, so calling
+        this repeatedly walks forward through the corpus. Without that, every
+        pass would re-target the same lowest church_ids — a church stays
+        "stale" until the extract stage actually rewrites its row, which is
+        long after it was queued — and the backfill would never advance past
+        its first batch.
+
+        NOTE: no crawl_runs row — that table's CHECK constraint only allows
+        the three pipeline stages, and this is a queue manipulation, not a
+        stage.
+        """
+        sql = """
+            WITH stale AS (
+                SELECT church_id
+                  FROM churches c
+                 WHERE extracted_at IS NOT NULL
+                   AND (extracted_prompt_version IS DISTINCT FROM %s
+                        OR extracted_model IS DISTINCT FROM %s)
+                   AND NOT EXISTS (
+                        SELECT 1 FROM raw_crawl_artifacts a
+                         WHERE a.church_id = c.church_id
+                           AND a.extract_status = 'pending'
+                   )
+                 ORDER BY church_id
+                 LIMIT %s
+            )
+            UPDATE raw_crawl_artifacts a
+               SET extract_status       = 'pending',
+                   extract_error_detail = NULL
+              FROM stale s
+             WHERE a.church_id = s.church_id
+               AND a.extract_status = 'ok'
+            RETURNING a.church_id
+        """
+        async with self.con.cursor() as cur:
+            await cur.execute(sql, (prompt_version, model, limit))
+            return [r[0] for r in await cur.fetchall()]
+
     async def mark_church_extract_error(self, church_id: int, status: str) -> None:
         sql = """
             UPDATE churches
