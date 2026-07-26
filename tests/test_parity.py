@@ -109,6 +109,35 @@ def test_post_review_requires_auth(client):
     assert r.status_code == 401
 
 
+def test_stats_endpoint(client):
+    """Aggregate stats against real data — mainly that the SQL is valid and
+    the denominators behave on a populated corpus."""
+    from backend.routers import stats as stats_mod
+
+    stats_mod._cache["value"] = None  # don't serve another test's snapshot
+    r = client.get("/api/stats")
+    assert r.status_code == 200
+    body = r.json()
+
+    churches = body["churches"]
+    assert churches["total"] > 0
+    assert churches["with_website"] <= churches["total"]
+    assert churches["extracted"] <= churches["with_website"]
+
+    extraction = body["extraction"]
+    assert extraction["stale"] == sum(
+        v["count"] for v in extraction["by_prompt_version"] if not v["current"]
+    )
+    assert sum(v["count"] for v in extraction["by_prompt_version"]) == churches["extracted"]
+
+    assert set(body["crawl"]["runs"]) == {"window_days", "ok", "error", "partial", "running"}
+
+
+def test_stats_needs_no_auth(client):
+    """It must stay open — a status page nobody can read defeats the point."""
+    assert client.get("/api/stats").status_code == 200
+
+
 def test_read_only_mode_blocks_writes(client, monkeypatch):
     """Verifies the READ_ONLY middleware. We can't toggle the env at runtime
     cleanly because the flag is read at import; this checks the path exists
