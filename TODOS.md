@@ -24,17 +24,27 @@ verification trail: [STATUS.md](STATUS.md).
       never on prompt version or model. Runbook:
 
       ```bash
+      # Set both first. `-sS`, not `-s`: plain -s silences curl's OWN errors,
+      # so an unset variable makes a malformed URL and the command prints
+      # absolutely nothing, which reads like a broken endpoint.
+      export CRAWL_TOKEN='<same value as the Render env var / GH Actions secret>'
+      BACKEND=https://churchmap-api.onrender.com
+
       # 1. size it — dry_run is the default, nothing is written.
       #    `GET /api/stats` reports the same number as extraction.stale.
-      curl -sX POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
+      curl -sS -X POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
         "$BACKEND/api/admin/crawl/requeue?dry_run=true"
 
       # 2. queue a first pass and let the normal extract cron drain it
-      curl -sX POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
+      curl -sS -X POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
         "$BACKEND/api/admin/crawl/requeue?dry_run=false&limit=200"
 
       # 3. repeat until awaiting_queue_after is 0, watching /api/stats
       ```
+
+      Sanity check before blaming the endpoint: a token-less call must return
+      `403 {"detail":"invalid crawl token"}`. A `404` means the route isn't
+      deployed; empty output means curl never made the request.
 
       `stale_churches` is the size of the whole job and only falls as churches
       are actually re-extracted; `awaiting_queue` is what's left to hand to the
