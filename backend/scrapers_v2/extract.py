@@ -7,6 +7,22 @@ extracted_tags + confidence + source snippets back to churches.
 
 Backoff: 1s, 4s, 16s on 429/5xx. Non-retryable on 4xx auth/bad request.
 
+Failure routing matters more than it looks, because two of the four outcomes
+are irreversible — `requeue` only ever puts 'ok' artifacts back, so anything
+marked 'skipped' or 'error' is out of the corpus for good:
+
+    cause                     artifacts   church status     way back
+    ------------------------  ----------  ----------------  ------------------
+    R2 unreachable            pending     transient:r2-...  automatic, next run
+    R2 key absent             skipped     no-html:n/m       re-fetch the site
+    page has no usable text   skipped     no-text           none (correct)
+    model returned junk       error       error:...         none (correct)
+    LLM/network blip          pending     transient:...     automatic, next run
+
+The first row is the one worth being careful about: an unreachable bucket
+produces exactly the same "no text" symptom as an empty page, and routing it
+to the second row would quietly delete the backfill one batch at a time.
+
 Source-snippet validation: the model must return verbatim substrings of the
 input text. Non-substrings are dropped silently rather than failing the
 entire extraction — confidence drop is the signal, not a hard error.
@@ -17,6 +33,7 @@ import asyncio
 import json
 import logging
 import os
+from dataclasses import dataclass
 from typing import Any
 
 import httpx
@@ -59,16 +76,42 @@ def _truncate(text: str, limit: int = MAX_INPUT_CHARS) -> str:
     return text[:limit] + "\n\n[...truncated]"
 
 
+@dataclass
+class GatheredText:
+    """What came back from R2, and why it was thin if it was.
+
+    "No text" used to be one outcome with three causes — the object is gone,
+    the bucket is unreachable, or the page really is empty — and they need
+    opposite responses: re-fetch, retry, and give up respectively. Collapsing
+    them meant a re-extraction batch could report a wall of `no-text` that
+    said nothing about which. Counting them here is what makes the answer
+    readable off `/api/stats` instead of off the Render logs.
+    """
+    text: str
+    keys: int = 0
+    missing: int = 0      # R2 says the object is not there — needs re-fetching
+    unreadable: int = 0   # R2 could not be read at all — transient, retry
+
+
 def _gather_text_from_r2(
     r2: r2mod.R2Client, kinds: list[str], r2_keys: list[str]
-) -> str:
+) -> GatheredText:
     """Read raw HTML from R2 and run trafilatura per page; concatenate in
     kind-priority order (already sorted by SQL)."""
     parts: list[str] = []
+    out = GatheredText(text="", keys=len(r2_keys))
     for kind, key in zip(kinds, r2_keys):
         try:
             raw = r2.get_html(key)
+        except r2mod.R2NotFound:
+            # The archive does not have this page. Nothing to extract, ever.
+            out.missing += 1
+            log.warning("R2 key absent: %s", key)
+            continue
         except r2mod.R2Error as e:
+            # Auth, throttling, a Cloudflare 5xx, missing credentials. The page
+            # may well be fine — do not let this masquerade as an empty page.
+            out.unreadable += 1
             log.warning("R2 get failed for %s: %s", key, e)
             continue
         try:
@@ -79,7 +122,8 @@ def _gather_text_from_r2(
             text = ""
         if text:
             parts.append(f"# {kind}\n{text}")
-    return _truncate("\n\n".join(parts))
+    out.text = _truncate("\n\n".join(parts))
+    return out
 
 
 def _parse_json_object(content: str) -> dict[str, Any]:
@@ -248,8 +292,28 @@ async def extract_for_church(
     api_key: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> bool:
-    text = _gather_text_from_r2(r2, kinds, r2_keys)
+    got = _gather_text_from_r2(r2, kinds, r2_keys)
+    text = got.text
     if not text:
+        # Three different reasons to have no text, and only one of them means
+        # "give up on this church". Marking artifacts 'skipped' is permanent —
+        # `requeue` only puts 'ok' artifacts back — so a bucket that is merely
+        # unreachable must never reach that branch. Rotated R2 credentials
+        # would otherwise burn every artifact in the batch, silently, at the
+        # rate the cron runs.
+        if got.unreadable:
+            detail = f"r2-unreadable:{got.unreadable}/{got.keys}"
+            log.warning("extract cannot read R2 for church=%s: %s", church_id, detail)
+            await repo.mark_church_extract_error(church_id, f"transient:{detail}")
+            return False
+        if got.missing:
+            # The archive lost (or never held) the HTML. Re-extraction can
+            # never fix this; re-*fetching* is the only route back, so say so
+            # in the status rather than filing it under "page was empty".
+            detail = f"no-html:{got.missing}/{got.keys}"
+            await repo.mark_artifacts_status(artifact_ids, status="skipped", error_detail=detail)
+            await repo.mark_church_extract_error(church_id, detail)
+            return False
         await repo.mark_artifacts_status(artifact_ids, status="skipped", error_detail="no-text")
         await repo.mark_church_extract_error(church_id, "no-text")
         return False

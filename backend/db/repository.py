@@ -792,17 +792,74 @@ class StatsRepository:
             await cur.execute(sql)
             return await cur.fetchall()
 
+    async def extraction_status_breakdown(self) -> list[dict]:
+        """Why extraction attempts ended, bucketed, largest first.
+
+        `churches.extracted_at` is set by success *and* failure, so the
+        headline "extracted" count has always included churches where nothing
+        was extracted. This is the column that says which — and it was written
+        by every run since Phase B without anything ever reading it, which is
+        how a 55%-failure backfill batch (run 577, 2026-07-27) could only be
+        diagnosed from Render logs.
+
+        Bucketed in SQL rather than returned raw for two reasons. The status
+        strings carry exception text (`transient:unexpected:...`), so raw
+        values are both unbounded in cardinality and the wrong thing to put on
+        an unauthenticated endpoint. And the buckets are the actual decision:
+        `no_html` means re-fetch, `no_text` and `error` mean give up,
+        `transient` means it retries itself.
+        """
+        sql = """
+            SELECT
+                CASE
+                    WHEN extracted_status IS NULL          THEN 'unknown'
+                    WHEN extracted_status = 'ok'           THEN 'ok'
+                    WHEN extracted_status LIKE 'no-html%'  THEN 'no_html'
+                    WHEN extracted_status LIKE 'no-text%'  THEN 'no_text'
+                    WHEN extracted_status LIKE 'error:%'   THEN 'error'
+                    WHEN extracted_status LIKE 'transient:%' THEN 'transient'
+                    ELSE 'other'
+                END      AS status,
+                COUNT(*) AS count
+              FROM churches
+             WHERE extracted_at IS NOT NULL
+             GROUP BY 1
+             ORDER BY count DESC, status
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql)
+            return await cur.fetchall()
+
     async def crawl_health(self, window_days: int = 7) -> dict:
         """Last successful run per stage, plus recent run outcomes.
 
         The "last successful run" half is the outage detector: the pipeline
         going quiet looks exactly like success from the outside, which is
         how the 2026-07-08 auto-disable went unnoticed for 8 days.
+
+        Two timestamps, not one, because `status='ok'` means "zero rows
+        failed" — a much stricter thing than "the stage ran". Any batch with
+        a single bad row is 'partial', so during a backfill with a real error
+        rate the strict timestamp freezes while the pipeline works normally,
+        and every stage eventually reports stale. Measured on the live
+        endpoint 2026-07-27: extract's last 'ok' was 21h old and climbing
+        toward its 24h budget purely because the re-extraction batches had
+        errors in them.
+
+        So `last_progress` — a run that finished and got at least one row
+        through — is what staleness is measured against. `rows_ok > 0`
+        matters: a batch where everything failed is not evidence of a working
+        pipeline. `last_success` stays strict and is reported alongside, since
+        "last completely clean run" is a real thing to want to know.
         """
         last_sql = """
-            SELECT stage, MAX(finished_at) AS last_success
+            SELECT stage,
+                   MAX(finished_at) FILTER (WHERE status = 'ok') AS last_success,
+                   MAX(finished_at) FILTER (
+                       WHERE status IN ('ok', 'partial') AND rows_ok > 0
+                   )                                             AS last_progress
               FROM crawl_runs
-             WHERE status = 'ok'
+             WHERE status IN ('ok', 'partial')
              GROUP BY stage
         """
         window_sql = """

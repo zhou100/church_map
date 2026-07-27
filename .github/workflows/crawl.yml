@@ -24,7 +24,8 @@ name: crawl
 # whenever a stage fails, so a bad CRAWL_TOKEN or a Render outage surfaces
 # instead of the pipeline going quiet. Silence used to be indistinguishable
 # from success here — see .github/workflows/keepalive.yml for the other half
-# of that story.
+# of that story. `resolve` closes that issue again once /api/stats says the
+# whole pipeline is healthy; an alert that never clears stops being read.
 
 on:
   schedule:
@@ -138,8 +139,9 @@ jobs:
             "Usual suspects: an expired or rotated \`CRAWL_TOKEN\`, the Render backend" \
             "cold-starting past the curl timeout, or Supabase refusing connections." \
             "" \
-            "Close this issue once the next run is green — it is reopened per incident," \
-            "and further failures comment here instead of filing duplicates.")
+            "This closes itself once a later run is green AND /api/stats reports" \
+            "every stage inside its freshness budget. Further failures comment here" \
+            "instead of filing duplicates.")
 
           existing=$(gh issue list \
             --label crawl-alert --state open \
@@ -154,3 +156,83 @@ jobs:
               --label crawl-alert \
               --body "$body"
           fi
+
+  # The other half of `alert`. Without this the issue never closes: #19 sat
+  # open through five green runs after a transient Supabase refusal, which
+  # turns the alert label into background noise — and an alert nobody believes
+  # is worth about as much as no alert, which is the failure mode this whole
+  # workflow exists to avoid.
+  #
+  # Gated on the *pipeline*, not on this run. A green fetch says nothing about
+  # extract, and a scheduled run only ever exercises one stage; `pipeline_ok`
+  # is true only when every stage has made progress inside its budget. So the
+  # issue closes when the pipeline is healthy, not when one stage got lucky.
+  resolve:
+    needs: [fetch, extract, tag]
+    # Not `success()`: on a scheduled run the two stages that didn't fire are
+    # skipped, and `success()` is false for a skipped dependency. What matters
+    # is that nothing failed.
+    if: ${{ always() && !failure() && !cancelled() }}
+    runs-on: ubuntu-latest
+    permissions:
+      issues: write
+    steps:
+      - name: Close the crawl-failure issue once the pipeline is healthy
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          GH_REPO: ${{ github.repository }}
+          BACKEND_URL: ${{ secrets.BACKEND_URL }}
+          RUN_URL: ${{ github.server_url }}/${{ github.repository }}/actions/runs/${{ github.run_id }}
+        run: |
+          set -euo pipefail
+
+          existing=$(gh issue list \
+            --label crawl-alert --state open \
+            --limit 1 --json number --jq '.[0].number // empty')
+          if [ -z "$existing" ]; then
+            echo "no open crawl-alert issue; nothing to close"
+            exit 0
+          fi
+
+          # /api/stats is public — no CRAWL_TOKEN needed here. -sS so a
+          # malformed URL is an error message rather than empty output; the
+          # runbook in TODOS.md has the same note for the same reason.
+          #
+          # Every failure below resolves to "not healthy, leave it open, exit
+          # 0". Two separate reasons: a backend that can't answer is evidence
+          # against closing, never for it; and under `set -e` an unparseable
+          # body (Render serves HTML on a cold-start 502) would fail this step
+          # and paint a successful crawl run red.
+          stats=$(curl -sS --max-time 60 "$BACKEND_URL/api/stats" || true)
+          ok=$(printf '%s' "$stats" | jq -r '.crawl.pipeline_ok // false' 2>/dev/null || echo false)
+
+          if [ "$ok" != "true" ]; then
+            echo "pipeline_ok=$ok — leaving #$existing open"
+            printf '%s' "$stats" | jq -c '.crawl.stages' 2>/dev/null \
+              || echo "(no parseable stats from $BACKEND_URL/api/stats)"
+            exit 0
+          fi
+
+          # The endpoint caches for 5 minutes, so this can be up to that stale.
+          # Budgets are measured in hours, so the only thing that costs is
+          # closing one run later than strictly possible. Closing late is
+          # harmless; closing while still broken is not.
+          summary=$(printf '%s' "$stats" | jq -r '
+            .crawl.stages | to_entries
+            | map("\(.key): \(.value.age_seconds // "never")s old, budget \(.value.max_age_seconds)s")
+            | join("\n")' 2>/dev/null || echo "(stage detail unavailable)")
+
+          gh issue close "$existing" --reason completed --comment "$(printf '%s\n' \
+            "Pipeline recovered — closing automatically." \
+            "" \
+            "\`/api/stats\` reports \`pipeline_ok: true\`, i.e. every stage has made" \
+            "progress inside its freshness budget:" \
+            "" \
+            '```' \
+            "$summary" \
+            '```' \
+            "" \
+            "- Green run: $RUN_URL" \
+            "" \
+            "A later failure files a new issue rather than reopening this one.")"
+          echo "closed #$existing"
