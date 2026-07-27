@@ -32,6 +32,17 @@ class R2Error(Exception):
     pass
 
 
+class R2NotFound(R2Error):
+    """The key is genuinely absent from the bucket.
+
+    Split out from R2Error because the two need opposite handling: a missing
+    object is never coming back, so whatever depends on it has to be re-fetched
+    from the origin; anything else (auth, throttling, a 5xx from Cloudflare) is
+    the bucket being temporarily unreachable and must be retried instead of
+    treated as "no content".
+    """
+
+
 def content_hash_of(text: str) -> str:
     return hashlib.sha256(text.encode("utf-8")).hexdigest()
 
@@ -76,13 +87,17 @@ class R2Client:
         )
         return self._client
 
+    @staticmethod
+    def _is_missing(e: Any) -> bool:
+        code = e.response.get("Error", {}).get("Code", "") if hasattr(e, "response") else ""
+        return code in ("404", "NoSuchKey", "NotFound")
+
     def head(self, key: str) -> bool:
         try:
             self._ensure().head_object(Bucket=self.bucket, Key=key)
             return True
         except ClientError as e:
-            code = e.response.get("Error", {}).get("Code", "")
-            if code in ("404", "NoSuchKey", "NotFound"):
+            if self._is_missing(e):
                 return False
             raise R2Error(f"R2 head failed: {e}") from e
 
@@ -102,4 +117,6 @@ class R2Client:
             r = self._ensure().get_object(Bucket=self.bucket, Key=key)
             return r["Body"].read()
         except ClientError as e:
+            if self._is_missing(e):
+                raise R2NotFound(f"R2 key absent: {key}") from e
             raise R2Error(f"R2 get failed for {key}: {e}") from e
