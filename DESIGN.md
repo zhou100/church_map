@@ -59,6 +59,9 @@ Three distinct types — never mix styles:
 - **Quality tags** (Vibrant worship, Deep sermons, etc.): `background: #EEE8F0; color: #5B3E7A` — subtle purple tint signals "community rating"
 - **Language tags** (Spanish, Korean, etc.): `background: #FEF3C7; color: #92400E` — amber/warm, non-English indicator
 - **Culture tags** (Hispanic/Latino, African American, etc.): `background: #D1FAE5; color: #2D6A4F` — green, community identity
+- **Website-extracted tags:** white background, sienna text/border — only inside
+  a warm-surface block labeled "From this church's website." This source line
+  is required so machine-read claims never look like community consensus.
 - **Active/selected:** `background: #8B5E3C; color: white`
 
 ## Spacing
@@ -117,3 +120,4 @@ The bars are a primary data feature — make them visible and beautiful.
 | 2026-03-23 | Left-border accent, no photo placeholders | Data-first principle — HolyHub's advantage is richness of data, not photos |
 | 2026-03-23 | Split-pane as primary layout (no toggle) | Google Maps pattern — list and map always co-visible, synced on hover |
 | 2026-03-23 | Plus Jakarta Sans for body | Humanist, warm, readable — not overused |
+| 2026-07-27 | Label machine-extracted website content at the section level | Keeps crawled claims distinct from community ratings without adding per-pill clutter |

@@ -4,6 +4,7 @@ import { MapContainer, TileLayer, Marker } from 'react-leaflet'
 import DimensionBars from '../components/DimensionBars'
 import ReviewForm from '../components/ReviewForm'
 import ChurchCard from '../components/ChurchCard'
+import AboutSection from '../components/AboutSection'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -11,93 +12,6 @@ function Stars({ rating }) {
   if (rating == null) return <span className="stars">—</span>
   const full = Math.round(rating)
   return <span className="stars">{'★'.repeat(full)}{'☆'.repeat(5 - full)}</span>
-}
-
-const WORSHIP_STYLE_LABEL = {
-  'liturgical': 'Liturgical',
-  'traditional-hymns': 'Traditional hymns',
-  'blended': 'Blended worship',
-  'contemporary': 'Contemporary',
-  'charismatic': 'Charismatic',
-}
-
-function AboutSection({ summary, tags }) {
-  const vibe = tags?.vibe_tags || []
-  const programs = tags?.programs || []
-  const langs = tags?.service_languages || []
-  const theology = tags?.theology_summary
-  const worshipStyle = tags?.worship_style
-  const worshipDetail = tags?.worship_style_detail
-  const pullQuote = tags?.pull_quote
-  const faith = tags?.statement_of_faith || []
-
-  const hasAnything = summary || theology || worshipStyle || worshipDetail
-    || pullQuote || faith.length || vibe.length || programs.length || langs.length
-  if (!hasAnything) return null
-
-  return (
-    <div className="about-section">
-      {summary && <p className="about-summary">{summary}</p>}
-
-      {pullQuote && (
-        <blockquote className="about-pullquote">{pullQuote}</blockquote>
-      )}
-
-      {vibe.length > 0 && (
-        <div className="about-tags">
-          {vibe.map(t => <span key={t} className="vibe-chip">{t}</span>)}
-        </div>
-      )}
-
-      {(theology || worshipStyle || worshipDetail) && (
-        <div className="about-blocks">
-          {theology && (
-            <div className="about-block">
-              <h4>What they teach</h4>
-              <p>{theology}</p>
-            </div>
-          )}
-          {(worshipStyle || worshipDetail) && (
-            <div className="about-block">
-              <h4>Worship style</h4>
-              {worshipStyle && (
-                <p className="about-block-lead">
-                  {WORSHIP_STYLE_LABEL[worshipStyle] || worshipStyle}
-                </p>
-              )}
-              {worshipDetail && <p>{worshipDetail}</p>}
-            </div>
-          )}
-        </div>
-      )}
-
-      {faith.length > 0 && (
-        <div className="about-block">
-          <h4>Statement of faith</h4>
-          <ul className="about-faith-list">
-            {faith.map((f, i) => <li key={i}>{f}</li>)}
-          </ul>
-        </div>
-      )}
-
-      {(programs.length > 0 || langs.length > 0) && (
-        <dl className="about-meta">
-          {langs.length > 0 && (
-            <>
-              <dt>Languages</dt>
-              <dd>{langs.join(', ')}</dd>
-            </>
-          )}
-          {programs.length > 0 && (
-            <>
-              <dt>Programs</dt>
-              <dd>{programs.join(' · ')}</dd>
-            </>
-          )}
-        </dl>
-      )}
-    </div>
-  )
 }
 
 function ReviewCard({ review }) {

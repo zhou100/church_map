@@ -266,6 +266,14 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   background: var(--warm-surface);
   border-radius: 0 6px 6px 0;
 }
+.about-source {
+  margin: 0 0 0.5rem;
+  color: var(--sienna);
+  font-size: 0.69rem;
+  font-weight: 700;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+}
 .about-summary {
   margin: 0 0 0.65rem;
   font-size: 0.92rem;
@@ -321,6 +329,7 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 }
 @media (min-width: 600px) {
   .about-blocks { grid-template-columns: 1fr 1fr; }
+  .detail-panel .about-blocks { grid-template-columns: 1fr; }
 }
 .about-block { min-width: 0; }
 .about-block h4 {

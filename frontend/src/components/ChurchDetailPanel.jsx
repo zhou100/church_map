@@ -3,6 +3,7 @@ import { MapContainer, TileLayer, Marker } from 'react-leaflet'
 import DimensionBars from './DimensionBars'
 import ReviewForm from './ReviewForm'
 import ChurchCard from './ChurchCard'
+import AboutSection from './AboutSection'
 
 const API = import.meta.env.VITE_API_URL || ''
 
@@ -168,6 +169,8 @@ export default function ChurchDetailPanel({ churchId, onBack, onSelect }) {
                   )}
                 </div>
               )}
+
+              <AboutSection summary={church.website_summary} tags={church.extracted_tags} />
 
               {enrichData?.hours?.length > 0 && (
                 <div className="opening-hours">
