@@ -41,6 +41,19 @@ function Distance({ church, userLat, userLon }) {
 }
 
 function CardBody({ church, userLat, userLon }) {
+  const extracted = church.extracted_tags || {}
+  const extractedValues = Object.values(extracted)
+  const hasWebsiteInsights = Boolean(
+    church.website_summary ||
+    extractedValues.some(value => Array.isArray(value) ? value.length : value)
+  )
+  const websiteTags = [...new Set([
+    ...(Array.isArray(extracted.service_languages)
+      ? extracted.service_languages.filter(language => language !== 'English')
+      : []),
+    ...(Array.isArray(extracted.vibe_tags) ? extracted.vibe_tags : []),
+  ])].slice(0, 2)
+
   return (
     <div className="card-body">
       <h3>{church.name}</h3>
@@ -62,6 +75,14 @@ function CardBody({ church, userLat, userLon }) {
         )}
         {church.tags?.map(t => <span key={t} className="tag">{t}</span>)}
       </div>
+      {hasWebsiteInsights && (
+        <div className="website-card-insights">
+          <span className="website-card-source">From their website</span>
+          {websiteTags.map(tag => (
+            <span key={tag} className="website-card-chip">{tag}</span>
+          ))}
+        </div>
+      )}
     </div>
   )
 }
