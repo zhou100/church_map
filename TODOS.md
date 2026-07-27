@@ -8,78 +8,89 @@ verification trail: [STATUS.md](STATUS.md).
 
 ## Now (this week)
 
-- [ ] **Confirm Actions can write.** The repo's default workflow permission is
-      `read` (`gh api repos/zhou100/church_map/actions/permissions/workflow`).
-      The new `alert` job in `crawl.yml` needs `issues: write` and `keepalive.yml`
-      needs `contents: write` + `actions: write`; both request it explicitly, but
-      if either 403s, flip Settings → Actions → General → Workflow permissions to
-      "Read and write". Verify by running `keepalive` via `workflow_dispatch` with
-      `force_commit: false` — it should re-check workflow states and no-op.
-- [ ] **Run the extraction backfill.** The mechanism is built and tested
-      (`POST /api/admin/crawl/requeue`, `X-Crawl-Token`); what remains is running
-      it, which costs money and so is a deliberate call, not something a cron
-      should start on its own. Every church extracted before 2026-07-26 holds
-      v3-era data — empty `service_languages`, Korean/Russian denomination and
-      program strings — because the extract stage selects on `extract_status`,
-      never on prompt version or model. Runbook:
+- [ ] **Diagnose the 55% backfill extraction failure — blocks everything else
+      about the backfill.** The first re-extraction batch (run 577, 2026-07-27
+      10:37) came back `rows_processed: 75, rows_ok: 34, rows_error: 41`. The
+      batch immediately before it, on normal freshly-fetched work, was
+      `50/50/0`. So re-extraction fails far more than new extraction, and at
+      ~34/run x 3 runs/day the backfill is back to ~53 days — the cadence
+      increase in #22 is cancelled out by the error rate.
+
+      **This may be worse than slow.** `extract_for_church` has three failure
+      paths and they are not equivalent:
+
+      | failure | artifacts become | consequence |
+      |---|---|---|
+      | `no-text` (nothing readable in R2) | `skipped` | **permanently excluded** — `requeue` only touches `ok` artifacts |
+      | `ExtractionError` | `error` | same |
+      | transient (LLM/network) | stays `pending` | retried next run, self-healing |
+
+      If those 41 are `no-text`, the premise of the backfill is wrong: the R2
+      archive does not actually hold readable HTML for older artifacts, and
+      those churches need re-*fetching*, not re-extracting. It would also fail
+      silently — `stale_churches` plateaus while `awaiting_queue` marches to
+      zero, which looks exactly like completion.
+
+      `churches.extracted_status` already records which (`no-text`,
+      `error:*`, `transient:*`). Nothing exposes it. Either read the Render
+      logs, or add the breakdown to `/api/stats` (one `GROUP BY` on an
+      existing column) so the answer is permanent rather than one-off.
+
+      **Do not queue backfill chunk 2 until this is understood.** If over half
+      of each batch fails permanently, more queueing spends money and marks
+      more artifacts unrecoverable.
+
+- [ ] **Loosen the fetch staleness budget, 8h -> 12h.** `crawl.stages.fetch`
+      allows 8h against a 4h cron, so a *single* failed run always trips
+      `pipeline_ok` — the next attempt is 4h out, and age passes 8h before
+      recovery is even possible. Observed exactly that on 2026-07-27: one
+      transient failure at 04:04 left `pipeline_ok: false` for hours while
+      nothing was actually wrong. 12h (three cadences) tolerates one failure
+      and still catches a real outage within half a day.
+
+- [ ] **Auto-close the `crawl-alert` issue on a green run.** The alert job
+      files/comments but never closes, so the issue lingers as stale noise
+      after recovery (#19 sat open through five green runs). `/api/stats` is
+      public and needs no token — a step can check `pipeline_ok` after a
+      successful run and close any open `crawl-alert` issue, gated on the
+      whole pipeline being healthy rather than just the stage that ran.
+
+## Next (this month)
+
+- [ ] **Finish the extraction backfill** — blocked on the failure-rate
+      diagnosis above, not on effort. **Chunk 1 was queued 2026-07-27**
+      (1,500 churches / 3,539 artifacts); `stale_churches` 5,413 →
+      **awaiting_queue 3,330** still to hand over. Runbook:
 
       ```bash
-      # Set both first. `-sS`, not `-s`: plain -s silences curl's OWN errors,
-      # so an unset variable makes a malformed URL and the command prints
-      # absolutely nothing, which reads like a broken endpoint.
-      export CRAWL_TOKEN='<same value as the Render env var / GH Actions secret>'
+      # Read the token from Render (dashboard -> churchmap-api -> Environment).
+      # GitHub's copy exists but is unreadable by design, and it already works —
+      # you only touch GitHub when rotating.
+      read -rs CRAWL_TOKEN && export CRAWL_TOKEN
       BACKEND=https://churchmap-api.onrender.com
 
-      # 1. size it — dry_run is the default, nothing is written.
-      #    `GET /api/stats` reports the same number as extraction.stale.
+      # size it — dry_run is the default, nothing is written
       curl -sS -X POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
         "$BACKEND/api/admin/crawl/requeue?dry_run=true"
 
-      # 2. queue a first pass and let the normal extract cron drain it
+      # queue a chunk, then let the extract cron drain it
       curl -sS -X POST -H "X-Crawl-Token: $CRAWL_TOKEN" \
-        "$BACKEND/api/admin/crawl/requeue?dry_run=false&limit=200"
-
-      # 3. repeat until awaiting_queue_after is 0, watching /api/stats
+        "$BACKEND/api/admin/crawl/requeue?dry_run=false&limit=1500"
       ```
 
-      Sanity check before blaming the endpoint: a token-less call must return
-      `403 {"detail":"invalid crawl token"}`. A `404` means the route isn't
-      deployed; empty output means curl never made the request.
+      `-sS`, not `-s`: plain `-s` silences curl's *own* errors, so an unset
+      variable makes a malformed URL and the command prints nothing at all,
+      which reads like a broken endpoint. Triage: a token-less call returns
+      `403`; a `404` means the route isn't deployed; silence means curl never
+      made the request.
 
-      `stale_churches` is the size of the whole job and only falls as churches
-      are actually re-extracted; `awaiting_queue` is what's left to hand to the
-      pipeline and falls per pass.
-
-      **Re-queue in weekly chunks of ~1,500, not all at once.**
-      `pending_extract_targets` orders by `MIN(fetched_at) ASC`, and re-queued
-      artifacts keep their original fetch timestamps — which are weeks old. So
-      every backfilled church sorts *ahead of every newly crawled page*.
-      Queueing all 5,413 at once would park fresh crawl output behind the
-      entire backfill for a month. A chunk drains in ~7 days at the cadence
-      below, and new pages get their turn between chunks.
-
-      **Cadence, set 2026-07-27 for a ~30-day finish.** `/api/stats` measured
-      133,939 churches, 8,512 with a website, 5,463 extracted, **5,413 stale**.
-      The extract cron now runs 3x daily at 75/batch = 225/day nominal,
-      ~190/day after the historical ~15% per-batch error rate → **~28 days**.
-      Per-church cost is ~7s, so a 75 batch is ~9 minutes, well inside the
-      curl timeout. **Put the cadence back to 50 x 2/day once
-      `extraction.stale` is near zero** — it's sized for a finite job, not for
-      the steady state. **Search/filter on `extracted_tags` is worth much less
-      until this finishes** — the fix is in the prompt, not yet in the data.
-- [ ] **Watch prose quality after the flash-lite switch.** The model moved to
-      `gemini-2.5-flash-lite` on 2026-07-26. Measured over two runs of the golden
-      set: deterministic fields improved (+0.023 mean; `theological_stance`
-      0.818 → 0.909), but judged prose fields dropped a reproducible −0.044 mean
-      — `programs`, `statement_of_faith`, `worship_style_detail` and
-      `theology_summary` each lose one example in *both* runs, with the judge
-      citing incompleteness. No single field crosses the gate's 0.15 band, so
-      this is a real-but-small tradeoff, not a regression: better structured data
-      (what search filters on) for slightly thinner summaries (what users read on
-      detail pages). Revisit if detail pages start looking sparse; reverting is a
-      one-line `MODEL` change plus a re-baseline.
-
-## Next (this month)
+      `stale_churches` is the size of the job and only falls as churches are
+      actually re-extracted. `awaiting_queue` is what's left to hand to the
+      pipeline and falls per chunk. **Chunk, don't dump** —
+      `pending_extract_targets` orders by `MIN(fetched_at) ASC` and re-queued
+      artifacts keep their original timestamps, so every backfilled church
+      sorts ahead of every newly crawled page; queueing all of them at once
+      parks fresh crawl output behind the whole backfill.
 
 - [ ] **Surface `/api/stats` somewhere visible.** The endpoint exists now
       (aggregate counts, prompt-version split, last successful run per stage,

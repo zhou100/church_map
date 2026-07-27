@@ -238,9 +238,9 @@ kinds mixed together, see next steps below.
 | 1 | ~~Clear the 11-item `DRAFT:` backlog in `golden.md`~~ **done 2026-07-24** — see [§6](#6-2026-07-24-delivery) | — | Baseline is only as trustworthy as the reviewed fraction; also unblocks #2 |
 | 2 | ~~Wire the CI gate~~ **done 2026-07-24** — `.github/workflows/evals.yml` + `gate.py` | — | Mechanics all exist (`run.py`, cached verdicts) — this is the piece that makes the eval enforce itself instead of relying on memory |
 | 3 | ~~Add a crawl keepalive + failure notification~~ **done 2026-07-24** — `.github/workflows/keepalive.yml` + an `alert` job in `crawl.yml` | — | The Jul 8 disable was silent; nothing prevents a repeat once the 60-day clock runs out again, and there's still no alert on a failed run (bad `CRAWL_TOKEN`, Render outage) |
-| 4 | `/api/stats` endpoint (total churches, % with websites, % extracted, last crawl time) + a small status surface | S | No live observability today outside token-gated admin endpoints or manual API sampling like this report did |
+| 4 | ~~`/api/stats` endpoint~~ **done 2026-07-27** (#16, hardened in #20) — surfacing it in the UI is still open, see [§8](#8-2026-07-27--observability-the-backfill-starts-and-what-it-found) | — | No live observability today outside token-gated admin endpoints or manual API sampling like this report did |
 | 5 | Demand-driven fetch priority — seed/reorder `churches_due_for_fetch` toward top-N metro areas instead of relying on table order + luck (Seattle is still at 0) | S | Brooklyn/NYC catching up was incidental (bug fix + table order), not by design; the next demo city might not be so lucky |
-| 6 | Search/filter on `extracted_tags` (languages, worship style, vibe) in `list_churches`; surface extracted tags on result cards when review-derived tags are empty | M | The actual product payoff of Phase B — extraction coverage doubling in NYC/Brooklyn this week doesn't help users until search uses it |
+| 6 | ~~Search/filter on `extracted_tags`~~ **API done 2026-07-27** (#23: `language`, `worship_style`, `stance`); the frontend half is still open | — | The actual product payoff of Phase B — extraction coverage doubling in NYC/Brooklyn this week doesn't help users until search uses it |
 | 7 | Refresh `TODOS.md` (done alongside this update — replaced pre-Phase-A content with the active backlog) and `OVERVIEW.md` (crawl numbers are stale — still says the pipeline is aspirational/"adds", not that it's been running successfully for months) | S | Docs undersell working infrastructure |
 
 Item 6 is now the highest-leverage *product* item — the data exists, coverage in the
@@ -408,6 +408,114 @@ completed extractions of spend, discarded. In production that raised an
 `AttributeError`, which is neither of the two error classes the extract loop
 routes on. It now retries like any other blip, with tests. Found by hitting it,
 not by reading for it.
+
+---
+
+## 8. 2026-07-27 — observability, the backfill starts, and what it found
+
+Seven PRs landed between §7 and here. The through-line: each one's findings
+generated the next one's work, and the last one found something that
+questions the premise of the backfill itself.
+
+### What shipped
+
+| PR | What | Why it mattered |
+|---|---|---|
+| #16 | Public `GET /api/stats` | No way to tell a working pipeline from a dead one without a token |
+| #17 | flash-lite + `requeue` backfill mechanism | Prompt fixes don't touch already-extracted rows |
+| #18 | Fixed the backfill runbook | It printed *nothing* and looked like a dead endpoint |
+| #20 | Crawl health visibility | "No errors" was reading as healthy |
+| #21 | CI that runs the test suite | Backend changes had been shipping with no CI at all |
+| #22 | Extract cadence 50x2 → 75x3 | Backfill was a ~54-day job |
+| #23 | Search filters on `extracted_tags` | The crawl data finally reaches search |
+
+Two of those exist only because something went wrong first, and both are
+worth remembering:
+
+**The runbook printed nothing (#18).** It used `$BACKEND`, a variable
+defined nowhere in this repo, together with `curl -s` — which silences
+curl's *own* errors, not just progress. Unset variable → malformed URL →
+exit 3 → total silence, indistinguishable from a dead endpoint. The endpoint
+had been fine the whole time. `-sS` now, and a triage line: 403 means it
+works, 404 means it isn't deployed, silence means curl never made the call.
+
+**Backend changes had no CI (#21).** `evals.yml` only fires on `evals/**`
+and the prompts directory, so #16, #17 and #20 each merged showing nothing
+but a Vercel preview. The suite now runs against a real Postgres with real
+migrations, which matters more than the unit tests: **149 pass in CI versus
+134 locally** — fifteen DB-gated tests that had been silently skipping. The
+re-queue stall and the stats/re-queue disagreement in #20 were both found by
+a real database and agreed with by the mocks.
+
+### The 2026-07-27 incident: alerting worked, and exposed a structural gap
+
+A scheduled fetch failed at 04:04 with a bare 500. The `alert` job filed
+issue #19 eleven seconds later — the first real test of it, and the thing
+that would have been silence a week earlier.
+
+The diagnosis came from an absence: `_run_stage` writes a `crawl_runs` row
+before returning 500, but `/api/stats` reported `error: 0` across the whole
+window. No row was written, which put the failure *before* `start_run` — and
+the only step there is acquiring a connection. If the database is
+unreachable there is nowhere to write "the database was unreachable."
+
+That can't be recorded, so #20 stopped the health signal depending on it:
+per-stage `age_seconds` against a budget, plus `pipeline_ok`. Age since the
+last success is the one signal an absent row cannot fake. Five green runs
+followed; the failure was a transient Supabase refusal.
+
+**The budget is mis-tuned, though.** Fetch allows 8h against a 4h cron, so a
+single failure always trips `pipeline_ok` — the next attempt is 4h out and
+age passes 8h before recovery is possible. Filed to move to 12h.
+
+### The backfill started, and the first batch is a problem
+
+Chunk 1 queued 2026-07-27: **1,500 churches / 3,539 artifacts**, leaving
+`awaiting_queue` at 3,330. `stale_churches` stayed at 5,413, correctly — a
+church stays stale until extraction rewrites its row.
+
+The first re-extraction batch came back:
+
+```
+run 577  rows_processed: 75  rows_ok: 34  rows_error: 41     (55% failure)
+run 572  rows_processed: 50  rows_ok: 50  rows_error:  0     (normal work, for contrast)
+```
+
+At ~34/run x 3 runs/day that is ~53 days — the #22 cadence increase is
+cancelled out by the error rate. But the arithmetic is the smaller worry.
+`extract_for_church` has three failure paths with very different
+consequences: `no-text` marks artifacts **`skipped`** and `ExtractionError`
+marks them **`error`**, and `requeue` only touches `ok` artifacts — so both
+are *permanently excluded* from future passes. Only transient failures
+retry.
+
+If those 41 are `no-text`, the premise of the backfill is wrong: the R2
+archive doesn't hold readable HTML for older artifacts, and those churches
+need re-*fetching*. It would also fail silently, with `stale_churches`
+plateauing while `awaiting_queue` marches to zero — indistinguishable from
+completion.
+
+`churches.extracted_status` already records which, and nothing exposes it.
+That is the next thing to build, and chunk 2 should wait for the answer.
+
+### Also worth recording
+
+**A model swap defeated the eval gate.** `prompt_fingerprint()` hashed the
+prompt but not `MODEL`, so switching to flash-lite would have scored the new
+model against the old model's cache and passed clean. Same vacuous pass the
+gate exists to prevent, reached by a different lever. Now hashed, with
+`run.py --model` for evaluating a candidate without touching production.
+
+**`/api/stats` and the re-queue disagreed about "stale"** — stats grouped on
+prompt version alone while the re-queue keys on version *and* model. Fixing
+it immediately found **150 churches being reported as done** that the
+re-queue considered stale.
+
+**The re-queue could stall permanently.** Churches that are stale with
+nothing re-queueable consumed a `limit` slot, updated nothing, and never
+gained a `pending` artifact — so they sat at the head of the queue on every
+pass. `awaiting_queue` could never reach zero, which is exactly what the
+runbook says to wait for. Found by seeding a scratch Postgres.
 
 ---
 
