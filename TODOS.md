@@ -8,52 +8,70 @@ verification trail: [STATUS.md](STATUS.md).
 
 ## Now (this week)
 
-- [ ] **Diagnose the 55% backfill extraction failure — blocks everything else
-      about the backfill.** The first re-extraction batch (run 577, 2026-07-27
-      10:37) came back `rows_processed: 75, rows_ok: 34, rows_error: 41`. The
-      batch immediately before it, on normal freshly-fetched work, was
-      `50/50/0`. So re-extraction fails far more than new extraction, and at
-      ~34/run x 3 runs/day the backfill is back to ~53 days — the cadence
-      increase in #22 is cancelled out by the error rate.
+- [ ] **Read the backfill failure breakdown, then decide about chunk 2.** The
+      instrumentation shipped 2026-07-27 (see below); what's left is looking at
+      the number once Render has redeployed and one extract run has gone
+      through under the new code:
 
-      **This may be worse than slow.** `extract_for_church` has three failure
-      paths and they are not equivalent:
+      ```bash
+      curl -sS https://churchmap-api.onrender.com/api/stats \
+        | python3 -c 'import json,sys; d=json.load(sys.stdin)["extraction"]; print(json.dumps({k:d[k] for k in ("attempts","attempted","failed","failed_pct","stale","awaiting_queue")}, indent=2))'
+      ```
 
-      | failure | artifacts become | consequence |
+      What each answer means:
+
+      | dominant bucket | reading | next move |
       |---|---|---|
-      | `no-text` (nothing readable in R2) | `skipped` | **permanently excluded** — `requeue` only touches `ok` artifacts |
-      | `ExtractionError` | `error` | same |
-      | transient (LLM/network) | stays `pending` | retried next run, self-healing |
+      | `no_html` | R2 has no page behind those artifacts — the premise of the backfill was wrong for them | re-**fetch** those churches; re-queueing does nothing. Needs a way to select them, which doesn't exist yet |
+      | `transient` | LLM/network/R2 flakiness | nothing — they retry themselves; just watch the rate |
+      | `no_text` / `error` | genuinely unextractable pages | accept as the floor; chunk 2 is safe |
 
-      If those 41 are `no-text`, the premise of the backfill is wrong: the R2
-      archive does not actually hold readable HTML for older artifacts, and
-      those churches need re-*fetching*, not re-extracting. It would also fail
-      silently — `stale_churches` plateaus while `awaiting_queue` marches to
-      zero, which looks exactly like completion.
+      **Do not queue chunk 2 until this is read.** If over half of each batch
+      fails terminally, more queueing spends money and marks more artifacts
+      unrecoverable. Note the pre-existing `no-text` rows from before this
+      change are ambiguous by construction — they were written when the two
+      causes were one status — so judge from failures recorded *after* the
+      deploy.
 
-      `churches.extracted_status` already records which (`no-text`,
-      `error:*`, `transient:*`). Nothing exposes it. Either read the Render
-      logs, or add the breakdown to `/api/stats` (one `GROUP BY` on an
-      existing column) so the answer is permanent rather than one-off.
+- [x] **Diagnose the 55% backfill extraction failure** — instrumented
+      2026-07-27. Run 577 came back `75 processed / 34 ok / 41 error` against
+      `50/50/0` on freshly-fetched work, and nothing exposed *why*. Three
+      things landed:
 
-      **Do not queue backfill chunk 2 until this is understood.** If over half
-      of each batch fails permanently, more queueing spends money and marks
-      more artifacts unrecoverable.
+      - `/api/stats` now carries `extraction.attempts` — a bucketed count of
+        how attempts ended (`ok` / `no_html` / `no_text` / `error` /
+        `transient` / `unknown` / `other`) — plus `attempted`, `failed`,
+        `failed_pct` and `awaiting_queue`. Bucketed in SQL because the raw
+        status strings embed exception text and this endpoint is public.
+      - **`no-text` was hiding two different failures.** An R2 object that is
+        *absent* and an R2 bucket that is *unreachable* both surfaced as "no
+        text", identical to a genuinely empty page. Absent now reports
+        `no-html:n/m` (the church needs re-fetching); unreachable is now
+        **transient**, leaving artifacts `pending`.
+      - That second one was a live data-loss path, not a reporting nit:
+        rotated R2 credentials or a Cloudflare outage would have marked every
+        artifact in every batch `skipped` — permanently excluded, since
+        `requeue` only touches `ok` artifacts — silently, at cron cadence.
 
-- [ ] **Loosen the fetch staleness budget, 8h -> 12h.** `crawl.stages.fetch`
-      allows 8h against a 4h cron, so a *single* failed run always trips
-      `pipeline_ok` — the next attempt is 4h out, and age passes 8h before
-      recovery is even possible. Observed exactly that on 2026-07-27: one
-      transient failure at 04:04 left `pipeline_ok: false` for hours while
-      nothing was actually wrong. 12h (three cadences) tolerates one failure
-      and still catches a real outage within half a day.
+- [x] **Loosen the fetch staleness budget, 8h -> 12h.** Done 2026-07-27, and
+      the same pass found a second, larger miscalibration: **a stage's
+      freshness clock only advanced on a *flawless* run.** `_run_stage` writes
+      `status='ok'` only when `rows_error == 0`, so any batch with one bad row
+      is `partial` — and `crawl_health` counted only `'ok'`. Measured live that
+      afternoon: `extract.last_success` was 21h old and closing on its 24h
+      budget while the stage ran on schedule and extracted churches. For the
+      duration of a backfill with any error rate, `pipeline_ok` would have been
+      false continuously — including for the auto-close below, which is gated
+      on it. Staleness now keys on `last_progress` (finished, and at least one
+      row through); `last_success` is still reported, just not alerted on.
 
-- [ ] **Auto-close the `crawl-alert` issue on a green run.** The alert job
-      files/comments but never closes, so the issue lingers as stale noise
-      after recovery (#19 sat open through five green runs). `/api/stats` is
-      public and needs no token — a step can check `pipeline_ok` after a
-      successful run and close any open `crawl-alert` issue, gated on the
-      whole pipeline being healthy rather than just the stage that ran.
+- [x] **Auto-close the `crawl-alert` issue on a green run.** Done 2026-07-27 —
+      a `resolve` job in `crawl.yml`, gated on `/api/stats` reporting
+      `pipeline_ok: true` rather than on the one stage that happened to run.
+      A backend that can't answer counts as unhealthy and leaves the issue
+      open, so a cold-start 502 can't auto-close anything (nor paint a
+      successful crawl run red, which `set -e` plus `jq` on an HTML error page
+      would otherwise do).
 
 ## Next (this month)
 
@@ -86,7 +104,10 @@ verification trail: [STATUS.md](STATUS.md).
 
       `stale_churches` is the size of the job and only falls as churches are
       actually re-extracted. `awaiting_queue` is what's left to hand to the
-      pipeline and falls per chunk. **Chunk, don't dump** —
+      pipeline and falls per chunk. Both are now on public `/api/stats`
+      (`extraction.stale` / `extraction.awaiting_queue`), so watching the
+      backfill no longer needs the token — only queueing does. **Chunk, don't
+      dump** —
       `pending_extract_targets` orders by `MIN(fetched_at) ASC` and re-queued
       artifacts keep their original timestamps, so every backfilled church
       sorts ahead of every newly crawled page; queueing all of them at once
