@@ -48,11 +48,16 @@ verification trail: [STATUS.md](STATUS.md).
 
       `stale_churches` is the size of the whole job and only falls as churches
       are actually re-extracted; `awaiting_queue` is what's left to hand to the
-      pipeline and falls per pass. Extraction runs twice daily at 50/batch, so
-      200 queued churches take ~2 days to drain — start small and check the
-      output before scaling the limit. **Search/filter on `extracted_tags` is
-      worth much less until this finishes** — the fix is in the prompt, not yet
-      in the data.
+      pipeline and falls per pass.
+
+      **Pacing is the real constraint.** Measured 2026-07-27 from `/api/stats`:
+      133,939 churches, 8,512 with a website, 5,463 extracted, **5,263 stale**.
+      Extraction runs twice daily at 50/batch = 100/day, so the backfill is a
+      **~53-day job at the default cadence**. Raise the extract cron's batch
+      size or fire extra `workflow_dispatch stage=extract` runs, sized against
+      what ~5.3k flash-lite calls are worth spending. **Search/filter on
+      `extracted_tags` is worth much less until this finishes** — the fix is in
+      the prompt, not yet in the data.
 - [ ] **Watch prose quality after the flash-lite switch.** The model moved to
       `gemini-2.5-flash-lite` on 2026-07-26. Measured over two runs of the golden
       set: deterministic fields improved (+0.023 mean; `theological_stance`

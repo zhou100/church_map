@@ -567,9 +567,13 @@ class CrawlRepository:
         `churches.extracted_prompt_version` keeps its old value right up
         until the extract stage overwrites it.
 
-        `awaiting_queue` excludes churches that already have an artifact
-        sitting in the queue. That is the number that falls immediately when
-        you re-queue, and the one to drive successive passes off.
+        `awaiting_queue` is what the re-queue can actually act on right now:
+        stale, not already queued, and holding at least one 'ok' artifact to
+        put back. That last condition matters — a church can be stale with
+        nothing re-queueable (artifacts all errored, or never written), and
+        counting those would leave `awaiting_queue` permanently above zero
+        while the re-queue reports nothing done. The runbook says "repeat
+        until it reaches zero", so it has to be able to reach zero.
         """
         sql = """
             SELECT
@@ -579,6 +583,11 @@ class CrawlRepository:
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
+                    )
+                    AND EXISTS (
+                        SELECT 1 FROM raw_crawl_artifacts a
+                         WHERE a.church_id = c.church_id
+                           AND a.extract_status = 'ok'
                     )
                 ) AS awaiting_queue
               FROM churches c
@@ -619,6 +628,12 @@ class CrawlRepository:
         long after it was queued — and the backfill would never advance past
         its first batch.
 
+        Churches with nothing re-queueable are skipped for the same reason.
+        A stale church whose artifacts all errored (or were never written)
+        would otherwise consume a `limit` slot, update no rows, and — never
+        gaining a 'pending' artifact — sit at the head of the queue on every
+        subsequent pass, blocking the backfill permanently.
+
         NOTE: no crawl_runs row — that table's CHECK constraint only allows
         the three pipeline stages, and this is a queue manipulation, not a
         stage.
@@ -634,6 +649,11 @@ class CrawlRepository:
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
+                   )
+                   AND EXISTS (
+                        SELECT 1 FROM raw_crawl_artifacts a
+                         WHERE a.church_id = c.church_id
+                           AND a.extract_status = 'ok'
                    )
                  ORDER BY church_id
                  LIMIT %s
@@ -694,19 +714,26 @@ class StatsRepository:
             return await cur.fetchone()
 
     async def extraction_by_prompt_version(self) -> list[dict]:
-        """Extraction counts per prompt version, newest-largest first.
+        """Extraction counts per (prompt version, model), largest first.
 
         This is what sizes a re-extraction backfill: the extract stage
         selects on artifact status, not prompt version, so churches keep
-        whatever version they were last extracted under.
+        whatever version *and model* they were last extracted under.
+
+        The model has to be in the grouping. `CrawlRepository`'s staleness
+        predicate treats a model change exactly like a prompt change, so
+        grouping on version alone made this endpoint report churches as
+        current that the re-queue would immediately pick up — two numbers
+        for the same question, disagreeing.
         """
         sql = """
             SELECT COALESCE(extracted_prompt_version, 'unknown') AS version,
+                   COALESCE(extracted_model, 'unknown')          AS model,
                    COUNT(*)                                      AS count
               FROM churches
              WHERE extracted_at IS NOT NULL
-             GROUP BY 1
-             ORDER BY count DESC, version
+             GROUP BY 1, 2
+             ORDER BY count DESC, version, model
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
             await cur.execute(sql)
