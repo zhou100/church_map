@@ -132,17 +132,37 @@ POST /api/auth/verify
 
 `GET /api/stats` reports corpus and crawl-pipeline health — how many churches
 have a website, how many are extracted, which prompt version *and model* they
-were extracted under, and the last successful run of each crawl stage.
-Aggregates only, so it needs no token, and cached in-process for 5 minutes.
+were extracted under, why extraction attempts ended, and how recently each
+crawl stage did any work. Aggregates only, so it needs no token, and cached
+in-process for 5 minutes.
 
 Read `crawl.pipeline_ok` and `crawl.stages[*].stale`, not `crawl.runs.error`.
 A stage that dies before it can write its `crawl_runs` row — a database it
 can't reach, say — contributes no error at all, so an error count of zero is
-not evidence of health. Age since the last *success* is the signal an absent
-row can't fake. A stage that has never succeeded reports `null` and counts as
-stale rather than being omitted; the crawl going quiet is the failure this is
-meant to make visible (it was auto-disabled for 8 days in July 2026 and
+not evidence of health. Age since the last *progress* is the signal an absent
+row can't fake. A stage that has never made progress reports `null` and counts
+as stale rather than being omitted; the crawl going quiet is the failure this
+is meant to make visible (it was auto-disabled for 8 days in July 2026 and
 nothing said so).
+
+Progress, not perfection: a batch is `status='ok'` only when *zero* rows
+failed, so one bad row makes it `partial`. Staleness therefore keys on
+`stages[*].last_progress` (a run that finished and got at least one row
+through), while `last_success` reports the last flawless run alongside it.
+Keying on the strict one meant a backfill with any error rate reported its
+stage as dead while it worked normally.
+
+`extraction.attempts` breaks down why attempts ended, and it is the first thing
+to read when coverage stops moving. `churches.extracted` counts
+`extracted_at IS NOT NULL`, which failures stamp too — so `attempts.ok` is the
+honest success count and `attempts` sums to `churches.extracted`. The buckets
+that matter: `no_html` means R2 holds no page behind the artifact, so those
+churches need re-**fetching** and re-queueing them achieves nothing; `no_text`
+and `error` are terminal and correctly so; `transient` retries itself. Watch
+`extraction.awaiting_queue` against `extraction.stale` during a backfill —
+falling together is progress, `awaiting_queue` hitting zero while `stale` sits
+still means the backfill has failed to a halt, which otherwise looks exactly
+like completion.
 
 `language`, `worship_style` and `stance` filter on `extracted_tags` — what the
 crawler read off each church's own website, not review-derived tags. They
