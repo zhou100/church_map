@@ -4,8 +4,16 @@ name: crawl
 # endpoint on the Render backend; no Python/Docker setup needed in the runner.
 #
 # Schedules are intentionally offset from the top of the hour so we don't
-# pile on with everyone else's crons. fetch every 4h, extract twice daily,
+# pile on with everyone else's crons. fetch every 4h, extract 3x daily,
 # tag once daily.
+#
+# Extract cadence is sized for the v3.1/flash-lite backfill (2026-07-27):
+# 5,413 churches to re-extract, and at 75/run x 3 runs = 225/day nominal,
+# ~190/day after the historical ~15% per-batch error rate, that lands around
+# 28 days. Measured cost per church is ~7s (batch=50 runs took 165-354s), so
+# 75 is ~9 min and the curl timeout has room. Drop back to 50 x 2/day once
+# /api/stats reports extraction.stale near zero — this cadence exists for a
+# finite job, not because the steady state needs it.
 #
 # Ordering: extract `needs: [fetch]` and tag `needs: [extract]` so a manual
 # `stage=all` dispatch runs the three sequentially. Scheduled crons hit a
@@ -20,9 +28,9 @@ name: crawl
 
 on:
   schedule:
-    - cron: '17 */4 * * *'    # fetch
-    - cron: '37 6,18 * * *'   # extract
-    - cron: '47 7 * * *'      # tag
+    - cron: '17 */4 * * *'        # fetch
+    - cron: '37 2,10,18 * * *'    # extract — 3x/day for the backfill
+    - cron: '47 7 * * *'          # tag
   workflow_dispatch:
     inputs:
       stage:
@@ -61,7 +69,7 @@ jobs:
     needs: [fetch]
     if: |
       always() && (
-        github.event.schedule == '37 6,18 * * *' ||
+        github.event.schedule == '37 2,10,18 * * *' ||
         (github.event_name == 'workflow_dispatch' &&
          (github.event.inputs.stage == 'extract' || github.event.inputs.stage == 'all'))
       )
@@ -71,9 +79,9 @@ jobs:
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           CRAWL_TOKEN: ${{ secrets.CRAWL_TOKEN }}
-          BATCH: ${{ github.event.inputs.batch || '50' }}
+          BATCH: ${{ github.event.inputs.batch || '75' }}
         run: |
-          curl -fsS --max-time 900 -X POST \
+          curl -fsS --max-time 1200 -X POST \
             -H "X-Crawl-Token: $CRAWL_TOKEN" \
             "$BACKEND_URL/api/admin/crawl/extract?batch=$BATCH"
 

@@ -50,14 +50,23 @@ verification trail: [STATUS.md](STATUS.md).
       are actually re-extracted; `awaiting_queue` is what's left to hand to the
       pipeline and falls per pass.
 
-      **Pacing is the real constraint.** Measured 2026-07-27 from `/api/stats`:
-      133,939 churches, 8,512 with a website, 5,463 extracted, **5,263 stale**.
-      Extraction runs twice daily at 50/batch = 100/day, so the backfill is a
-      **~53-day job at the default cadence**. Raise the extract cron's batch
-      size or fire extra `workflow_dispatch stage=extract` runs, sized against
-      what ~5.3k flash-lite calls are worth spending. **Search/filter on
-      `extracted_tags` is worth much less until this finishes** — the fix is in
-      the prompt, not yet in the data.
+      **Re-queue in weekly chunks of ~1,500, not all at once.**
+      `pending_extract_targets` orders by `MIN(fetched_at) ASC`, and re-queued
+      artifacts keep their original fetch timestamps — which are weeks old. So
+      every backfilled church sorts *ahead of every newly crawled page*.
+      Queueing all 5,413 at once would park fresh crawl output behind the
+      entire backfill for a month. A chunk drains in ~7 days at the cadence
+      below, and new pages get their turn between chunks.
+
+      **Cadence, set 2026-07-27 for a ~30-day finish.** `/api/stats` measured
+      133,939 churches, 8,512 with a website, 5,463 extracted, **5,413 stale**.
+      The extract cron now runs 3x daily at 75/batch = 225/day nominal,
+      ~190/day after the historical ~15% per-batch error rate → **~28 days**.
+      Per-church cost is ~7s, so a 75 batch is ~9 minutes, well inside the
+      curl timeout. **Put the cadence back to 50 x 2/day once
+      `extraction.stale` is near zero** — it's sized for a finite job, not for
+      the steady state. **Search/filter on `extracted_tags` is worth much less
+      until this finishes** — the fix is in the prompt, not yet in the data.
 - [ ] **Watch prose quality after the flash-lite switch.** The model moved to
       `gemini-2.5-flash-lite` on 2026-07-26. Measured over two runs of the golden
       set: deterministic fields improved (+0.023 mean; `theological_stance`
