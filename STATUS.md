@@ -1,4 +1,4 @@
-# ChurchMap — Status Report (2026-07-16, updated 2026-07-24)
+# ChurchMap — Status Report (2026-07-16, updated 2026-07-27)
 
 Written after a repo + live-system audit on 2026-07-16. Previous activity: last commit
 2026-05-08 (`f428db2`), crawl pipeline ran unattended since then.
@@ -10,7 +10,15 @@ batches on instant fast-fails because their attempts never got recorded) and `ec
 (frontend cleanup). The crawl workflow has run cleanly for 8 straight days since
 re-enabling — see [§5](#5-2026-07-24-follow-up) for current numbers and the updated
 next-steps list. Sections 1–4 below are left as originally written (2026-07-16) for
-the historical record; §5 is the current state.
+the historical record; later numbered updates supersede them, with §10 current.
+
+**2026-07-27 product update:** website-derived content now reaches the primary
+search experience, enriched cards identify themselves, church-name search is
+live, and the wordmark resets discovery to the visitor's default location. The
+remaining product bottleneck is no longer finding or displaying the data; it is
+how few churches have enough data to display. See
+[§10](#10-2026-07-27--the-product-bottleneck-is-now-profile-coverage) for the
+live coverage snapshot and the new priority order.
 
 ---
 
@@ -636,6 +644,61 @@ construction — they were written when the two causes shared a status — so th
 call on chunk 2 has to be made from failures recorded *after* the deploy.
 That's the first item in TODOS.md, with the reading of each outcome written
 down so it's a lookup rather than a re-derivation.
+
+---
+
+## 10. 2026-07-27 — the product bottleneck is now profile coverage
+
+Three frontend PRs closed the gap between extracted data and the product:
+
+| PR | What changed | User impact |
+|---|---|---|
+| #26 | Website summaries and extracted fields render in the search detail panel | Users can read the useful content without leaving the main search flow |
+| #27 | Enriched result cards show a sourced "From their website" row | Users can see which churches have richer content before opening them |
+| #28 | Global church-name search, explicit search modes, and a wordmark home/reset action | Users can find a known church directly and reliably return to default discovery |
+
+Those changes make the next constraint visible. The public `/api/stats` snapshot
+at 2026-07-27 21:31 UTC says:
+
+| Coverage measure | Count | Share |
+|---|---:|---:|
+| Total churches | 133,939 | 100% |
+| Churches with a website | 8,514 | 6.4% of all churches |
+| Successful extraction attempts (`attempts.ok`) | 5,326 | 4.0% of all churches / 62.6% of website-havers |
+| Churches with a website summary | 4,332 | 3.2% of all churches / 50.9% of website-havers |
+| Extractions stale against the current prompt/model | 5,316 | 97.3% of attempted churches |
+| Stale churches not yet handed to the re-extraction queue | 3,330 | 62.6% of the stale set |
+
+The crawl itself is healthy (`pipeline_ok: true`; fetch, extract and tag were all
+inside their freshness budgets), and the terminal extraction failure rate is only
+2.5%. The problem is coverage, not pipeline health.
+
+Coverage is also uneven where users look:
+
+| City | Returned | with website | with extracted fields | with summary |
+|---|---:|---:|---:|---:|
+| Brooklyn, NY | 200 | 28 | 17 | 14 |
+| Seattle, WA | 64 | 24 | 0 | 0 |
+| Chicago, IL | 147 | 77 | 65 | 47 |
+| Houston, TX | 200 | 101 | 66 | 50 |
+
+So the current product truth is:
+
+1. **Search and display are no longer the primary blocker.** The UI now exposes
+   the data that exists and supports both location and church-name discovery.
+2. **The current backfill must finish.** It improves consistency for the 5,316
+   churches extracted under an older prompt/model, with 3,330 still waiting to
+   be queued.
+3. **Crawl order must follow demand.** Seattle at 0/64 while Chicago has 65/147
+   extracted profiles is table order, not a product decision.
+4. **Website extraction cannot solve the whole corpus.** 125,425 churches
+   (93.6%) have no website recorded, so the next coverage plan needs a minimum
+   useful-profile definition and additional sources or contribution paths.
+5. **Filters come after coverage.** A precise filter over 4% coverage mostly
+   produces confident-looking empty results. Coverage and honest unknown states
+   have higher product value first.
+
+The active execution order and runbook now live in [TODOS.md](TODOS.md).
 
 ---
 
