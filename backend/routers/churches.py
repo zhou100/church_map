@@ -17,6 +17,7 @@ from psycopg.rows import dict_row
 from backend import enrichment
 from backend.db import pool
 from backend.db.repository import ChurchRepository, _normalize_extracted_tags
+from backend.scrapers_v2.prompts.website_v3 import THEOLOGICAL_STANCES, WORSHIP_STYLES
 from backend.utils import compute_tags
 
 router = APIRouter()
@@ -63,15 +64,42 @@ async def list_churches(
     city: str = "",
     state: str = "",
     zip_code: str = "",
+    language: str = "",
+    worship_style: str = "",
+    stance: str = "",
     limit: int = 50,
     offset: int = 0,
 ):
+    """List churches, optionally filtered on crawled website data.
+
+    `language`, `worship_style` and `stance` filter on `extracted_tags` —
+    what the crawler read off each church's own site. A church with no
+    extraction cannot match any of them, so coverage bounds how useful they
+    are; see `extracted_filters` in the repository layer.
+
+    `worship_style` and `stance` are validated against the extraction
+    schema. Silently returning zero results for a typo'd bucket would be
+    indistinguishable from "no churches like that near you", which is a much
+    worse answer than saying the filter was wrong.
+    """
+    if worship_style and worship_style.lower() not in WORSHIP_STYLES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown worship_style; expected one of {sorted(WORSHIP_STYLES)}",
+        )
+    if stance and stance.lower() not in THEOLOGICAL_STANCES:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown stance; expected one of {sorted(THEOLOGICAL_STANCES)}",
+        )
+
+    filters = {"language": language, "worship_style": worship_style, "stance": stance}
     async with pool.acquire() as con:
         repo = ChurchRepository(con)
         if zip_code:
-            rows = await repo.list_by_zip(zip_code, limit, offset)
+            rows = await repo.list_by_zip(zip_code, limit, offset, **filters)
         else:
-            rows = await repo.list_by_city_state(city, state, limit, offset)
+            rows = await repo.list_by_city_state(city, state, limit, offset, **filters)
     return [_row_to_church(r) for r in rows]
 
 

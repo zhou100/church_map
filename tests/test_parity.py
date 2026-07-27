@@ -109,6 +109,42 @@ def test_post_review_requires_auth(client):
     assert r.status_code == 401
 
 
+def test_list_accepts_extracted_tag_filters(client):
+    r = client.get("/api/churches", params={
+        "city": "San Francisco", "state": "CA",
+        "language": "Spanish", "worship_style": "liturgical", "stance": "traditional",
+    })
+    assert r.status_code == 200
+    assert isinstance(r.json(), list)
+
+
+def test_list_rejects_an_unknown_worship_style(client):
+    """A typo'd bucket returning zero rows is indistinguishable from "no
+    churches like that near you" — a much worse answer than saying so."""
+    r = client.get("/api/churches", params={
+        "city": "San Francisco", "state": "CA", "worship_style": "gospel",
+    })
+    assert r.status_code == 400
+    assert "worship_style" in r.json()["detail"]
+
+
+def test_list_rejects_an_unknown_stance(client):
+    r = client.get("/api/churches", params={
+        "city": "San Francisco", "state": "CA", "stance": "centrist",
+    })
+    assert r.status_code == 400
+
+
+def test_list_language_filter_is_not_validated_against_a_list(client):
+    """Languages are open-ended — the extractor emits whatever the site says
+    (in English). An unknown one legitimately matches nothing."""
+    r = client.get("/api/churches", params={
+        "city": "San Francisco", "state": "CA", "language": "Klingon",
+    })
+    assert r.status_code == 200
+    assert r.json() == []
+
+
 def test_stats_endpoint(client):
     """Aggregate stats against a real database — mainly that the SQL is valid
     and the counts reconcile.
