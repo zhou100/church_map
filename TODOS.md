@@ -8,10 +8,11 @@ verification trail: [STATUS.md](STATUS.md).
 
 ## Now (this week)
 
-- [ ] **Read the backfill failure breakdown, then decide about chunk 2.** The
-      instrumentation shipped 2026-07-27 (see below); what's left is looking at
-      the number once Render has redeployed and one extract run has gone
-      through under the new code:
+- [x] **Read the backfill failure breakdown, then decide about chunk 2.** Read
+      2026-07-27 after Render redeployed: 5,463 attempted, 131 failed (2.4%).
+      The breakdown was `error=125`, `transient=6`, `no_html=0`,
+      `no_text=0`; pipeline health was green. That is an acceptable terminal
+      floor plus a small self-retrying bucket, so **chunk 2 is safe to queue**.
 
       ```bash
       curl -sS https://churchmap-api.onrender.com/api/stats \
@@ -75,8 +76,9 @@ verification trail: [STATUS.md](STATUS.md).
 
 ## Next (this month)
 
-- [ ] **Finish the extraction backfill** — blocked on the failure-rate
-      diagnosis above, not on effort. **Chunk 1 was queued 2026-07-27**
+- [ ] **Finish the extraction backfill.** The failure-rate gate passed
+      2026-07-27; the next action is queueing chunk 2 with the Render-held
+      crawl token. **Chunk 1 was queued 2026-07-27**
       (1,500 churches / 3,539 artifacts); `stale_churches` 5,413 →
       **awaiting_queue 3,330** still to hand over. Runbook:
 
@@ -159,26 +161,12 @@ broken when data is absent is worse than one that never promised it. Coverage
 rises as the backfill drains (`extraction.stale` on `/api/stats`), but the
 long tail of website-less churches never gets extracted at all.
 
-- [ ] **F1. The search panel shows none of the extracted data — the standalone
-      route shows all of it.** `pages/ChurchDetail.jsx:24` has a complete
-      `AboutSection` (summary, pull quote, vibe chips, "What they teach",
-      worship style, statement of faith, languages, programs).
-      `components/ChurchDetailPanel.jsx` — which is what actually opens when
-      you click a card or a map pin, i.e. the path essentially every user
-      takes — renders **none of it**. It jumps from the address block
-      straight to Google reviews and dimension bars.
-
-      `/api/churches/{id}` already returns `website_summary` and
-      `extracted_tags`, and the panel already fetches it into `church`. So
-      this is: lift `AboutSection` out of `pages/ChurchDetail.jsx` into
-      `components/`, import it in both, render it in the panel above
-      "Dimension ratings". No API change, no new data, no schema.
-
-      This is the cheapest item on the list and probably the highest-value
-      one — two months of crawling is invisible on the primary surface. Note
-      STATUS.md §1 says "summaries/tags render on the detail page", which is
-      true of the route and false of the panel; that sentence is how this
-      stayed unnoticed.
+- [x] **F1. Show extracted data in the search detail panel.** Done 2026-07-27:
+      `AboutSection` now lives in `components/` and is shared by the
+      standalone route and the card/map detail panel. The primary search path
+      now shows summaries, pull quotes, vibe tags, theology, worship style,
+      statement of faith, languages and programs without an API or schema
+      change.
 
 - [ ] **F2. Result cards ignore `extracted_tags` entirely.**
       `components/ChurchCard.jsx:56` renders `church.language`,
@@ -192,8 +180,8 @@ long tail of website-less churches never gets extracted at all.
       extracted `vibe_tags` / `service_languages`. **But they must not look
       the same.** A community-rated tag and a machine-read-from-their-website
       tag are different claims, and rendering both as the same pill silently
-      asserts a consensus that doesn't exist. Which needs a decision, not a
-      guess — see F5.
+      asserts a consensus that doesn't exist. Use the source treatment decided
+      in F5 rather than the community pill styles.
 
 - [ ] **F3. Filtering is client-side over one page of 50, so the #23 filters
       are unreachable.** `pages/Search.jsx:149-156` builds `availableTags` /
@@ -230,26 +218,12 @@ long tail of website-less churches never gets extracted at all.
       churches here have been read" on the empty state. Either way the filter
       should not silently imply absence.
 
-- [ ] **F5. DESIGN.md has no pill type for machine-extracted data — decide
-      before F2 ships.** It defines exactly three ("never mix styles"):
-      quality `#EEE8F0`/`#5B3E7A`, language `#FEF3C7`/`#92400E`, culture
-      `#D1FAE5`/`#2D6A4F` — all community/self-reported. Extracted tags are a
-      fourth thing with a different epistemic status: read off the church's
-      own website by an LLM, verbatim-validated but not verified by any
-      human.
-
-      Needs a visual treatment that reads as "from their website" (a distinct
-      pill, a source line under the summary, or both — STATUS.md §3 suggested
-      "From their website, checked June 2026") and a DESIGN.md entry so the
-      next person doesn't re-litigate it. **Sequencing note:** F1 renders
-      extracted prose in a panel that currently has none, so it is worth
-      making this call before F1 rather than after.
-
-      Blocked on one small API change if the "checked <date>" line is wanted:
-      `churches.extracted_at` exists in the DB but is **not** in the
-      `/api/churches` response (`_DIM_SELECT` selects `website_summary` and
-      `extracted_tags`, not `extracted_at`). One column, but it is an API
-      change — don't slip it into a UI PR.
+- [x] **F5. Define a treatment for machine-extracted data.** Decided
+      2026-07-27: website-derived content sits in a warm-surface,
+      sienna-bordered section labeled "From this church's website"; extracted
+      pills use a white background with sienna text/border. `DESIGN.md` now
+      requires the source line. We intentionally omitted a "checked <date>"
+      claim, so this needed no `extracted_at` API change.
 
 - [ ] **F6. Nothing in the UI reflects data quality per church.**
       `extracted_confidence` and `extracted_source_snippets` are written for
