@@ -120,6 +120,7 @@ DATABASE_URL=... pytest tests/test_parity.py # endpoint parity against Postgres
 GET  /api/health
 GET  /api/stats
 GET  /api/churches?city=Brooklyn&state=NY&limit=50&offset=0
+GET  /api/churches?city=Brooklyn&state=NY&language=Spanish&worship_style=liturgical&stance=traditional
 GET  /api/churches?zip_code=11201&limit=50&offset=0
 GET  /api/churches/{church_id}
 GET  /api/churches/{church_id}/similar
@@ -142,6 +143,17 @@ row can't fake. A stage that has never succeeded reports `null` and counts as
 stale rather than being omitted; the crawl going quiet is the failure this is
 meant to make visible (it was auto-disabled for 8 days in July 2026 and
 nothing said so).
+
+`language`, `worship_style` and `stance` filter on `extracted_tags` — what the
+crawler read off each church's own website, not review-derived tags. They
+combine with AND. `worship_style` and `stance` are validated against the
+extraction schema and return 400 on an unknown value, because zero results for
+a typo is indistinguishable from "no churches like that near you". `language`
+is open-ended, since the extractor emits whatever the site says.
+
+A church with no extraction cannot match any of these filters — we don't know
+its service language until something has read its site. So their usefulness
+tracks extraction coverage: check `extraction.stale` on `/api/stats`.
 
 `POST /api/reviews` requires an `Authorization: Bearer <google_id_token>` header. Reviews are tied to a Google-authenticated user record and store reviewer display metadata.
 

@@ -93,14 +93,21 @@ verification trail: [STATUS.md](STATUS.md).
       traffic once that's tracked) so coverage tracks where people look, not where
       church_ids happened to land. Brooklyn/NYC catching up this week was incidental
       (a bug fix + luck); the next demo city might not be.
-- [ ] **Search/filter on `extracted_tags`.** This is the actual product payoff of
-      the whole Phase B crawl and it's currently unused downstream: `list_churches`
-      still filters/ranks on review-derived tags only, and with near-zero organic
-      reviews most of the 134k churches show empty dimension bars. Add
-      language/worship-style/vibe filters backed by `extracted_tags`, and show
-      extracted tags on result cards when review tags are empty. Coverage in
-      NYC/Brooklyn is already real (see STATUS.md §5) — search just doesn't use it
-      yet.
+- [ ] **Surface extracted data in the UI** — the remaining half of the Phase B
+      payoff. The API side landed 2026-07-27: `GET /api/churches` now takes
+      `language`, `worship_style` and `stance`, filtering on `extracted_tags`.
+      What's missing is the frontend — filter controls wired to those params,
+      and extracted tags rendered on result cards when review-derived tags are
+      empty, which is most cards given near-zero organic reviews. Read
+      [DESIGN.md](DESIGN.md) first; this is a UI change, so it should touch no
+      API contract, auth or schema.
+
+      Worth knowing before building the filters: a church with no extraction
+      cannot match any of them, and `service_languages` is empty for most rows
+      until the backfill drains. A language filter today returns very little.
+      Either wait for `extraction.stale` to fall, or design the empty state to
+      say "we haven't read this church's site yet" rather than implying no such
+      church exists.
 
 ## Backlog (not urgent, revisit on trigger)
 

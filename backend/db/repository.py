@@ -75,31 +75,84 @@ def _normalize_extracted_tags(value: Any) -> Any:
     return value
 
 
+def extracted_filters(
+    *,
+    language: str | None = None,
+    worship_style: str | None = None,
+    stance: str | None = None,
+) -> tuple[str, list]:
+    """SQL fragment + params for filtering on `churches.extracted_tags`.
+
+    This is the crawl data finally reaching search. Every predicate is
+    naturally exclusive: a church with no extraction cannot match, because
+    `extracted_tags -> ...` is NULL for it. That is the honest behaviour —
+    we don't know a church's service language until something read its
+    website — but it does mean a filter's usefulness tracks extraction
+    coverage. While the v3.1 backfill drains, `service_languages` is empty
+    for most rows, so a language filter returns little.
+
+    No GIN index: these clauses always run alongside the city/state or ZIP
+    predicate, which is indexed and cuts the corpus to a few hundred rows
+    before any JSONB is touched.
+
+    Clause text is built from literals only — user input rides in `%s`.
+    """
+    clauses: list[str] = []
+    params: list = []
+
+    if language:
+        # jsonb_array_elements_text raises on a non-array, so the typeof
+        # guard matters for any row whose extraction predates the current
+        # schema or was written by hand.
+        clauses.append(
+            "jsonb_typeof(c.extracted_tags->'service_languages') = 'array' "
+            "AND EXISTS ("
+            "  SELECT 1 FROM jsonb_array_elements_text(c.extracted_tags->'service_languages') AS lang"
+            "   WHERE LOWER(lang) = LOWER(%s)"
+            ")"
+        )
+        params.append(language)
+
+    if worship_style:
+        clauses.append("LOWER(c.extracted_tags->>'worship_style') = LOWER(%s)")
+        params.append(worship_style)
+
+    if stance:
+        clauses.append("LOWER(c.extracted_tags->>'theological_stance') = LOWER(%s)")
+        params.append(stance)
+
+    return "".join(f"\n              AND ({c})" for c in clauses), params
+
+
 class ChurchRepository:
     def __init__(self, con: AsyncConnection):
         self.con = con
 
-    async def list_by_zip(self, zip_code: str, limit: int, offset: int) -> list[dict]:
-        sql = _DIM_SELECT + """
-            WHERE c.zip_code = %s
+    async def list_by_zip(
+        self, zip_code: str, limit: int, offset: int, **filters
+    ) -> list[dict]:
+        where, fparams = extracted_filters(**filters)
+        sql = _DIM_SELECT + f"""
+            WHERE c.zip_code = %s{where}
             GROUP BY c.church_id
             LIMIT %s OFFSET %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, (zip_code, limit, offset))
+            await cur.execute(sql, (zip_code, *fparams, limit, offset))
             return await cur.fetchall()
 
     async def list_by_city_state(
-        self, city: str, state: str, limit: int, offset: int
+        self, city: str, state: str, limit: int, offset: int, **filters
     ) -> list[dict]:
-        sql = _DIM_SELECT + """
-            WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s)
+        where, fparams = extracted_filters(**filters)
+        sql = _DIM_SELECT + f"""
+            WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s){where}
             GROUP BY c.church_id
             ORDER BY review_count DESC
             LIMIT %s OFFSET %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, (city, state, limit, offset))
+            await cur.execute(sql, (city, state, *fparams, limit, offset))
             return await cur.fetchall()
 
     async def get(self, church_id: int) -> dict | None:
