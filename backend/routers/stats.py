@@ -24,7 +24,7 @@ from fastapi import APIRouter
 
 from backend.db import pool
 from backend.db.repository import StatsRepository
-from backend.scrapers_v2.prompts.website_v3 import PROMPT_VERSION
+from backend.scrapers_v2.prompts.website_v3 import MODEL, PROMPT_VERSION
 
 router = APIRouter()
 
@@ -32,6 +32,23 @@ CACHE_TTL_S = 300
 
 # Mirrors the CHECK constraint on crawl_runs.stage (migrations/0004).
 CRAWL_STAGES = ("fetch", "extract", "tag")
+
+# How long a stage may go without a successful run before it counts as
+# stale. Cadence comes from the crons in .github/workflows/crawl.yml (fetch
+# every 4h, extract twice daily, tag daily), roughly doubled to absorb one
+# missed run plus GitHub's scheduling drift.
+#
+# This exists because "no errors" is not the same as "working". A stage can
+# fail before it ever writes a crawl_runs row — if the database is
+# unreachable, `_run_stage` cannot record that the database was unreachable
+# — so the error counter stays at zero while nothing succeeds. That is the
+# same shape as the 2026-07-08 outage: silence reading as success. Age since
+# the last *success* is the signal that cannot be faked by an absence.
+STAGE_MAX_AGE_S = {
+    "fetch": 8 * 3600,
+    "extract": 24 * 3600,
+    "tag": 48 * 3600,
+}
 
 _cache: dict[str, Any] = {"at": 0.0, "value": None}
 
@@ -53,6 +70,7 @@ def build_stats(
     health: dict,
     *,
     current_prompt_version: str = PROMPT_VERSION,
+    current_model: str = MODEL,
     now: datetime | None = None,
 ) -> dict:
     """Shape repository rows into the public response.
@@ -64,16 +82,23 @@ def build_stats(
     with_website = counts.get("with_website") or 0
     extracted = counts.get("extracted") or 0
 
+    # "Current" means prompt version AND model, matching the staleness
+    # predicate the re-queue uses. Version alone reported churches as current
+    # that the re-queue would immediately pick up.
     versions = [
         {
             "version": row["version"],
+            "model": row.get("model"),
             "count": row["count"],
-            "current": row["version"] == current_prompt_version,
+            "current": (
+                row["version"] == current_prompt_version
+                and row.get("model") == current_model
+            ),
         }
         for row in by_version
     ]
-    # Churches extracted under an older prompt. Re-extracting them is a
-    # deliberate backfill, not something the pipeline does on its own: the
+    # Churches extracted under an older prompt or model. Re-extracting them is
+    # a deliberate backfill, not something the pipeline does on its own: the
     # extract stage selects on artifact status, never on prompt version.
     stale = sum(v["count"] for v in versions if not v["current"])
 
@@ -84,8 +109,22 @@ def build_stats(
     # missing entirely — and a missing key reads as "fine" to whatever renders
     # this, which is the exact failure this endpoint exists to surface. Absent
     # becomes an explicit null.
-    seen = {row["stage"]: _iso(row.get("last_success")) for row in health.get("last_success", [])}
-    last_success = {stage: seen.get(stage) for stage in CRAWL_STAGES}
+    seen = {row["stage"]: row.get("last_success") for row in health.get("last_success", [])}
+    last_success = {stage: _iso(seen.get(stage)) for stage in CRAWL_STAGES}
+
+    at = now or datetime.now(timezone.utc)
+    stages = {}
+    for stage in CRAWL_STAGES:
+        ts = seen.get(stage)
+        age = int((at - ts).total_seconds()) if isinstance(ts, datetime) else None
+        stages[stage] = {
+            "last_success": _iso(ts),
+            "age_seconds": age,
+            "max_age_seconds": STAGE_MAX_AGE_S[stage],
+            # Never having succeeded counts as stale, not as "no opinion".
+            "stale": True if age is None else age > STAGE_MAX_AGE_S[stage],
+        }
+    pipeline_ok = not any(s["stale"] for s in stages.values())
 
     return {
         "churches": {
@@ -106,6 +145,11 @@ def build_stats(
             "stale_pct": _pct(stale, extracted),
         },
         "crawl": {
+            # True only if every stage has succeeded recently enough. Do not
+            # infer health from `runs.error == 0`: a stage that dies before
+            # writing its crawl_runs row contributes no error at all.
+            "pipeline_ok": pipeline_ok,
+            "stages": stages,
             "last_success": last_success,
             "runs": {
                 "window_days": health.get("window_days"),
@@ -115,7 +159,7 @@ def build_stats(
                 "running": window.get("running", 0),
             },
         },
-        "generated_at": (now or datetime.now(timezone.utc)).isoformat(),
+        "generated_at": at.isoformat(),
         "cache_ttl_seconds": CACHE_TTL_S,
     }
 

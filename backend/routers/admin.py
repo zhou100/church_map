@@ -46,40 +46,70 @@ async def _run_stage(stage: str, batch_size: int, runner) -> dict:
     and then raised, the row would vanish and `/status` would never show the
     failed invocation. So we commit the start_run on entry, commit the
     finish_run before raising, and only then convert to HTTPException.
+
+    One failure cannot be recorded at all: if the database is unreachable
+    there is nowhere to write "the database was unreachable". That happened
+    on 2026-07-27 — a bare 500 with no crawl_runs row, so `/status` and
+    `/api/stats` both kept reporting a clean pipeline while the scheduled run
+    went red. It still can't be recorded, but it can be *named*: a 503 whose
+    detail says which step failed, rather than a generic 500 that could have
+    come from anywhere in the batch. `/api/stats` reports staleness from the
+    age of the last success, which no absent row can fake.
     """
-    async with pool.acquire() as con:
-        repo = CrawlRepository(con)
-        run_id = await repo.start_run(
-            stage, batch_size, triggered_by="github-actions"
+    error_payload: tuple[str, str] | None = None
+    recorded = False   # did a crawl_runs row make it to disk?
+    try:
+        async with pool.acquire() as con:
+            repo = CrawlRepository(con)
+            run_id = await repo.start_run(
+                stage, batch_size, triggered_by="github-actions"
+            )
+            # Commit so the run row exists even if the runner crashes before
+            # finish_run runs (e.g., OOM, SIGTERM during a long batch).
+            await con.commit()
+            recorded = True
+            try:
+                counts = await runner(repo, run_id)
+                status = "ok" if counts["rows_error"] == 0 else "partial"
+                await repo.finish_run(
+                    run_id,
+                    status=status,
+                    rows_processed=counts["rows_processed"],
+                    rows_ok=counts["rows_ok"],
+                    rows_error=counts["rows_error"],
+                )
+                await con.commit()
+                return {"run_id": run_id, "stage": stage, "status": status, **counts}
+            except Exception as e:
+                log.exception("%s stage failed: %s", stage, e)
+                await repo.finish_run(
+                    run_id,
+                    status="error",
+                    rows_processed=0,
+                    rows_ok=0,
+                    rows_error=0,
+                    error=f"{type(e).__name__}: {str(e)[:500]}",
+                )
+                await con.commit()
+                error_payload = (stage, type(e).__name__)
+    except HTTPException:
+        raise
+    except Exception as e:
+        # Only reachable while `recorded` is False — acquiring the connection,
+        # start_run, or its commit. Nothing was written, so this run is
+        # invisible to /status by construction; say so in the response instead
+        # of returning a bare 500 that looks like a batch failure.
+        if recorded:
+            raise
+        log.exception("%s stage could not reach the database", stage)
+        raise HTTPException(
+            status_code=503,
+            detail=(
+                f"{stage} could not reach the database ({type(e).__name__}); "
+                "no crawl_runs row was written, so this failure is invisible "
+                "to /status — see /api/stats crawl.stages for staleness"
+            ),
         )
-        # Commit so the run row exists even if the runner crashes before
-        # finish_run runs (e.g., OOM, SIGTERM during a long batch).
-        await con.commit()
-        error_payload: tuple[str, str] | None = None
-        try:
-            counts = await runner(repo, run_id)
-            status = "ok" if counts["rows_error"] == 0 else "partial"
-            await repo.finish_run(
-                run_id,
-                status=status,
-                rows_processed=counts["rows_processed"],
-                rows_ok=counts["rows_ok"],
-                rows_error=counts["rows_error"],
-            )
-            await con.commit()
-            return {"run_id": run_id, "stage": stage, "status": status, **counts}
-        except Exception as e:
-            log.exception("%s stage failed: %s", stage, e)
-            await repo.finish_run(
-                run_id,
-                status="error",
-                rows_processed=0,
-                rows_ok=0,
-                rows_error=0,
-                error=f"{type(e).__name__}: {str(e)[:500]}",
-            )
-            await con.commit()
-            error_payload = (stage, type(e).__name__)
 
     # Out of the connection context — safe to raise without losing the row.
     if error_payload is not None:

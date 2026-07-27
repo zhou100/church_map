@@ -131,6 +131,56 @@ def test_awaiting_queue_falls_but_total_does_not():
     run_with_fixture(body)
 
 
+def test_stale_church_with_nothing_requeueable_does_not_block():
+    """A stale church whose artifacts all errored has nothing to put back.
+    It must not consume a `limit` slot — it never gains a 'pending' artifact,
+    so it would sit at the head of the queue on every pass and stall the
+    backfill, with `awaiting_queue` stuck above zero forever."""
+    async def body(r, ids):
+        blocker, next_up = ids[0], ids[1]
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                "UPDATE raw_crawl_artifacts SET extract_status='error' WHERE church_id=%s",
+                (blocker,),
+            )
+        got = set(await r.requeue_stale_extractions(CURRENT_VERSION, CURRENT_MODEL, limit=1))
+        assert got == {next_up}, "the un-requeueable church swallowed the limit slot"
+
+        counts = await r.count_stale_extractions(CURRENT_VERSION, CURRENT_MODEL)
+        # blocker is still stale, but is not waiting on the queue for anything
+        assert counts["total"] >= 2
+        assert counts["awaiting_queue"] == 0
+
+    run_with_fixture(body)
+
+
+def test_stats_and_requeue_agree_on_what_is_stale():
+    """Two code paths answer "how many churches need re-extracting?" — the
+    public /api/stats endpoint and the re-queue. They must agree.
+
+    They didn't: stats grouped on prompt version alone while the re-queue
+    keys on version AND model, so a church on the current prompt but an old
+    model showed as current in stats and was immediately picked up by the
+    re-queue. The seed data below contains exactly that row.
+    """
+    from backend.db.repository import StatsRepository
+    from backend.routers.stats import build_stats
+
+    async def body(r, ids):
+        stats_repo = StatsRepository(r.con)
+        shaped = build_stats(
+            await stats_repo.church_counts(),
+            await stats_repo.extraction_by_prompt_version(),
+            await stats_repo.crawl_health(),
+            current_prompt_version=CURRENT_VERSION,
+            current_model=CURRENT_MODEL,
+        )
+        requeue = await r.count_stale_extractions(CURRENT_VERSION, CURRENT_MODEL)
+        assert shaped["extraction"]["stale"] == requeue["total"]
+
+    run_with_fixture(body)
+
+
 def test_errored_artifacts_are_left_alone():
     """An artifact that failed extraction will fail again on a new prompt;
     re-queueing it spends the same money to hit the same wall."""

@@ -130,12 +130,18 @@ POST /api/auth/verify
 ```
 
 `GET /api/stats` reports corpus and crawl-pipeline health — how many churches
-have a website, how many are extracted, which prompt version they were
-extracted under, and the last successful run of each crawl stage. Aggregates
-only, so it needs no token, and cached in-process for 5 minutes. A stage that
-has never succeeded reports `null` rather than being omitted; the crawl going
-quiet is the failure this is meant to make visible (it was auto-disabled for 8
-days in July 2026 and nothing said so).
+have a website, how many are extracted, which prompt version *and model* they
+were extracted under, and the last successful run of each crawl stage.
+Aggregates only, so it needs no token, and cached in-process for 5 minutes.
+
+Read `crawl.pipeline_ok` and `crawl.stages[*].stale`, not `crawl.runs.error`.
+A stage that dies before it can write its `crawl_runs` row — a database it
+can't reach, say — contributes no error at all, so an error count of zero is
+not evidence of health. Age since the last *success* is the signal an absent
+row can't fake. A stage that has never succeeded reports `null` and counts as
+stale rather than being omitted; the crawl going quiet is the failure this is
+meant to make visible (it was auto-disabled for 8 days in July 2026 and
+nothing said so).
 
 `POST /api/reviews` requires an `Authorization: Bearer <google_id_token>` header. Reviews are tied to a Google-authenticated user record and store reviewer display metadata.
 
