@@ -55,6 +55,22 @@ def test_list_by_zip(client):
     assert isinstance(r.json(), list)
 
 
+def test_list_by_church_name(client):
+    r = client.get("/api/churches", params={"name": "church", "limit": 5})
+    assert r.status_code == 200
+    rows = r.json()
+    assert isinstance(rows, list)
+    if rows:
+        for key in ("id", "name", "city", "state"):
+            assert key in rows[0], f"missing key {key}"
+
+
+def test_list_rejects_one_character_name(client):
+    r = client.get("/api/churches", params={"name": "c"})
+    assert r.status_code == 400
+    assert "at least 2 characters" in r.json()["detail"]
+
+
 def test_get_church_detail(client):
     # Find any church via list, then fetch its detail.
     r = client.get("/api/churches", params={"city": "San Francisco", "state": "CA", "limit": 1})

@@ -187,3 +187,15 @@ def test_zip_search_filters_too():
         assert isinstance(rows, list)   # SQL is valid with filters appended
 
     run_with_churches(body)
+
+
+@pg
+def test_name_search_is_global_and_case_insensitive():
+    async def body(repo):
+        rows = await repo.search_by_name("FLT", 50, 0)
+        names = {row["name"] for row in rows if row["name"].startswith("flt ")}
+        assert names == {
+            "flt bilingual", "flt english", "flt malformed", "flt unextracted",
+        }
+
+    run_with_churches(body)

@@ -61,6 +61,7 @@ def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
 
 @router.get("/churches")
 async def list_churches(
+    name: str = "",
     city: str = "",
     state: str = "",
     zip_code: str = "",
@@ -70,7 +71,7 @@ async def list_churches(
     limit: int = 50,
     offset: int = 0,
 ):
-    """List churches, optionally filtered on crawled website data.
+    """Search churches by name or list them by location.
 
     `language`, `worship_style` and `stance` filter on `extracted_tags` —
     what the crawler read off each church's own site. A church with no
@@ -82,6 +83,13 @@ async def list_churches(
     indistinguishable from "no churches like that near you", which is a much
     worse answer than saying the filter was wrong.
     """
+    name_query = name.strip()
+    if name_query and len(name_query) < 2:
+        raise HTTPException(
+            status_code=400,
+            detail="church name search must be at least 2 characters",
+        )
+
     if worship_style and worship_style.lower() not in WORSHIP_STYLES:
         raise HTTPException(
             status_code=400,
@@ -96,7 +104,9 @@ async def list_churches(
     filters = {"language": language, "worship_style": worship_style, "stance": stance}
     async with pool.acquire() as con:
         repo = ChurchRepository(con)
-        if zip_code:
+        if name_query:
+            rows = await repo.search_by_name(name_query, limit, offset, **filters)
+        elif zip_code:
             rows = await repo.list_by_zip(zip_code, limit, offset, **filters)
         else:
             rows = await repo.list_by_city_state(city, state, limit, offset, **filters)

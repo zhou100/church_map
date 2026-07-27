@@ -41,6 +41,9 @@ export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [city, setCity] = useState(searchParams.get('city') || '')
   const [state, setState] = useState(searchParams.get('state') || '')
+  const [churchName, setChurchName] = useState(searchParams.get('name') || '')
+  const [searchMode, setSearchMode] = useState(searchParams.get('name') ? 'name' : 'location')
+  const [activeSearch, setActiveSearch] = useState(null)
   const [churches, setChurches] = useState(null)
   const [loading, setLoading] = useState(false)
   const [loadingMore, setLoadingMore] = useState(false)
@@ -56,10 +59,20 @@ export default function Search() {
   const offsetRef = useRef(0)
   const cardRefs = useRef({})
 
-  async function fetchPage(cityVal, stateVal, offset, append = false) {
-    const url = `${API}/api/churches?city=${encodeURIComponent(cityVal)}&state=${encodeURIComponent(stateVal)}&limit=${PAGE}&offset=${offset}`
+  async function fetchPage(search, offset, append = false) {
+    const params = new URLSearchParams({ limit: PAGE, offset })
+    if (search.type === 'name') {
+      params.set('name', search.name)
+    } else {
+      params.set('city', search.city)
+      params.set('state', search.state)
+    }
+    const url = `${API}/api/churches?${params}`
     const res = await fetch(url)
-    if (!res.ok) throw new Error('Failed to fetch')
+    if (!res.ok) {
+      const body = await res.json().catch(() => null)
+      throw new Error(body?.detail || 'Failed to fetch churches')
+    }
     const data = await res.json()
     if (append) {
       setChurches(prev => [...(prev || []), ...data])
@@ -71,19 +84,21 @@ export default function Search() {
     return data
   }
 
-  async function handleSearch(e) {
-    if (e) e.preventDefault()
-    if (!city.trim() || !state.trim()) return
-    setSearchParams({ city: city.trim(), state: state.trim() })
+  async function runSearch(search) {
+    setSearchParams(search.type === 'name'
+      ? { name: search.name }
+      : { city: search.city, state: search.state })
+    setActiveSearch(search)
     setSelectedTags([])
     setSelectedLang(null)
     setDetectedLocation(null)
     setSelectedChurchId(null)
+    setSortBy(search.type === 'name' ? 'relevance' : 'distance')
     setLoading(true)
     setError(null)
     offsetRef.current = 0
     try {
-      await fetchPage(city.trim(), state.trim(), 0)
+      await fetchPage(search, 0)
     } catch (err) {
       setError(`${err.message}`)
     } finally {
@@ -91,10 +106,23 @@ export default function Search() {
     }
   }
 
+  function handleLocationSearch(e) {
+    e.preventDefault()
+    if (!city.trim() || !state.trim()) return
+    runSearch({ type: 'location', city: city.trim(), state: state.trim() })
+  }
+
+  function handleNameSearch(e) {
+    e.preventDefault()
+    if (churchName.trim().length < 2) return
+    runSearch({ type: 'name', name: churchName.trim() })
+  }
+
   async function handleLoadMore() {
+    if (!activeSearch) return
     setLoadingMore(true)
     try {
-      await fetchPage(city.trim(), state.trim(), offsetRef.current, true)
+      await fetchPage(activeSearch, offsetRef.current, true)
     } catch (err) {
       setError(err.message)
     } finally {
@@ -103,15 +131,32 @@ export default function Search() {
   }
 
   useEffect(() => {
+    const n = searchParams.get('name')
     const c = searchParams.get('city')
     const s = searchParams.get('state')
-    if (c && s) {
-      setCity(c)
-      setState(s)
+    if (n) {
+      const search = { type: 'name', name: n }
+      setChurchName(n)
+      setSearchMode('name')
+      setActiveSearch(search)
+      setSortBy('relevance')
       setLoading(true)
       setError(null)
       offsetRef.current = 0
-      fetchPage(c, s, 0)
+      fetchPage(search, 0)
+        .then(() => setSelectedTags([]))
+        .catch(err => setError(err.message))
+        .finally(() => setLoading(false))
+    } else if (c && s) {
+      const search = { type: 'location', city: c, state: s }
+      setCity(c)
+      setState(s)
+      setSearchMode('location')
+      setActiveSearch(search)
+      setLoading(true)
+      setError(null)
+      offsetRef.current = 0
+      fetchPage(search, 0)
         .then(() => setSelectedTags([]))
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
@@ -123,15 +168,18 @@ export default function Search() {
           const detCity = data.city
           const detState = data.region_code
           if (detCity && detState && data.country_code === 'US') {
+            const search = { type: 'location', city: detCity, state: detState }
             setCity(detCity)
             setState(detState)
+            setSearchMode('location')
+            setActiveSearch(search)
             setDetectedLocation({ city: detCity, state: detState })
             if (data.latitude && data.longitude) {
               setUserCoords({ lat: data.latitude, lon: data.longitude })
             }
             setSearchParams({ city: detCity, state: detState })
             offsetRef.current = 0
-            return fetchPage(detCity, detState, 0)
+            return fetchPage(search, 0)
               .then(() => setSelectedTags([]))
           }
         })
@@ -178,7 +226,8 @@ export default function Search() {
   function tryDemo() {
     setCity('Brooklyn')
     setState('NY')
-    setTimeout(() => { document.querySelector('form')?.requestSubmit() }, 0)
+    setSearchMode('location')
+    runSearch({ type: 'location', city: 'Brooklyn', state: 'NY' })
   }
 
   function markerIcon(id) {
@@ -208,31 +257,73 @@ export default function Search() {
     <div className="search-page">
       <div className="search-top">
         <header>
-          <h1>ChurchMap</h1>
+          <a href="/" className="wordmark" aria-label="ChurchMap home — use my default location">
+            ChurchMap
+          </a>
           <p>Find your church — rated on what actually matters.</p>
         </header>
 
-        <form onSubmit={handleSearch}>
-          <div className="search-form">
-            <input
-              value={city} onChange={e => setCity(e.target.value)}
-              placeholder="City" aria-label="City"
-            />
-            <input
-              value={state} onChange={e => setState(e.target.value)}
-              placeholder="State (e.g. NY)" aria-label="State" style={{ maxWidth: 120 }}
-            />
-            <button type="submit" className="search-btn" disabled={loading}>
-              {loading ? 'Searching…' : 'Search'}
-            </button>
-          </div>
-          <div className="demo-hint">
-            Try:{' '}
-            <button type="button" onClick={tryDemo}>Brooklyn, NY →</button>
-          </div>
-        </form>
+        <div className="search-mode-tabs" role="tablist" aria-label="Search by">
+          <button
+            type="button"
+            role="tab"
+            aria-selected={searchMode === 'location'}
+            className={searchMode === 'location' ? 'search-mode-active' : ''}
+            onClick={() => setSearchMode('location')}
+          >
+            By location
+          </button>
+          <button
+            type="button"
+            role="tab"
+            aria-selected={searchMode === 'name'}
+            className={searchMode === 'name' ? 'search-mode-active' : ''}
+            onClick={() => setSearchMode('name')}
+          >
+            By church name
+          </button>
+        </div>
 
-        {detectedLocation && !loading && (
+        {searchMode === 'location' ? (
+          <form onSubmit={handleLocationSearch} className="search-controls">
+            <div className="search-form">
+              <input
+                value={city} onChange={e => setCity(e.target.value)}
+                placeholder="City" aria-label="City"
+              />
+              <input
+                value={state} onChange={e => setState(e.target.value)}
+                placeholder="State (e.g. NY)" aria-label="State" className="state-input"
+              />
+              <button type="submit" className="search-btn" disabled={loading || !city.trim() || !state.trim()}>
+                {loading ? 'Searching…' : 'Search area'}
+              </button>
+            </div>
+            <div className="demo-hint">
+              Try:{' '}
+              <button type="button" onClick={tryDemo}>Brooklyn, NY →</button>
+            </div>
+          </form>
+        ) : (
+          <form onSubmit={handleNameSearch} className="search-controls">
+            <div className="search-form church-name-form">
+              <input
+                value={churchName}
+                onChange={e => setChurchName(e.target.value)}
+                placeholder="Church name (e.g. Grace Community)"
+                aria-label="Church name"
+                minLength={2}
+                autoFocus
+              />
+              <button type="submit" className="search-btn" disabled={loading || churchName.trim().length < 2}>
+                {loading ? 'Searching…' : 'Find church'}
+              </button>
+            </div>
+            <p className="search-help">Searches church names across all cities.</p>
+          </form>
+        )}
+
+        {detectedLocation && searchMode === 'location' && !loading && (
           <p className="location-detected">
             📍 Showing churches near <strong>{detectedLocation.city}, {detectedLocation.state}</strong>
           </p>
@@ -245,6 +336,9 @@ export default function Search() {
             <div className="sort-bar">
               <span className="sort-label">Sort:</span>
               {[
+                ...(activeSearch?.type === 'name'
+                  ? [{ key: 'relevance', label: 'Best match' }]
+                  : []),
                 { key: 'distance', label: '📍 Nearest', disabled: !userCoords?.lat },
                 { key: 'rating',   label: '★ Rating' },
                 { key: 'reviews',  label: '💬 Reviews' },
@@ -303,7 +397,9 @@ export default function Search() {
             ) : visibleChurches?.length === 0 ? (
               <div className="empty-state">
                 {churches.length === 0
-                  ? <><p>No churches found in {city}, {state}.</p><p style={{ fontSize: '0.85rem' }}>Try a different city!</p></>
+                  ? activeSearch?.type === 'name'
+                    ? <><p>No churches found matching “{activeSearch.name}”.</p><p style={{ fontSize: '0.85rem' }}>Try a shorter or different name.</p></>
+                    : <><p>No churches found in {city}, {state}.</p><p style={{ fontSize: '0.85rem' }}>Try a different city!</p></>
                   : <p>No churches match the selected filters.</p>
                 }
               </div>
@@ -322,6 +418,7 @@ export default function Search() {
                         church={c}
                         userLat={userCoords?.lat}
                         userLon={userCoords?.lon}
+                        showLocation={activeSearch?.type === 'name'}
                         onSelect={handleSelectChurch}
                       />
                     </div>
@@ -370,6 +467,9 @@ export default function Search() {
                   <Popup>
                     <div className="map-popup">
                       <strong>{c.name}</strong>
+                      {activeSearch?.type === 'name' && (c.city || c.state) && (
+                        <span className="popup-location">{[c.city, c.state].filter(Boolean).join(', ')}</span>
+                      )}
                       {c.denomination && <span className="popup-denom">{c.denomination}</span>}
                       {c.avg_rating != null && (
                         <span className="popup-rating">★ {c.avg_rating.toFixed(1)}</span>

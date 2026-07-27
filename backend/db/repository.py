@@ -155,6 +155,33 @@ class ChurchRepository:
             await cur.execute(sql, (city, state, *fparams, limit, offset))
             return await cur.fetchall()
 
+    async def search_by_name(
+        self, name: str, limit: int, offset: int, **filters
+    ) -> list[dict]:
+        """Search church names across every location, ranked by relevance."""
+        where, fparams = extracted_filters(**filters)
+        sql = _DIM_SELECT + f"""
+            WHERE STRPOS(LOWER(c.name), LOWER(%s)) > 0{where}
+            GROUP BY c.church_id
+            ORDER BY
+                CASE
+                    WHEN LOWER(c.name) = LOWER(%s) THEN 0
+                    WHEN LEFT(LOWER(c.name), LENGTH(%s)) = LOWER(%s) THEN 1
+                    ELSE 2
+                END,
+                review_count DESC,
+                c.name ASC,
+                c.city ASC,
+                c.state ASC
+            LIMIT %s OFFSET %s
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                sql,
+                (name, *fparams, name, name, name, limit, offset),
+            )
+            return await cur.fetchall()
+
     async def get(self, church_id: int) -> dict | None:
         sql = _DIM_SELECT + """
             WHERE c.church_id = %s
