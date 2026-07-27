@@ -110,8 +110,14 @@ def test_post_review_requires_auth(client):
 
 
 def test_stats_endpoint(client):
-    """Aggregate stats against real data — mainly that the SQL is valid and
-    the denominators behave on a populated corpus."""
+    """Aggregate stats against a real database — mainly that the SQL is valid
+    and the counts reconcile.
+
+    Everything asserted here holds on an empty schema too (0 == 0), which
+    matters: CI runs this against freshly-migrated, unpopulated Postgres. An
+    earlier version asserted `total > 0` and passed only because the author's
+    local database happened to have rows in it.
+    """
     from backend.routers import stats as stats_mod
 
     stats_mod._cache["value"] = None  # don't serve another test's snapshot
@@ -120,9 +126,11 @@ def test_stats_endpoint(client):
     body = r.json()
 
     churches = body["churches"]
-    assert churches["total"] > 0
     assert churches["with_website"] <= churches["total"]
     assert churches["extracted"] <= churches["with_website"]
+    if churches["total"] == 0:
+        # Empty corpus: percentages must be null rather than a misleading 0%.
+        assert churches["with_website_pct"] is None
 
     extraction = body["extraction"]
     assert extraction["stale"] == sum(
