@@ -4,9 +4,16 @@ Rewritten 2026-07-24 (previous version was pre-Phase-A scaffolding for deleted
 SQLite/`holyhub/` code — see git history if that's ever needed). Current state and
 verification trail: [STATUS.md](STATUS.md).
 
+**Current product bottleneck (2026-07-27): data coverage.** Search now exposes
+website-derived content, identifies enriched cards, supports church-name lookup,
+and has a reliable home/reset action. But only 8,514 of 133,939 churches (6.4%)
+have a website recorded, 5,326 (4.0%) have a successful extraction, and 4,332
+(3.2%) have a summary. The immediate work is making a useful church profile the
+default experience, not adding more UI around sparse data.
+
 ---
 
-## Now (this week)
+## Recently completed (2026-07-27)
 
 - [x] **Read the backfill failure breakdown, then decide about chunk 2.** Read
       2026-07-27 after Render redeployed: 5,463 attempted, 131 failed (2.4%).
@@ -74,7 +81,10 @@ verification trail: [STATUS.md](STATUS.md).
       successful crawl run red, which `set -e` plus `jq` on an HTML error page
       would otherwise do).
 
-## Next (this month)
+## Now — data coverage
+
+Ordered by product impact. Finish the already-started backfill, point new crawl
+work at user demand, then expand beyond the website-only ceiling.
 
 - [ ] **Finish the extraction backfill.** The failure-rate gate passed
       2026-07-27; the next action is queueing chunk 2 with the Render-held
@@ -135,17 +145,35 @@ verification trail: [STATUS.md](STATUS.md).
       traffic once that's tracked) so coverage tracks where people look, not where
       church_ids happened to land. Brooklyn/NYC catching up this week was incidental
       (a bug fix + luck); the next demo city might not be.
-## Frontend — surfacing the crawl data (the other half of Phase B)
+
+- [ ] **Define and track "useful profile" coverage, not just extraction
+      activity.** `/api/stats` can say whether an extraction ran, but the product
+      needs a church-level completeness measure. Define the minimum fields that
+      make a result worth opening, report the count and percentage publicly, and
+      break it down by metro so work can target the thinnest high-demand areas.
+      Do not use `extracted_at` as the KPI: failures stamp it too, and even a
+      successful extraction can return little useful content.
+
+- [ ] **Build a coverage path for the 125,425 churches with no website
+      recorded.** The R2/LLM pipeline can never enrich 93.6% of the corpus in its
+      current form. First audit whether these are truly website-less versus
+      missing URLs; then rank safe sources and contribution paths (denomination
+      directories, existing Google Places fields, church-submitted corrections,
+      community submissions) by coverage, freshness, provenance and cost. Start
+      with one metro pilot before any corpus-wide spend or schema expansion.
+
+## After coverage — frontend search and filters
 
 Read [DESIGN.md](DESIGN.md) before touching any of this. Ordered by
-payoff-per-risk; F1 and F2 are the ones that actually move the product.
+payoff-per-risk. F1 and F2 shipped; F3/F4 should follow better coverage because
+filters over sparse machine-read data amplify unknowns into misleading absence.
 
 **The measurement that should shape all of it** (live API, 2026-07-27,
 `?city=Brooklyn&state=NY&limit=200`):
 
 | | Brooklyn, of 200 returned |
 |---|---|
-| has a website at all | 27 |
+| has a website at all | 28 |
 | has `website_summary` | 14 |
 | has `programs` / `pull_quote` | 16 |
 | has `theology_summary` | 15 |
@@ -154,7 +182,7 @@ payoff-per-risk; F1 and F2 are the ones that actually move the product.
 | has `service_languages` | **8** |
 | has `worship_style` | **6** |
 
-So **~7% of cards in the demo city have anything to show**, and the
+So **~8% of cards in the demo city have anything to show**, and the
 distribution is lopsided — prose fields land far more often than the two
 enum-ish fields the filters key on. Design for the 93% first: a UI that looks
 broken when data is absent is worse than one that never promised it. Coverage
@@ -174,6 +202,11 @@ long tail of website-less churches never gets extracted at all.
       tags. The warm-surface block and outlined sienna pills remain visually
       distinct from community-rated tags; cards without extracted data are
       unchanged.
+
+- [x] **Make discovery navigation and search scope explicit.** Done 2026-07-27
+      in #28: the wordmark resets to default location, location search is labeled
+      separately from global church-name search, and name results include
+      city/state so similarly named churches are distinguishable.
 
 - [ ] **F3. Filtering is client-side over one page of 50, so the #23 filters
       are unreachable.** `pages/Search.jsx:149-156` builds `availableTags` /
