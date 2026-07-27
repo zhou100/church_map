@@ -1,0 +1,65 @@
+name: tests
+
+# Backend and API changes have been shipping with no CI at all.
+#
+# `evals.yml` only fires on `evals/**` and the prompts directory, so a PR
+# touching routers, the repository layer or the crawl pipeline showed nothing
+# but a Vercel preview — #16, #17 and #20 each merged with a full green
+# suite locally and zero tests actually run by CI. Prompt changes were gated;
+# everything else was on trust.
+#
+# This runs the whole suite against a real Postgres with the real migrations
+# applied, so the DB-gated tests actually execute. That matters more than the
+# unit tests here: the re-queue stall and the stats/re-queue disagreement were
+# both found by a real database and agreed with by the mocks.
+
+on:
+  pull_request:
+  push:
+    branches: [main]
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  pytest:
+    runs-on: ubuntu-latest
+
+    services:
+      postgres:
+        # pgvector image, not plain postgres: migration 0002 does
+        # CREATE EXTENSION vector, so the stock image cannot apply the
+        # migration set. Running the real runner also tests the migrations.
+        image: pgvector/pgvector:pg16
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: churchmap_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd "pg_isready -U postgres"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 10
+
+    env:
+      DATABASE_URL: postgresql://postgres:postgres@localhost:5432/churchmap_test
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+          cache: pip
+
+      - name: Install dependencies
+        run: pip install -r requirements.txt
+
+      - name: Apply migrations
+        run: python -m backend.db.migrate
+
+      - name: Run the suite
+        run: python -m pytest -q
