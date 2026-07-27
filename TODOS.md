@@ -114,32 +114,151 @@ verification trail: [STATUS.md](STATUS.md).
       parks fresh crawl output behind the whole backfill.
 
 - [ ] **Surface `/api/stats` somewhere visible.** The endpoint exists now
-      (aggregate counts, prompt-version split, last successful run per stage,
-      untokened). What's missing is somewhere a human actually looks: a README
-      badge, a small status page, or a line on the frontend footer. A number
-      nobody sees is the same as no number — that's how the July disable went
-      8 days unnoticed.
+      (aggregate counts, prompt-version split, per-stage freshness, the
+      `extraction.attempts` failure breakdown, untokened). What's missing is
+      somewhere a human actually looks: a README badge, a small status page,
+      or a line on the frontend footer. A number nobody sees is the same as no
+      number — that's how the July disable went 8 days unnoticed.
+
+      Keep the audience straight. `pipeline_ok` / `attempts` / `stale` are
+      *operator* numbers and do not belong in the product UI — that is exactly
+      the developer-facing complexity `CLAUDE.md` warns against. The
+      user-facing version of this is one honest sentence about coverage
+      ("we've read N of M church websites"), which is really F4 in the
+      frontend section. A separate `/status` page can be as technical as it
+      likes.
 - [ ] **Demand-driven fetch priority.** `churches_due_for_fetch` in
       `backend/db/repository.py` currently orders by `last_try ASC NULLS FIRST` —
       pure table order. Seed or reorder toward a top-N metro list (or actual search
       traffic once that's tracked) so coverage tracks where people look, not where
       church_ids happened to land. Brooklyn/NYC catching up this week was incidental
       (a bug fix + luck); the next demo city might not be.
-- [ ] **Surface extracted data in the UI** — the remaining half of the Phase B
-      payoff. The API side landed 2026-07-27: `GET /api/churches` now takes
-      `language`, `worship_style` and `stance`, filtering on `extracted_tags`.
-      What's missing is the frontend — filter controls wired to those params,
-      and extracted tags rendered on result cards when review-derived tags are
-      empty, which is most cards given near-zero organic reviews. Read
-      [DESIGN.md](DESIGN.md) first; this is a UI change, so it should touch no
-      API contract, auth or schema.
+## Frontend — surfacing the crawl data (the other half of Phase B)
 
-      Worth knowing before building the filters: a church with no extraction
-      cannot match any of them, and `service_languages` is empty for most rows
-      until the backfill drains. A language filter today returns very little.
-      Either wait for `extraction.stale` to fall, or design the empty state to
-      say "we haven't read this church's site yet" rather than implying no such
-      church exists.
+Read [DESIGN.md](DESIGN.md) before touching any of this. Ordered by
+payoff-per-risk; F1 and F2 are the ones that actually move the product.
+
+**The measurement that should shape all of it** (live API, 2026-07-27,
+`?city=Brooklyn&state=NY&limit=200`):
+
+| | Brooklyn, of 200 returned |
+|---|---|
+| has a website at all | 27 |
+| has `website_summary` | 14 |
+| has `programs` / `pull_quote` | 16 |
+| has `theology_summary` | 15 |
+| has `vibe_tags` | 14 |
+| has `theological_stance` | 11 |
+| has `service_languages` | **8** |
+| has `worship_style` | **6** |
+
+So **~7% of cards in the demo city have anything to show**, and the
+distribution is lopsided — prose fields land far more often than the two
+enum-ish fields the filters key on. Design for the 93% first: a UI that looks
+broken when data is absent is worse than one that never promised it. Coverage
+rises as the backfill drains (`extraction.stale` on `/api/stats`), but the
+long tail of website-less churches never gets extracted at all.
+
+- [ ] **F1. The search panel shows none of the extracted data — the standalone
+      route shows all of it.** `pages/ChurchDetail.jsx:24` has a complete
+      `AboutSection` (summary, pull quote, vibe chips, "What they teach",
+      worship style, statement of faith, languages, programs).
+      `components/ChurchDetailPanel.jsx` — which is what actually opens when
+      you click a card or a map pin, i.e. the path essentially every user
+      takes — renders **none of it**. It jumps from the address block
+      straight to Google reviews and dimension bars.
+
+      `/api/churches/{id}` already returns `website_summary` and
+      `extracted_tags`, and the panel already fetches it into `church`. So
+      this is: lift `AboutSection` out of `pages/ChurchDetail.jsx` into
+      `components/`, import it in both, render it in the panel above
+      "Dimension ratings". No API change, no new data, no schema.
+
+      This is the cheapest item on the list and probably the highest-value
+      one — two months of crawling is invisible on the primary surface. Note
+      STATUS.md §1 says "summaries/tags render on the detail page", which is
+      true of the route and false of the panel; that sentence is how this
+      stayed unnoticed.
+
+- [ ] **F2. Result cards ignore `extracted_tags` entirely.**
+      `components/ChurchCard.jsx:56` renders `church.language`,
+      `church.cultural_background` and `church.tags` — all review-derived,
+      and with near-zero organic reviews `tags` is empty on almost every
+      card. Meanwhile the list endpoint (`_DIM_SELECT`) already returns
+      `website_summary` and `extracted_tags` for every row and the card
+      throws them away.
+
+      Cold-start fix: when review-derived tags are empty, fall back to
+      extracted `vibe_tags` / `service_languages`. **But they must not look
+      the same.** A community-rated tag and a machine-read-from-their-website
+      tag are different claims, and rendering both as the same pill silently
+      asserts a consensus that doesn't exist. Which needs a decision, not a
+      guess — see F5.
+
+- [ ] **F3. Filtering is client-side over one page of 50, so the #23 filters
+      are unreachable.** `pages/Search.jsx:149-156` builds `availableTags` /
+      `availableLangs` from whatever rows are currently loaded and filters
+      with JS `.filter()`. Consequences: the filter bar only ever offers
+      values present in the loaded page, a filter "finds" nothing that hasn't
+      been paged in, and `Search.jsx:330` hides Load More whenever a tag
+      filter is active — an existing admission that client filtering and
+      pagination don't compose.
+
+      `GET /api/churches` has taken `language`, `worship_style` and `stance`
+      since #23 and nothing calls them. The fix is to move filter state into
+      the URL (`useSearchParams`, alongside city/state) and refetch, so
+      filters run over the whole city rather than the first 50 rows, Load
+      More keeps working, and a filtered search is linkable.
+
+      Bigger than F1/F2 — it touches the fetch/pagination/sort path, so it
+      wants its own PR. Do it after F1 and F2, and note the sort controls are
+      also client-side over loaded rows; don't quietly convert those too.
+
+- [ ] **F4. Empty states have to distinguish "no such church" from "we
+      haven't read this one yet".** With 8/200 Brooklyn churches carrying a
+      `service_languages` value, a language facet is mostly a machine for
+      producing empty result sets. "No churches match" is then factually
+      wrong — a Spanish-speaking congregation with no website, or one the
+      crawler hasn't reached, is not absent from Brooklyn, only from what
+      we've read. Getting this wrong attacks the core product intent
+      (`CLAUDE.md`: help people find a church that fits) more than shipping
+      no filter at all would.
+
+      Options that keep it honest: show the count next to each facet before
+      it is clicked, so an empty result is predicted rather than discovered;
+      or say "we haven't read this church's site yet" on the card and "N of M
+      churches here have been read" on the empty state. Either way the filter
+      should not silently imply absence.
+
+- [ ] **F5. DESIGN.md has no pill type for machine-extracted data — decide
+      before F2 ships.** It defines exactly three ("never mix styles"):
+      quality `#EEE8F0`/`#5B3E7A`, language `#FEF3C7`/`#92400E`, culture
+      `#D1FAE5`/`#2D6A4F` — all community/self-reported. Extracted tags are a
+      fourth thing with a different epistemic status: read off the church's
+      own website by an LLM, verbatim-validated but not verified by any
+      human.
+
+      Needs a visual treatment that reads as "from their website" (a distinct
+      pill, a source line under the summary, or both — STATUS.md §3 suggested
+      "From their website, checked June 2026") and a DESIGN.md entry so the
+      next person doesn't re-litigate it. **Sequencing note:** F1 renders
+      extracted prose in a panel that currently has none, so it is worth
+      making this call before F1 rather than after.
+
+      Blocked on one small API change if the "checked <date>" line is wanted:
+      `churches.extracted_at` exists in the DB but is **not** in the
+      `/api/churches` response (`_DIM_SELECT` selects `website_summary` and
+      `extracted_tags`, not `extracted_at`). One column, but it is an API
+      change — don't slip it into a UI PR.
+
+- [ ] **F6. Nothing in the UI reflects data quality per church.**
+      `extracted_confidence` and `extracted_source_snippets` are written for
+      every extraction and never leave the database. Not urgent, and possibly
+      never user-facing — but a low-confidence summary currently renders
+      identically to a high-confidence one, and the pull quote's verbatim
+      validation (the strongest trust signal we have) is invisible. Revisit
+      after F1-F5, and only if it makes a visible claim more trustworthy
+      rather than adding developer-facing complexity to the UI.
 
 ## Backlog (not urgent, revisit on trigger)
 
