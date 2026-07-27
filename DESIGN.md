@@ -124,3 +124,5 @@ The bars are a primary data feature — make them visible and beautiful.
 | 2026-03-23 | Plus Jakarta Sans for body | Humanist, warm, readable — not overused |
 | 2026-07-27 | Label machine-extracted website content at the section level | Keeps crawled claims distinct from community ratings without adding per-pill clutter |
 | 2026-07-27 | Identify website-enriched churches on result cards | Users need to know which cards open into richer detail; a compact sourced row preserves that signal without implying community consensus |
+| 2026-07-27 | Separate location and church-name search modes | Explicit modes make the search scope predictable; global name results include city/state to disambiguate churches |
+| 2026-07-27 | Make the ChurchMap wordmark return to default discovery | A persistent home action gives users a reliable way to reset search and restore their detected location |

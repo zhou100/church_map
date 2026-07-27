@@ -40,7 +40,7 @@ function Distance({ church, userLat, userLon }) {
   return <span className="card-distance">📍 {label}</span>
 }
 
-function CardBody({ church, userLat, userLon }) {
+function CardBody({ church, userLat, userLon, showLocation }) {
   const extracted = church.extracted_tags || {}
   const extractedValues = Object.values(extracted)
   const hasWebsiteInsights = Boolean(
@@ -58,6 +58,11 @@ function CardBody({ church, userLat, userLon }) {
     <div className="card-body">
       <h3>{church.name}</h3>
       <p className="card-denom">{church.denomination || 'Church'}</p>
+      {showLocation && (church.city || church.state) && (
+        <p className="card-location">
+          {[church.city, church.state].filter(Boolean).join(', ')}
+        </p>
+      )}
       <div className="card-meta">
         <Stars rating={church.avg_rating} />
         <span className="review-count">
@@ -87,7 +92,7 @@ function CardBody({ church, userLat, userLon }) {
   )
 }
 
-export default function ChurchCard({ church, userLat, userLon, onSelect }) {
+export default function ChurchCard({ church, userLat, userLon, showLocation = false, onSelect }) {
   const accentColor = denomAccentColor(church.denomination)
   const sharedStyle = { borderLeft: `5px solid ${accentColor}` }
 
@@ -101,14 +106,14 @@ export default function ChurchCard({ church, userLat, userLon, onSelect }) {
         tabIndex={0}
         onKeyDown={e => e.key === 'Enter' && onSelect(church.id)}
       >
-        <CardBody church={church} userLat={userLat} userLon={userLon} />
+        <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} />
       </div>
     )
   }
 
   return (
     <Link to={`/church/${church.id}`} className="church-card" style={sharedStyle}>
-      <CardBody church={church} userLat={userLat} userLon={userLon} />
+      <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} />
     </Link>
   )
 }
