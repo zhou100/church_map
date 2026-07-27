@@ -168,20 +168,12 @@ long tail of website-less churches never gets extracted at all.
       statement of faith, languages and programs without an API or schema
       change.
 
-- [ ] **F2. Result cards ignore `extracted_tags` entirely.**
-      `components/ChurchCard.jsx:56` renders `church.language`,
-      `church.cultural_background` and `church.tags` — all review-derived,
-      and with near-zero organic reviews `tags` is empty on almost every
-      card. Meanwhile the list endpoint (`_DIM_SELECT`) already returns
-      `website_summary` and `extracted_tags` for every row and the card
-      throws them away.
-
-      Cold-start fix: when review-derived tags are empty, fall back to
-      extracted `vibe_tags` / `service_languages`. **But they must not look
-      the same.** A community-rated tag and a machine-read-from-their-website
-      tag are different claims, and rendering both as the same pill silently
-      asserts a consensus that doesn't exist. Use the source treatment decided
-      in F5 rather than the community pill styles.
+- [x] **F2. Identify website-enriched churches on result cards.** Done
+      2026-07-27: cards with a website summary or extracted fields now show a
+      compact "From their website" row and up to two extracted language/vibe
+      tags. The warm-surface block and outlined sienna pills remain visually
+      distinct from community-rated tags; cards without extracted data are
+      unchanged.
 
 - [ ] **F3. Filtering is client-side over one page of 50, so the #23 filters
       are unreachable.** `pages/Search.jsx:149-156` builds `availableTags` /

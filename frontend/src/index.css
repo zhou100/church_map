@@ -212,6 +212,33 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 }
 .tag-lang    { background: var(--warning-bg); color: #92400E; }
 .tag-culture { background: var(--success-bg); color: var(--success); }
+.website-card-insights {
+  display: flex;
+  align-items: center;
+  flex-wrap: wrap;
+  gap: 0.3rem;
+  margin-top: 0.5rem;
+  padding: 0.4rem 0.5rem;
+  background: var(--warm-surface);
+  border-left: 2px solid var(--sienna);
+  border-radius: 0 6px 6px 0;
+}
+.website-card-source {
+  color: var(--sienna);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.06em;
+  text-transform: uppercase;
+}
+.website-card-chip {
+  padding: 0.12rem 0.4rem;
+  color: var(--sienna);
+  background: var(--surface);
+  border: 1px solid var(--sienna);
+  border-radius: 9999px;
+  font-size: 0.65rem;
+  font-weight: 600;
+}
 
 /* ── ChurchDetail page ───────────────────── */
 .detail-page { max-width: 720px; margin: 0 auto; padding: 1.5rem; }

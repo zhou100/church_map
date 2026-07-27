@@ -55,13 +55,15 @@
 - **Dark mode:** Shift all surfaces to warm darks (`#1A1714`, `#231F1B`, `#2A2520`). Reduce sienna saturation slightly. Gold stays vivid.
 
 ## Tags & Pills
-Three distinct types — never mix styles:
+Four distinct types — never mix styles:
 - **Quality tags** (Vibrant worship, Deep sermons, etc.): `background: #EEE8F0; color: #5B3E7A` — subtle purple tint signals "community rating"
 - **Language tags** (Spanish, Korean, etc.): `background: #FEF3C7; color: #92400E` — amber/warm, non-English indicator
 - **Culture tags** (Hispanic/Latino, African American, etc.): `background: #D1FAE5; color: #2D6A4F` — green, community identity
 - **Website-extracted tags:** white background, sienna text/border — only inside
   a warm-surface block labeled "From this church's website." This source line
-  is required so machine-read claims never look like community consensus.
+  is required so machine-read claims never look like community consensus. On
+  compact result cards, abbreviate the label to "From their website" and show
+  at most two extracted tags.
 - **Active/selected:** `background: #8B5E3C; color: white`
 
 ## Spacing
@@ -121,3 +123,4 @@ The bars are a primary data feature — make them visible and beautiful.
 | 2026-03-23 | Split-pane as primary layout (no toggle) | Google Maps pattern — list and map always co-visible, synced on hover |
 | 2026-03-23 | Plus Jakarta Sans for body | Humanist, warm, readable — not overused |
 | 2026-07-27 | Label machine-extracted website content at the section level | Keeps crawled claims distinct from community ratings without adding per-pill clutter |
+| 2026-07-27 | Identify website-enriched churches on result cards | Users need to know which cards open into richer detail; a compact sourced row preserves that signal without implying community consensus |
