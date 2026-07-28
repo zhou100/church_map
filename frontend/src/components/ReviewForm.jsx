@@ -1,8 +1,7 @@
 import { useState, useEffect, useRef } from 'react'
 import StarInput from './StarInput'
 import { useAuth, GOOGLE_CLIENT_ID } from '../context/AuthContext'
-
-const API = import.meta.env.VITE_API_URL || ''
+import { submitReview } from '../api/client'
 
 const DIM_FIELDS = [
   { key: 'worship_energy',       label: 'Worship energy' },
@@ -77,23 +76,12 @@ export default function ReviewForm({ churchId, onSubmitted }) {
     setSubmitting(true)
     setError(null)
     try {
-      const res = await fetch(`${API}/api/reviews`, {
-        method: 'POST',
-        headers: {
-          'Content-Type': 'application/json',
-          'Authorization': `Bearer ${token}`,
-        },
-        body: JSON.stringify({
-          church_id: churchId,
-          rating,
-          comment: comment.trim() || null,
-          ...Object.fromEntries(Object.entries(dims).filter(([, v]) => v != null)),
-        }),
-      })
-      if (!res.ok) {
-        const detail = await res.json().catch(() => ({}))
-        throw new Error(detail?.detail || 'Submission failed')
-      }
+      await submitReview({
+        church_id: churchId,
+        rating,
+        comment: comment.trim() || null,
+        ...Object.fromEntries(Object.entries(dims).filter(([, v]) => v != null)),
+      }, token)
       setSuccess(true)
       setRating(null)
       setComment('')

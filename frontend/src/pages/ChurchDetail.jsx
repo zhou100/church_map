@@ -5,8 +5,10 @@ import DimensionBars from '../components/DimensionBars'
 import ReviewForm from '../components/ReviewForm'
 import ChurchCard from '../components/ChurchCard'
 import AboutSection from '../components/AboutSection'
-
-const API = import.meta.env.VITE_API_URL || ''
+import Icon from '../components/Icon'
+import Seo from '../components/Seo'
+import { churchMarkerIcon } from '../components/mapMarker'
+import { enrichChurch, getChurch, getReviews, getSimilarChurches } from '../api/client'
 
 function Stars({ rating }) {
   if (rating == null) return <span className="stars">—</span>
@@ -43,19 +45,15 @@ export default function ChurchDetail() {
 
   async function fetchChurch() {
     try {
-      const res = await fetch(`${API}/api/churches/${id}`)
-      if (!res.ok) throw new Error(res.status === 404 ? 'Church not found' : 'Failed to load')
-      setChurch(await res.json())
+      setChurch(await getChurch(id))
     } catch (e) {
-      setChurchError(e.message)
+      setChurchError(e.status === 404 ? 'Church not found' : e.message)
     }
   }
 
   async function fetchSimilar() {
     try {
-      const res = await fetch(`${API}/api/churches/${id}/similar`)
-      if (!res.ok) throw new Error('Failed to load')
-      setSimilarChurches(await res.json())
+      setSimilarChurches(await getSimilarChurches(id))
     } catch (e) {
       setSimilarError(e.message)
     }
@@ -63,9 +61,7 @@ export default function ChurchDetail() {
 
   async function fetchEnrich() {
     try {
-      const res = await fetch(`${API}/api/churches/${id}/enrich`, { method: 'POST' })
-      if (!res.ok) return
-      const data = await res.json()
+      const data = await enrichChurch(id)
       if (data.photos?.length || data.hours?.length) setEnrichData(data)
     } catch {
       // enrichment is best-effort, never blocks the page
@@ -74,9 +70,7 @@ export default function ChurchDetail() {
 
   async function fetchReviews() {
     try {
-      const res = await fetch(`${API}/api/reviews/${id}`)
-      if (!res.ok) throw new Error('Failed to load reviews')
-      const data = await res.json()
+      const data = await getReviews(id)
       setReviewData(data)
       setReviewCount(data.reviews.length)
     } catch (e) {
@@ -92,16 +86,54 @@ export default function ChurchDetail() {
       setLoading(false)
       fetchEnrich()
     })
-  }, [id])
+  }, [id]) // eslint-disable-line react-hooks/exhaustive-deps
 
   async function handleReviewSubmitted() {
     await Promise.allSettled([fetchChurch(), fetchReviews()])
   }
 
-  if (loading) return <div className="loading">Loading…</div>
+  if (loading) {
+    return (
+      <>
+        <Seo title="Loading church profile" description="Loading a ChurchMap church profile." canonicalPath={`/church/${id}`} />
+        <div className="loading">Loading…</div>
+      </>
+    )
+  }
+
+  const place = church ? [church.city, church.state].filter(Boolean).join(', ') : ''
+  const description = church?.website_summary
+    || (church ? `Church profile for ${church.name}${place ? ` in ${place}` : ''}, with website details and community ratings where available.` : 'Church profile on ChurchMap.')
+  const jsonLd = church ? {
+    '@context': 'https://schema.org',
+    '@type': 'Church',
+    name: church.name,
+    url: `https://churchmap.vercel.app/church/${church.id}`,
+    description,
+    telephone: church.phone || undefined,
+    sameAs: church.website ? [church.website] : undefined,
+    address: (church.address || church.city) ? {
+      '@type': 'PostalAddress',
+      streetAddress: church.address || undefined,
+      addressLocality: church.city || undefined,
+      addressRegion: church.state || undefined,
+    } : undefined,
+    geo: (church.latitude && church.longitude) ? {
+      '@type': 'GeoCoordinates',
+      latitude: church.latitude,
+      longitude: church.longitude,
+    } : undefined,
+  } : null
 
   return (
     <div className="detail-page">
+      <Seo
+        title={church ? `${church.name}${place ? ` — ${place}` : ''}` : 'Church not found'}
+        description={description}
+        canonicalPath={`/church/${id}`}
+        type="place"
+        jsonLd={jsonLd}
+      />
       <button className="back-link" onClick={() => navigate(-1)}>← Back to search</button>
 
       {churchError
@@ -123,7 +155,7 @@ export default function ChurchDetail() {
                     attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                     url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
                   />
-                  <Marker position={[church.latitude, church.longitude]} />
+                  <Marker position={[church.latitude, church.longitude]} icon={churchMarkerIcon()} />
                 </MapContainer>
               </div>
             )}
@@ -137,28 +169,32 @@ export default function ChurchDetail() {
                 </p>
               )}
               {church.service_times && (
-                <p className="service-times">🕐 {church.service_times}</p>
+                <p className="service-times"><Icon name="clock" size={15} /> {church.service_times}</p>
               )}
               {enrichData?.editorial && (
                 <p className="church-editorial">{enrichData.editorial}</p>
               )}
 
-              <div className="meta">
-                <Stars rating={church.avg_rating} />
-                <span className="avg-rating">
-                  {church.avg_rating != null ? church.avg_rating.toFixed(1) : '—'}
-                </span>
-                <span className="review-count">
-                  (<span className="review-count-badge" key={reviewCount}>{reviewCount}</span>
-                  {' '}{reviewCount === 1 ? 'review' : 'reviews'})
-                </span>
+              <div className={`meta${reviewCount ? '' : ' meta-empty'}`}>
+                {reviewCount > 0 ? (
+                  <>
+                    <Stars rating={church.avg_rating} />
+                    <span className="avg-rating">
+                      {church.avg_rating != null ? church.avg_rating.toFixed(1) : 'No rating'}
+                    </span>
+                    <span className="review-count">
+                      (<span className="review-count-badge" key={reviewCount}>{reviewCount}</span>
+                      {' '}{reviewCount === 1 ? 'review' : 'reviews'})
+                    </span>
+                  </>
+                ) : <span className="profile-status">No community reviews yet</span>}
                 {enrichData?.rating != null && (
                   <span className="google-rating">
-                    ⭐ {enrichData.rating} Google ({enrichData.review_count?.toLocaleString()})
+                    <span className="stars">★</span> {enrichData.rating} Google ({enrichData.review_count?.toLocaleString()})
                   </span>
                 )}
                 {enrichData?.wheelchair && (
-                  <span className="tag">♿ Accessible</span>
+                  <span className="tag"><Icon name="accessible" size={14} /> Accessible</span>
                 )}
                 {church.tags?.map(t => <span key={t} className="tag">{t}</span>)}
               </div>
@@ -167,12 +203,12 @@ export default function ChurchDetail() {
                 <div className="detail-info-bar">
                   {church.website && (
                     <a href={church.website} target="_blank" rel="noopener noreferrer" className="info-link">
-                      🌐 Website
+                      <Icon name="globe" /> Website
                     </a>
                   )}
                   {church.phone && (
                     <a href={`tel:${church.phone}`} className="info-link">
-                      📞 {church.phone}
+                      <Icon name="phone" /> {church.phone}
                     </a>
                   )}
                   {church.latitude && church.longitude && (
@@ -182,7 +218,7 @@ export default function ChurchDetail() {
                       rel="noopener noreferrer"
                       className="info-link"
                     >
-                      📍 Get directions
+                      <Icon name="pin" /> Get directions
                     </a>
                   )}
                 </div>

@@ -1,7 +1,8 @@
 import { Link } from 'react-router-dom'
+import Icon from './Icon'
 
 const DENOM_COLORS = {
-  baptist:     '#7C3AED',
+  baptist:     '#9A3412',
   catholic:    '#1D4ED8',
   episcopal:   '#B45309',
   anglican:    '#B45309',
@@ -37,7 +38,7 @@ function Distance({ church, userLat, userLon }) {
   const label = miles < 0.1 ? 'nearby'
     : miles < 10 ? `${miles.toFixed(1)} mi`
     : `${Math.round(miles)} mi`
-  return <span className="card-distance">📍 {label}</span>
+  return <span className="card-distance"><Icon name="pin" size={13} /> {label}</span>
 }
 
 function CardBody({ church, userLat, userLon, showLocation }) {
@@ -63,12 +64,20 @@ function CardBody({ church, userLat, userLon, showLocation }) {
           {[church.city, church.state].filter(Boolean).join(', ')}
         </p>
       )}
-      <div className="card-meta">
-        <Stars rating={church.avg_rating} />
-        <span className="review-count">
-          {church.avg_rating != null ? church.avg_rating.toFixed(1) : '—'}
-          {' '}({church.review_count} {church.review_count === 1 ? 'review' : 'reviews'})
-        </span>
+      <div className={`card-meta${church.review_count ? '' : ' card-meta-empty'}`}>
+        {church.review_count ? (
+          <>
+            <Stars rating={church.avg_rating} />
+            <span className="review-count">
+              {church.avg_rating != null ? church.avg_rating.toFixed(1) : 'No rating'}
+              {' '}({church.review_count} {church.review_count === 1 ? 'review' : 'reviews'})
+            </span>
+          </>
+        ) : (
+          <span className="profile-status">
+            {hasWebsiteInsights ? 'Website profile available' : 'Website not read yet'}
+          </span>
+        )}
         <Distance church={church} userLat={userLat} userLon={userLon} />
       </div>
       <div className="tag-list">

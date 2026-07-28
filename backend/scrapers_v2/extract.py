@@ -217,7 +217,18 @@ def _s(v: Any) -> str | None:
 
 def _clamp(v: Any, n: int) -> str:
     s = _s(v) or ""
-    return s[:n].rstrip()
+    if len(s) <= n:
+        return s
+    if n <= 1:
+        return "…"[:n]
+
+    raw_candidate = s[: n - 1]
+    candidate = raw_candidate.rstrip()
+    if raw_candidate and not raw_candidate[-1].isspace():
+        boundary = candidate.rfind(" ")
+        if boundary > 0:
+            candidate = candidate[:boundary].rstrip(" ,;:-")
+    return f"{candidate}…"
 
 
 def _lst(v: Any, item_max: int | None = None) -> list[str]:

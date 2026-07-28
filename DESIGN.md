@@ -78,7 +78,7 @@ Four distinct types — never mix styles:
 - **Detail page:** Max-width 720px, centered. Map strip at top (180–220px), content below.
 - **Border radius:** `sm: 6px` / `md: 10px` / `lg: 16px` / `full: 9999px`
 - **Card left-border accent (denomination coding):**
-  - Baptist: `#7C3AED`
+  - Baptist: `#9A3412` (burnt orange)
   - Catholic: `#1D4ED8`
   - Episcopal / Anglican: `#B45309`
   - Methodist: `#0891B2`

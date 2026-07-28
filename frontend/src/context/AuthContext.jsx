@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect } from 'react'
+import { verifyGoogleCredential } from '../api/client'
 
 const AuthContext = createContext(null)
-const API = import.meta.env.VITE_API_URL || ''
 export const GOOGLE_CLIENT_ID = import.meta.env.VITE_GOOGLE_CLIENT_ID || ''
 
 export function AuthProvider({ children }) {
@@ -20,13 +20,7 @@ export function AuthProvider({ children }) {
 
   async function handleGoogleCredential(credential) {
     try {
-      const res = await fetch(`${API}/api/auth/verify`, {
-        method: 'POST',
-        headers: { 'Content-Type': 'application/json' },
-        body: JSON.stringify({ token: credential }),
-      })
-      if (!res.ok) throw new Error('Auth failed')
-      const userData = await res.json()
+      const userData = await verifyGoogleCredential(credential)
       setUser(userData)
       setToken(credential)
       localStorage.setItem('churchmap_user', JSON.stringify(userData))

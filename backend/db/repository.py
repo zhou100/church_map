@@ -148,7 +148,10 @@ class ChurchRepository:
         sql = _DIM_SELECT + f"""
             WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s){where}
             GROUP BY c.church_id
-            ORDER BY review_count DESC
+            ORDER BY
+                (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
+                review_count DESC,
+                c.name ASC
             LIMIT %s OFFSET %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
@@ -169,6 +172,7 @@ class ChurchRepository:
                     WHEN LEFT(LOWER(c.name), LENGTH(%s)) = LOWER(%s) THEN 1
                     ELSE 2
                 END,
+                (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
                 review_count DESC,
                 c.name ASC,
                 c.city ASC,
