@@ -988,11 +988,21 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   font-size: 0.82rem;
   font-weight: 600;
 }
-.landing-nav .nav-search-link {
+.landing-nav a.nav-search-link {
   padding: 0.5rem 0.85rem;
-  color: var(--sienna);
+  color: white;
+  background: var(--sienna);
   border: 1px solid var(--sienna);
   border-radius: 999px;
+}
+.landing-nav a.nav-search-link:hover {
+  color: white;
+  background: var(--sienna-dark);
+  border-color: var(--sienna-dark);
+}
+.prerendered-church .content-wordmark {
+  display: inline-block;
+  margin-bottom: 2rem;
 }
 .landing-page main > section {
   width: min(1120px, calc(100% - 48px));

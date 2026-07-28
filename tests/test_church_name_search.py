@@ -7,7 +7,7 @@ import pytest
 from fastapi import HTTPException
 
 from backend.db.repository import ChurchRepository
-from backend.routers.churches import list_churches
+from backend.routers.churches import list_churches, router
 
 
 class _FakeCursor:
@@ -52,6 +52,25 @@ def test_name_search_uses_bound_parameters():
     assert "STRPOS" in connection.last_cursor.sql
     assert "CASE" in connection.last_cursor.sql
     assert "website_summary IS NOT NULL" in connection.last_cursor.sql
+
+
+def test_prerender_feed_uses_summary_gate_and_keyset_pagination():
+    connection = _FakeConnection()
+
+    rows = asyncio.run(
+        ChurchRepository(connection).list_prerender_profiles(limit=500, after_id=123)
+    )
+
+    assert rows == []
+    assert "BTRIM(c.website_summary) <> ''" in connection.last_cursor.sql
+    assert "c.church_id > %s" in connection.last_cursor.sql
+    assert "OFFSET" not in connection.last_cursor.sql
+    assert connection.last_cursor.params == (123, 500)
+
+
+def test_prerender_route_precedes_the_integer_detail_route():
+    paths = [route.path for route in router.routes]
+    assert paths.index("/churches/prerender") < paths.index("/churches/{church_id}")
 
 
 def test_name_search_requires_two_characters():

@@ -11,7 +11,7 @@ import asyncio
 import json
 import os
 
-from fastapi import APIRouter, HTTPException
+from fastapi import APIRouter, HTTPException, Query
 from psycopg.rows import dict_row
 
 from backend import enrichment
@@ -57,6 +57,24 @@ def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
             k: (round(v, 2) if v is not None else None) for k, v in dims.items()
         }
     return church
+
+
+def _row_to_prerender_church(row: dict) -> dict:
+    """Public fields needed to build a useful static church profile."""
+    return {
+        "id": row["id"],
+        "name": row["name"],
+        "address": row.get("address"),
+        "city": row.get("city"),
+        "state": row.get("state"),
+        "denomination": row.get("denomination"),
+        "website": row.get("website") or None,
+        "phone": row.get("phone") or None,
+        "website_summary": row.get("website_summary") or None,
+        "extracted_tags": _normalize_extracted_tags(row.get("extracted_tags")),
+        "latitude": row.get("latitude"),
+        "longitude": row.get("longitude"),
+    }
 
 
 @router.get("/churches")
@@ -111,6 +129,22 @@ async def list_churches(
         else:
             rows = await repo.list_by_city_state(city, state, limit, offset, **filters)
     return [_row_to_church(r) for r in rows]
+
+
+@router.get("/churches/prerender")
+async def list_prerender_profiles(
+    limit: int = Query(default=500, ge=1, le=500),
+    after_id: int = Query(default=0, ge=0),
+):
+    """Page through churches that are substantial enough to publish.
+
+    This is a build-time feed, not another search endpoint. It deliberately
+    excludes churches without a website summary so static generation does not
+    turn unknown data into thousands of thin indexable pages.
+    """
+    async with pool.acquire() as con:
+        rows = await ChurchRepository(con).list_prerender_profiles(limit, after_id)
+    return [_row_to_prerender_church(row) for row in rows]
 
 
 @router.get("/churches/{church_id}")

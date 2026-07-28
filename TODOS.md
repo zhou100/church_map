@@ -11,9 +11,130 @@ have a website recorded, 5,326 (4.0%) have a successful extraction, and 4,332
 (3.2%) have a summary. The immediate work is making a useful church profile the
 default experience, not adding more UI around sparse data.
 
+The frontend revamp (#30) shipped the landing page, mobile layout, honest empty
+states, per-church SEO and enriched-first ranking — see
+[FRONTEND_PLAN.md](FRONTEND_PLAN.md) for the plan it executed. A post-deploy
+audit of the live site found three gaps; the first is a trust issue and heads
+the "Fix first" section below.
+
+---
+
+## Fix first — #30 follow-ups (live audit, 2026-07-27)
+
+Small, self-contained, and all three are regressions against claims the product
+now makes out loud. They come before the coverage work below because the landing
+page is what new visitors see first.
+
+- [x] **The landing page's example profile is hand-edited but presented as
+      verbatim.** `frontend/src/pages/Landing.jsx:9-18` hardcodes
+      `EXAMPLE_PROFILE`, rendered through the real `AboutSection` under the
+      heading "A real profile, not a promise" and the source line "From this
+      church's website". All four fields differ from what the extractor actually
+      produced for church 113184:
+
+      | field | landing page | live API |
+      |---|---|---|
+      | `pull_quote` | "…the **Pentecostal born again experience**…" | "…the **PENTECOSTAL BORN AGAIN EXPERIENCE**…" |
+      | `theology_summary` | "They **affirm** the Bible as the word of God…" | "They **believe in** the Bible as the **infallible** word of God… are also **cent**" |
+      | `summary` | "A multi-branch **Brooklyn** church… **practical care**…" | "This is a multi-branch church **in Brooklyn**… **They emphasize helping residents…**" |
+      | `programs` | 4 items, Title Case | 8 items, lowercase |
+
+      The `pull_quote` edit is the one that matters. The extraction system's
+      whole trust story rests on that field being verbatim — prompt v3.1 keeps
+      it in the source language precisely "because it's validated as a substring
+      of the source text" (STATUS.md §7), and F6 below calls that validation
+      "the strongest trust signal we have". The church wrote it in caps; the
+      landing page sentence-cases it and still presents it in quotation marks as
+      their words. F5 exists to stop machine-read claims looking like community
+      consensus; this is the same failure aimed at the church itself.
+
+      The `theology_summary` edit *rewrites away* the 240-char truncation rather
+      than showing it fixed. The `_clamp` fix landed in the same PR, but 113184
+      has not been re-extracted, so "See the full church profile" still lands on
+      "…are also cent". The landing page is clean and the page it links to is
+      not.
+
+      Fix: source it from `/api/churches/113184` at prerender time so it cannot
+      drift, or paste the exact API strings. Do not hand-polish extracted text
+      anywhere it is labelled as coming from the church.
+
+      Done 2026-07-28: the build now fetches church 113184 directly and passes
+      that same response through SSR and hydration. The example no longer has
+      a hand-maintained copy of any website-derived field.
+
+- [x] **Prerendering covers `/` only; every other route serves that same HTML.**
+      `curl` of `/`, `/search` and `/church/113184` returns byte-identical
+      documents. `Seo.jsx` is correct — after JS runs, the church page has its
+      own title, description, `og:url`, canonical and JSON-LD — but it runs too
+      late for the consumers that matter most:
+
+      - Social scrapers (WhatsApp, iMessage, Facebook, Twitter) do not execute
+        JS, so sharing any church still yields the generic landing card. That
+        was the main point of the SEO work.
+      - Every church URL's raw HTML embeds Gospel Tabernacle's summary and pull
+        quote, because that is what is baked into the prerendered landing page.
+      - 4,332 church URLs serve duplicate initial HTML.
+
+      Fix: extend `frontend/scripts/prerender.mjs` to emit per-church HTML for
+      churches that have extracted content (only those — thin pages hurt more
+      than they help), or add an edge function that injects meta tags for bot
+      user-agents. Gate the church-page half on coverage; the landing page and
+      top-N city pages are worth doing regardless.
+
+      Done 2026-07-28: `/api/churches/prerender` exposes a keyset-paginated
+      build feed gated on a non-empty website summary (not `extracted_at`).
+      Vite emits clean-URL HTML for every qualifying church plus distinct
+      `/search`, `/status`, and `/privacy` documents. Church pages carry their
+      own title, description, canonical, Open Graph data and JSON-LD; the
+      filesystem is checked before the SPA fallback, so thin profiles remain
+      client-only rather than becoming indexable placeholder pages.
+
+- [x] **The nav's primary CTA reads as disabled.** "Search churches" computes to
+      `color: #6B6560`, `font-weight: 600` — identical to the plain "How it
+      works" link beside it — distinguished only by a sienna border. Contrast is
+      5.16:1 so it passes AA; the problem is hierarchy, not accessibility: the
+      primary action looks weaker than the secondary link. Give it the sienna
+      fill used by "Explore churches" in the hero, or at minimum sienna text.
+
+      Done 2026-07-28: it now uses the hero CTA's sienna fill, white text and
+      dark-sienna hover state.
+
 ---
 
 ## Recently completed (2026-07-27)
+
+- [x] **Frontend revamp (#30)** — executed [FRONTEND_PLAN.md](FRONTEND_PLAN.md)
+      Phases 1-3. Verified against the live site after deploy:
+
+      - **Landing page at `/`, search moved to `/search`**, `/` prerendered
+        (hero copy is in the raw HTML). Wordmark overload from #28 resolved:
+        "Near me" is now its own control rather than a logo click.
+      - **Mobile works.** Was: map rendered at width 0 at 390px and the 420px
+        list panel clipped every card. Now: list/map toggle, map 390x489 with
+        49 pins, zero overflowing elements.
+      - **Fixture reviews removed in production** (`migrations/0005`). Brooklyn
+        now returns 0 reviews; it previously showed 32 anonymous fixtures on
+        church IDs 1-7, including one whose text was `test`, on the demo city's
+        top results. The migration is guarded to anonymous, pre-2026-03-23 rows
+        on those ids only, so later real reviews survive.
+      - **Enriched-first ranking**, server-side in `repository.py` for both
+        location and name search. Brooklyn's 14 enriched churches now occupy the
+        first 17 slots (was 1 of 50); Chicago shows 44 enriched in the first 50.
+      - **Honest empty state** — cards say "Website not read yet" rather than
+        rendering as a failed load. This is the card half of F4.
+      - Per-church SEO client-side (title, description, `og:*`, canonical,
+        JSON-LD), real favicon, social card, `/status`, `/privacy`, footer.
+      - `frontend/src/api/client.js` — the 12 scattered `fetch()` calls and the
+        `ipapi.co` call now go through one module, per the `CLAUDE.md`
+        convention.
+      - Design fixes: custom map pin on `/church/:id` (the default blue Leaflet
+        marker is gone), SVG icons replacing emoji.
+      - `_clamp` in `backend/scrapers_v2/extract.py` now trims on a word
+        boundary and appends an ellipsis instead of cutting mid-word. Affects
+        rows written after deploy only — existing truncated summaries persist
+        until re-extraction.
+
+      Three gaps found in the same audit are open at the top of this file.
 
 - [x] **Read the backfill failure breakdown, then decide about chunk 2.** Read
       2026-07-27 after Render redeployed: 5,463 attempted, 131 failed (2.4%).
@@ -125,20 +246,14 @@ work at user demand, then expand beyond the website-only ceiling.
       sorts ahead of every newly crawled page; queueing all of them at once
       parks fresh crawl output behind the whole backfill.
 
-- [ ] **Surface `/api/stats` somewhere visible.** The endpoint exists now
-      (aggregate counts, prompt-version split, per-stage freshness, the
-      `extraction.attempts` failure breakdown, untokened). What's missing is
-      somewhere a human actually looks: a README badge, a small status page,
-      or a line on the frontend footer. A number nobody sees is the same as no
-      number — that's how the July disable went 8 days unnoticed.
-
-      Keep the audience straight. `pipeline_ok` / `attempts` / `stale` are
-      *operator* numbers and do not belong in the product UI — that is exactly
-      the developer-facing complexity `CLAUDE.md` warns against. The
-      user-facing version of this is one honest sentence about coverage
-      ("we've read N of M church websites"), which is really F4 in the
-      frontend section. A separate `/status` page can be as technical as it
-      likes.
+- [x] **Surface `/api/stats` somewhere visible.** Done 2026-07-27 in #30, in
+      both registers the original note asked for. Users get one honest sentence
+      on the landing page, driven live from the endpoint ("We've read 4,332
+      church websites so far, out of 133,939 churches we know about"). Operators
+      get `/status`, linked from the footer, carrying the counts and pipeline
+      health. Confirmed live: the number moved 4,332 → 4,342 between two reads
+      forty minutes apart, so it is genuinely fetched rather than baked in.
+      `pipeline_ok` / `attempts` / `stale` stayed out of the product UI.
 - [ ] **Demand-driven fetch priority.** `churches_due_for_fetch` in
       `backend/db/repository.py` currently orders by `last_try ASC NULLS FIRST` —
       pure table order. Seed or reorder toward a top-N metro list (or actual search
@@ -209,13 +324,19 @@ long tail of website-less churches never gets extracted at all.
       city/state so similarly named churches are distinguishable.
 
 - [ ] **F3. Filtering is client-side over one page of 50, so the #23 filters
-      are unreachable.** `pages/Search.jsx:149-156` builds `availableTags` /
-      `availableLangs` from whatever rows are currently loaded and filters
-      with JS `.filter()`. Consequences: the filter bar only ever offers
-      values present in the loaded page, a filter "finds" nothing that hasn't
-      been paged in, and `Search.jsx:330` hides Load More whenever a tag
-      filter is active — an existing admission that client filtering and
-      pagination don't compose.
+      are unreachable.** Unchanged by #30 — re-checked 2026-07-27 against the
+      current file. `pages/Search.jsx:203-205` builds `availableTags` /
+      `availableLangs` from whatever rows are currently loaded and
+      `Search.jsx:209-210` filters with JS `.filter()`. Consequences: the filter
+      bar only ever offers values present in the loaded page, a filter "finds"
+      nothing that hasn't been paged in, and `Search.jsx:460` hides Load More
+      whenever a tag filter is active — an existing admission that client
+      filtering and pagination don't compose.
+
+      Note what #30 *did* change, so this doesn't get conflated: default
+      ordering moved into SQL (`repository.py`, enriched-first). The sort
+      controls and the tag/language filters in the UI are still client-side over
+      loaded rows.
 
       `GET /api/churches` has taken `language`, `worship_style` and `stance`
       since #23 and nothing calls them. The fix is to move filter state into
@@ -242,6 +363,13 @@ long tail of website-less churches never gets extracted at all.
       or say "we haven't read this church's site yet" on the card and "N of M
       churches here have been read" on the empty state. Either way the filter
       should not silently imply absence.
+
+      **Card half done 2026-07-27 in #30** — unread churches now say "Website
+      not read yet" instead of rendering as a failed load, and the landing page
+      states corpus-wide coverage. What remains is the *filter* half: per-facet
+      counts before a facet is clicked, and a result-count sentence on the empty
+      state. That half is coupled to F3 (facet counts need server-side
+      filtering to be accurate), so do them together.
 
 - [x] **F5. Define a treatment for machine-extracted data.** Decided
       2026-07-27: website-derived content sits in a warm-surface,
