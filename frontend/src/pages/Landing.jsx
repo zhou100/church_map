@@ -6,16 +6,6 @@ import Seo from '../components/Seo'
 import { detectLocation, getStats } from '../api/client'
 
 const AUDITED_COVERAGE = { withSummary: 4332, total: 133939 }
-const EXAMPLE_PROFILE = {
-  summary: 'A multi-branch Brooklyn church with a long history, focused on community outreach, practical care, and global evangelism.',
-  tags: {
-    vibe_tags: ['community-focused', 'mission-driven', 'spirit-filled', 'intergenerational'],
-    pull_quote: 'Gospel Tabernacle embrace the Pentecostal born again experience, and is committed to do all we can to help improve the quality of life for our residents and congregants.',
-    theology_summary: 'They affirm the Bible as the word of God, the deity of Jesus Christ, regeneration by the Holy Spirit, divine healing, and the baptism of the Holy Spirit.',
-    service_languages: [],
-    programs: ['Food pantry', 'Family counseling', 'Youth activities', 'Elderly programs'],
-  },
-}
 const DEMO_DIMENSIONS = {
   worship_energy: 4.6,
   community_warmth: 4.8,
@@ -31,7 +21,7 @@ function parseLocation(value) {
   return { city: match[1].trim(), state: match[2].toUpperCase() }
 }
 
-export default function Landing() {
+export default function Landing({ exampleChurch }) {
   const [location, setLocation] = useState('')
   const [locationError, setLocationError] = useState('')
   const [lastSearch, setLastSearch] = useState(null)
@@ -128,15 +118,23 @@ export default function Landing() {
           </a>
         </section>
 
-        <section className="profile-showcase" aria-labelledby="profile-showcase-title">
-          <div className="showcase-intro">
-            <p className="eyebrow">A real profile, not a promise</p>
-            <h2 id="profile-showcase-title">The Gospel Tabernacle Church</h2>
-            <p>Brooklyn, New York · Pentecostal</p>
-            <a href="/church/113184">See the full church profile <Icon name="arrow" /></a>
-          </div>
-          <AboutSection summary={EXAMPLE_PROFILE.summary} tags={EXAMPLE_PROFILE.tags} />
-        </section>
+        {exampleChurch && (
+          <section className="profile-showcase" aria-labelledby="profile-showcase-title">
+            <div className="showcase-intro">
+              <p className="eyebrow">A real profile, not a promise</p>
+              <h2 id="profile-showcase-title">{exampleChurch.name}</h2>
+              <p>
+                {[exampleChurch.city, exampleChurch.state].filter(Boolean).join(', ')}
+                {exampleChurch.denomination ? ` · ${exampleChurch.denomination}` : ''}
+              </p>
+              <a href={`/church/${exampleChurch.id}`}>See the full church profile <Icon name="arrow" /></a>
+            </div>
+            <AboutSection
+              summary={exampleChurch.website_summary}
+              tags={exampleChurch.extracted_tags}
+            />
+          </section>
+        )}
 
         <section className="how-it-works" id="methodology" aria-labelledby="how-title">
           <p className="eyebrow">How ChurchMap works</p>

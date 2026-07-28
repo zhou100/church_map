@@ -195,6 +195,38 @@ class ChurchRepository:
             await cur.execute(sql, (church_id,))
             return await cur.fetchone()
 
+    async def list_prerender_profiles(self, limit: int, after_id: int) -> list[dict]:
+        """Return profile data for static church pages.
+
+        A non-empty website summary is the publication gate. It is both a
+        useful minimum for a search result and stricter than `extracted_at`,
+        which is also stamped on failed extraction attempts.
+        """
+        sql = """
+            SELECT
+                c.church_id AS id,
+                c.name,
+                c.address,
+                c.city,
+                c.state,
+                c.denomination,
+                c.website,
+                c.phone,
+                c.website_summary,
+                c.extracted_tags,
+                c.latitude,
+                c.longitude
+             FROM churches c
+             WHERE c.church_id > %s
+               AND c.website_summary IS NOT NULL
+               AND BTRIM(c.website_summary) <> ''
+             ORDER BY c.church_id
+             LIMIT %s
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, (after_id, limit))
+            return await cur.fetchall()
+
     async def similar(self, church_id: int, k: int = 3) -> list[dict]:
         # Squared Euclidean distance on the 6 dimension averages of the target
         # church vs. every other church with at least one review. Inlined
