@@ -19,6 +19,7 @@ export default function AboutSection({ summary, tags }) {
   const hasAnything = summary || theology || worshipStyle || worshipDetail
     || pullQuote || faith.length || vibe.length || programs.length || langs.length
   if (!hasAnything) return null
+  const hasTwoAboutBlocks = Boolean(theology && (worshipStyle || worshipDetail))
 
   return (
     <section className="about-section" aria-label="From this church's website">
@@ -37,7 +38,7 @@ export default function AboutSection({ summary, tags }) {
       )}
 
       {(theology || worshipStyle || worshipDetail) && (
-        <div className="about-blocks">
+        <div className={`about-blocks${hasTwoAboutBlocks ? '' : ' about-blocks-single'}`}>
           {theology && (
             <div className="about-block">
               <h4>What they teach</h4>

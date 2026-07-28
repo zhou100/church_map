@@ -4,17 +4,12 @@ import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import ChurchCard from '../components/ChurchCard'
 import ChurchDetailPanel from '../components/ChurchDetailPanel'
+import Icon from '../components/Icon'
+import Seo from '../components/Seo'
+import { churchMarkerIcon } from '../components/mapMarker'
+import { detectLocation, listChurches } from '../api/client'
 
-const API = import.meta.env.VITE_API_URL || ''
 const PAGE = 50
-
-// Fix Leaflet default marker icons (broken by bundlers)
-delete L.Icon.Default.prototype._getIconUrl
-L.Icon.Default.mergeOptions({
-  iconRetinaUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon-2x.png',
-  iconUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-icon.png',
-  shadowUrl: 'https://unpkg.com/leaflet@1.9.4/dist/images/marker-shadow.png',
-})
 
 function MapBounds({ churches }) {
   const map = useMap()
@@ -37,6 +32,24 @@ function MapFlyTo({ church }) {
   return null
 }
 
+function MapResize({ active }) {
+  const map = useMap()
+  useEffect(() => {
+    if (!active) return
+    const frame = requestAnimationFrame(() => map.invalidateSize())
+    return () => cancelAnimationFrame(frame)
+  }, [active, map])
+  return null
+}
+
+function hasWebsiteProfile(church) {
+  const extracted = church.extracted_tags || {}
+  return Boolean(
+    church.website_summary ||
+    Object.values(extracted).some(value => Array.isArray(value) ? value.length : value)
+  )
+}
+
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams()
   const [city, setCity] = useState(searchParams.get('city') || '')
@@ -51,29 +64,17 @@ export default function Search() {
   const [error, setError] = useState(null)
   const [selectedTags, setSelectedTags] = useState([])
   const [selectedLang, setSelectedLang] = useState(null)
-  const [sortBy, setSortBy] = useState('distance')
+  const [sortBy, setSortBy] = useState('usefulness')
   const [detectedLocation, setDetectedLocation] = useState(null)
   const [userCoords, setUserCoords] = useState(null)
+  const [locating, setLocating] = useState(false)
+  const [mobileView, setMobileView] = useState('list')
   const [hoveredId, setHoveredId] = useState(null)
   const [selectedChurchId, setSelectedChurchId] = useState(null)
   const offsetRef = useRef(0)
-  const cardRefs = useRef({})
 
   async function fetchPage(search, offset, append = false) {
-    const params = new URLSearchParams({ limit: PAGE, offset })
-    if (search.type === 'name') {
-      params.set('name', search.name)
-    } else {
-      params.set('city', search.city)
-      params.set('state', search.state)
-    }
-    const url = `${API}/api/churches?${params}`
-    const res = await fetch(url)
-    if (!res.ok) {
-      const body = await res.json().catch(() => null)
-      throw new Error(body?.detail || 'Failed to fetch churches')
-    }
-    const data = await res.json()
+    const data = await listChurches(search, { limit: PAGE, offset })
     if (append) {
       setChurches(prev => [...(prev || []), ...data])
     } else {
@@ -84,16 +85,24 @@ export default function Search() {
     return data
   }
 
-  async function runSearch(search) {
+  async function runSearch(search, location = null) {
     setSearchParams(search.type === 'name'
       ? { name: search.name }
       : { city: search.city, state: search.state })
+    if (search.type === 'location') {
+      localStorage.setItem('churchmap_last_search', JSON.stringify({
+        city: search.city,
+        state: search.state,
+      }))
+    }
     setActiveSearch(search)
     setSelectedTags([])
     setSelectedLang(null)
-    setDetectedLocation(null)
+    setDetectedLocation(location ? { city: location.city, state: location.state } : null)
+    setUserCoords(location ? { lat: location.lat, lon: location.lon } : null)
     setSelectedChurchId(null)
-    setSortBy(search.type === 'name' ? 'relevance' : 'distance')
+    setMobileView('list')
+    setSortBy(search.type === 'name' ? 'relevance' : 'usefulness')
     setLoading(true)
     setError(null)
     offsetRef.current = 0
@@ -130,6 +139,26 @@ export default function Search() {
     }
   }
 
+  async function handleNearMe() {
+    setLocating(true)
+    setError(null)
+    try {
+      const location = await detectLocation()
+      setCity(location.city)
+      setState(location.state)
+      setSearchMode('location')
+      await runSearch({
+        type: 'location',
+        city: location.city,
+        state: location.state,
+      }, location)
+    } catch (err) {
+      setError(err.message)
+    } finally {
+      setLocating(false)
+    }
+  }
+
   useEffect(() => {
     const n = searchParams.get('name')
     const c = searchParams.get('city')
@@ -149,41 +178,18 @@ export default function Search() {
         .finally(() => setLoading(false))
     } else if (c && s) {
       const search = { type: 'location', city: c, state: s }
+      localStorage.setItem('churchmap_last_search', JSON.stringify({ city: c, state: s }))
       setCity(c)
       setState(s)
       setSearchMode('location')
       setActiveSearch(search)
+      setSortBy('usefulness')
       setLoading(true)
       setError(null)
       offsetRef.current = 0
       fetchPage(search, 0)
         .then(() => setSelectedTags([]))
         .catch(err => setError(err.message))
-        .finally(() => setLoading(false))
-    } else {
-      setLoading(true)
-      fetch('https://ipapi.co/json/')
-        .then(r => r.json())
-        .then(data => {
-          const detCity = data.city
-          const detState = data.region_code
-          if (detCity && detState && data.country_code === 'US') {
-            const search = { type: 'location', city: detCity, state: detState }
-            setCity(detCity)
-            setState(detState)
-            setSearchMode('location')
-            setActiveSearch(search)
-            setDetectedLocation({ city: detCity, state: detState })
-            if (data.latitude && data.longitude) {
-              setUserCoords({ lat: data.latitude, lon: data.longitude })
-            }
-            setSearchParams({ city: detCity, state: detState })
-            offsetRef.current = 0
-            return fetchPage(search, 0)
-              .then(() => setSelectedTags([]))
-          }
-        })
-        .catch(() => {})
         .finally(() => setLoading(false))
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
@@ -211,6 +217,11 @@ export default function Search() {
     }
     if (sortBy === 'rating') return (b.avg_rating ?? 0) - (a.avg_rating ?? 0)
     if (sortBy === 'reviews') return (b.review_count ?? 0) - (a.review_count ?? 0)
+    if (sortBy === 'usefulness') {
+      const profileDifference = Number(hasWebsiteProfile(b)) - Number(hasWebsiteProfile(a))
+      if (profileDifference) return profileDifference
+      return (b.review_count ?? 0) - (a.review_count ?? 0)
+    }
     return 0
   }) : null
 
@@ -232,35 +243,34 @@ export default function Search() {
 
   function markerIcon(id) {
     const active = id === hoveredId || id === selectedChurchId
-    return L.divIcon({
-      className: '',
-      html: `<div class="map-pin${active ? ' map-pin-active' : ''}"></div>`,
-      iconSize: [28, 28],
-      iconAnchor: [14, 28],
-      popupAnchor: [0, -28],
-    })
-  }
-
-  function scrollToCard(id) {
-    cardRefs.current[id]?.scrollIntoView({ behavior: 'smooth', block: 'nearest' })
-    setHoveredId(id)
+    return churchMarkerIcon(active)
   }
 
   function handleSelectChurch(id) {
     setSelectedChurchId(id)
     setHoveredId(id)
+    setMobileView('list')
   }
 
   const hasResults = !loading && churches !== null
 
   return (
     <div className="search-page">
+      <Seo
+        title={activeSearch?.type === 'name'
+          ? `${activeSearch.name} church search`
+          : activeSearch
+            ? `Churches in ${activeSearch.city}, ${activeSearch.state}`
+            : 'Search churches'}
+        description="Find churches by city or name, then see what their own websites say and community ratings where available."
+        canonicalPath={`/search${searchParams.toString() ? `?${searchParams}` : ''}`}
+      />
       <div className="search-top">
         <header>
-          <a href="/" className="wordmark" aria-label="ChurchMap home — use my default location">
+          <a href="/" className="wordmark" aria-label="ChurchMap home">
             ChurchMap
           </a>
-          <p>Find your church — rated on what actually matters.</p>
+          <p>Know what a Sunday is actually like before you walk in.</p>
         </header>
 
         <div className="search-mode-tabs" role="tablist" aria-label="Search by">
@@ -300,8 +310,11 @@ export default function Search() {
               </button>
             </div>
             <div className="demo-hint">
-              Try:{' '}
-              <button type="button" onClick={tryDemo}>Brooklyn, NY →</button>
+              <button type="button" className="near-me-btn" onClick={handleNearMe} disabled={locating || loading}>
+                <Icon name="pin" size={14} /> {locating ? 'Finding your city…' : 'Near me'}
+              </button>
+              <span>or try </span>
+              <button type="button" onClick={tryDemo}>Brooklyn, NY <Icon name="arrow" size={13} /></button>
             </div>
           </form>
         ) : (
@@ -325,7 +338,7 @@ export default function Search() {
 
         {detectedLocation && searchMode === 'location' && !loading && (
           <p className="location-detected">
-            📍 Showing churches near <strong>{detectedLocation.city}, {detectedLocation.state}</strong>
+            <Icon name="pin" size={14} /> Showing churches near <strong>{detectedLocation.city}, {detectedLocation.state}</strong>
           </p>
         )}
         {error && <p className="error-msg">{error}</p>}
@@ -338,17 +351,17 @@ export default function Search() {
               {[
                 ...(activeSearch?.type === 'name'
                   ? [{ key: 'relevance', label: 'Best match' }]
-                  : []),
-                { key: 'distance', label: '📍 Nearest', disabled: !userCoords?.lat },
-                { key: 'rating',   label: '★ Rating' },
-                { key: 'reviews',  label: '💬 Reviews' },
-              ].map(({ key, label, disabled }) => (
+                  : [{ key: 'usefulness', label: 'Best profiles' }]),
+                { key: 'distance', label: 'Nearest', icon: 'pin', disabled: !userCoords?.lat },
+                { key: 'rating',   label: 'Rating' },
+                { key: 'reviews',  label: 'Reviews', icon: 'reviews' },
+              ].map(({ key, label, icon, disabled }) => (
                 <button
                   key={key} type="button" disabled={disabled}
                   className={`sort-pill${sortBy === key ? ' sort-active' : ''}`}
                   onClick={() => setSortBy(key)}
                 >
-                  {label}
+                  {icon && <Icon name={icon} size={13} />} {label}
                 </button>
               ))}
             </div>
@@ -382,10 +395,31 @@ export default function Search() {
             )}
           </>
         )}
+
+        {hasResults && (
+          <div className="mobile-view-toggle" role="group" aria-label="Results view">
+            <button
+              type="button"
+              className={mobileView === 'list' ? 'mobile-view-active' : ''}
+              aria-pressed={mobileView === 'list'}
+              onClick={() => setMobileView('list')}
+            >
+              <Icon name="reviews" size={15} /> List
+            </button>
+            <button
+              type="button"
+              className={mobileView === 'map' ? 'mobile-view-active' : ''}
+              aria-pressed={mobileView === 'map'}
+              onClick={() => setMobileView('map')}
+            >
+              <Icon name="pin" size={15} /> Map
+            </button>
+          </div>
+        )}
       </div>
 
       {hasResults && (
-        <div className="results-pane">
+        <div className={`results-pane mobile-view-${mobileView}`}>
           {/* ── List / Detail panel ── */}
           <div className="list-panel">
             {selectedChurchId ? (
@@ -398,8 +432,8 @@ export default function Search() {
               <div className="empty-state">
                 {churches.length === 0
                   ? activeSearch?.type === 'name'
-                    ? <><p>No churches found matching “{activeSearch.name}”.</p><p style={{ fontSize: '0.85rem' }}>Try a shorter or different name.</p></>
-                    : <><p>No churches found in {city}, {state}.</p><p style={{ fontSize: '0.85rem' }}>Try a different city!</p></>
+                    ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
+                    : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>
                   : <p>No churches match the selected filters.</p>
                 }
               </div>
@@ -409,7 +443,6 @@ export default function Search() {
                   {visibleChurches?.map(c => (
                     <div
                       key={c.id}
-                      ref={el => { cardRefs.current[c.id] = el }}
                       className={`card-wrapper${hoveredId === c.id ? ' card-wrapper-active' : ''}`}
                       onMouseEnter={() => setHoveredId(c.id)}
                       onMouseLeave={() => setHoveredId(null)}
@@ -447,6 +480,7 @@ export default function Search() {
               zoom={4}
               style={{ height: '100%', width: '100%' }}
             >
+              <MapResize active={mobileView === 'map'} />
               <TileLayer
                 attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
                 url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"

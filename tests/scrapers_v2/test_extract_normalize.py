@@ -9,6 +9,7 @@ from backend.scrapers_v2.extract import (
     ExtractionError,
     TransientExtractionError,
     _parse_json_object,
+    _clamp,
     call_llm,
     normalize_extraction,
 )
@@ -88,6 +89,17 @@ def test_parse_json_object_strips_codefence():
 
 def test_parse_json_object_raw():
     assert _parse_json_object('{"a": 1}') == {"a": 1}
+
+
+def test_clamp_preserves_short_text():
+    assert _clamp("Short sentence.", 20) == "Short sentence."
+
+
+def test_clamp_uses_word_boundary_and_ellipsis():
+    value = "Divine healing and speaking in tongues are also central."
+    clamped = _clamp(value, 40)
+    assert clamped == "Divine healing and speaking in tongues…"
+    assert len(clamped) <= 40
 
 
 def test_normalize_drops_invalid_enum():

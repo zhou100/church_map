@@ -51,6 +51,7 @@ def test_name_search_uses_bound_parameters():
     assert connection.last_cursor.params == (query, query, query, query, 20, 5)
     assert "STRPOS" in connection.last_cursor.sql
     assert "CASE" in connection.last_cursor.sql
+    assert "website_summary IS NOT NULL" in connection.last_cursor.sql
 
 
 def test_name_search_requires_two_characters():
