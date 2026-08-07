@@ -110,7 +110,14 @@ jobs:
   # Settings → Actions → General → Workflow permissions to "Read and write".
   alert:
     needs: [fetch, extract, tag]
-    if: failure()
+    # `failure()` alone is not enough. When GitHub can't allocate a hosted
+    # runner ("The job was not acquired by Runner of type hosted") the job's
+    # conclusion is `cancelled`, not `failure` — so run 31124837072 went red
+    # with fetch dead and filed nothing. Silence again, which is the one
+    # outcome this job exists to rule out. `contains(needs.*.result,
+    # 'cancelled')` catches it; the leading `!cancelled()` is workflow-level
+    # and keeps a deliberate user cancel quiet.
+    if: ${{ !cancelled() && (failure() || contains(needs.*.result, 'cancelled')) }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
@@ -130,14 +137,18 @@ jobs:
             --description "Crawl pipeline stage failed" >/dev/null 2>&1 || true
 
           body=$(printf '%s\n' \
-            "A crawl stage failed." \
+            "A crawl stage did not complete." \
             "" \
             "- Run: $RUN_URL" \
             "- Trigger: $TRIGGER" \
-            "- Failed jobs: fetch=${{ needs.fetch.result }}, extract=${{ needs.extract.result }}, tag=${{ needs.tag.result }}" \
+            "- Stage results: fetch=${{ needs.fetch.result }}, extract=${{ needs.extract.result }}, tag=${{ needs.tag.result }}" \
             "" \
             "Usual suspects: an expired or rotated \`CRAWL_TOKEN\`, the Render backend" \
             "cold-starting past the curl timeout, or Supabase refusing connections." \
+            "" \
+            "A stage reading \`cancelled\` above usually means GitHub never allocated" \
+            "a runner — infrastructure, not this repo. The stage simply did not run;" \
+            "the next scheduled run picks the work back up." \
             "" \
             "This closes itself once a later run is green AND /api/stats reports" \
             "every stage inside its freshness budget. Further failures comment here" \
@@ -172,7 +183,14 @@ jobs:
     # Not `success()`: on a scheduled run the two stages that didn't fire are
     # skipped, and `success()` is false for a skipped dependency. What matters
     # is that nothing failed.
-    if: ${{ always() && !failure() && !cancelled() }}
+    #
+    # `cancelled()` is workflow-level and says nothing about a dependency that
+    # was individually cancelled, so it does not cover a lost runner — on
+    # 31124837072 this job queued anyway with fetch dead, and would have closed
+    # an open alert off a run whose only real stage never executed. A cancelled
+    # stage is absence of evidence, not evidence of health.
+    if: ${{ always() && !failure() && !cancelled()
+            && !contains(needs.*.result, 'cancelled') }}
     runs-on: ubuntu-latest
     permissions:
       issues: write
