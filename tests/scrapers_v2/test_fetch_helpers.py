@@ -59,7 +59,8 @@ def test_fetch_church_records_bad_url_for_backoff():
             crawl_run_id=7,
         )
     )
-    assert written == 0
+    assert written.pages_ok == 0
+    assert written.pages_error == 1
     assert len(repo.inserts) == 1
     row = repo.inserts[0]
     assert row["church_id"] == 42

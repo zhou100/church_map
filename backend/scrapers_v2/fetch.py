@@ -4,21 +4,22 @@ Per-domain politeness: 2s delay between requests to the same host. Robots.txt
 is consulted via the Postgres-backed cache (24h TTL). One retry on timeout/5xx.
 
 Idempotency:
-  * (church_id, url, content_hash) is unique. Re-fetching the same body of the
-    same URL is a no-op at the DB level.
+  * (church_id, url, content_hash) is unique. Same-content fetches refresh
+    verified storage metadata and preserve extraction state, except no-html.
   * R2 PUT skipped if HEAD shows the key already exists.
 """
 from __future__ import annotations
 
 import asyncio
-import hashlib
 import logging
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass
 
 import httpx
 import trafilatura
+from psycopg import DataError, IntegrityError
 
 from backend.db.repository import CrawlRepository
 from backend.scrapers_v2 import r2 as r2mod
@@ -32,6 +33,8 @@ HTTP_TIMEOUT_S = 15.0
 MAX_PAGE_BYTES = 2_000_000
 RETRY_DELAY_S = 5.0
 DEFAULT_MAX_PAGES = 4
+CHURCH_BUDGET_S = 45.0
+BATCH_BUDGET_S = 240.0
 
 CANDIDATE_PATHS = [
     ("about",      ["about", "about-us", "who-we-are", "our-church"]),
@@ -54,6 +57,17 @@ class FetchOutcome:
     raw_bytes: bytes | None
     content_hash: str | None
     r2_key: str | None
+
+
+@dataclass
+class FetchResult:
+    pages_ok: int = 0
+    pages_error: int = 0
+    pages_skipped: int = 0
+
+    @property
+    def pages(self) -> int:
+        return self.pages_ok + self.pages_error + self.pages_skipped
 
 
 def normalize_url(raw: str) -> str | None:
@@ -110,6 +124,12 @@ async def _fetch_once(client: httpx.AsyncClient, url: str) -> tuple[int, bytes |
         r = await client.get(url, timeout=HTTP_TIMEOUT_S, follow_redirects=True)
         if len(r.content) > MAX_PAGE_BYTES:
             return r.status_code, None, "page-too-large"
+        if r.status_code == 200:
+            mime = r.headers.get('content-type', '').split(';')[0].strip().lower()
+            if (mime and mime not in ('text/html', 'application/xhtml+xml')) or (
+                not mime and not re.search(br'<(?:!doctype\s+html|html|head|body)\b', r.content[:1024], re.I)
+            ):
+                return r.status_code, None, 'not-html'
         return r.status_code, r.content, None
     except httpx.TimeoutException:
         return 0, None, "timeout"
@@ -177,8 +197,9 @@ async def fetch_church(
     crawl_run_id: int | None,
     *,
     max_pages: int = DEFAULT_MAX_PAGES,
-) -> int:
-    """Fetch homepage + up to (max_pages - 1) candidate pages. Returns artifact count."""
+) -> FetchResult:
+    """Fetch at most max_pages; success means usable HTML stored in R2."""
+    result = FetchResult()
     base = normalize_url(website)
     if not base:
         # Record the attempt so the 48h failure backoff in churches_due_for_fetch
@@ -198,13 +219,11 @@ async def fetch_church(
             bytes_text=None,
             crawl_run_id=crawl_run_id,
         )
-        return 0
+        return FetchResult(pages_error=1)
 
     rp = await get_parser(repo, client, base)
-    written = 0
 
     async def _do(url: str, kind: str) -> bytes | None:
-        nonlocal written
         outcome = await _fetch_one_page(client, r2, rp, url, kind)
 
         # Storage step. If we have content, push to R2 (idempotent via HEAD).
@@ -212,8 +231,8 @@ async def fetch_church(
         # a fetch error with content_hash=None so:
         #   1. The unique (church_id, url, content_hash) index does not lock
         #      out a future retry of the same body.
-        #   2. churches_due_for_fetch (which only counts http_status=200) does
-        #      not treat the church as "fresh" for 30 days.
+        #   2. churches_due_for_fetch counts only consumable stored HTML,
+        #      so this attempt cannot make the church fresh for 30 days.
         # Without this, a transient R2 outage during fetch would silently
         # strand the church until manual DB cleanup.
         r2_key: str | None = None
@@ -223,8 +242,12 @@ async def fetch_church(
         if outcome.content_hash and outcome.raw_bytes:
             target_key = r2mod.r2_key_for(church_id, outcome.content_hash)
             try:
-                if not r2.head(target_key):
-                    r2.put_html(target_key, outcome.raw_bytes)
+                def store():
+                    if not r2.head(target_key):
+                        r2.put_html(target_key, outcome.raw_bytes)
+                # SDK calls have finite socket/retry limits and must not block
+                # the event loop (including our wall-clock cancellation).
+                await asyncio.to_thread(store)
                 r2_key = target_key
             except r2mod.R2Error as e:
                 log.warning("R2 PUT failed for church=%s url=%s: %s", church_id, url, e)
@@ -247,7 +270,12 @@ async def fetch_church(
             bytes_text=len(outcome.text) if outcome.text else None,
             crawl_run_id=crawl_run_id,
         )
-        written += 1
+        if r2_key:
+            result.pages_ok += 1
+        elif not outcome.robots_allowed:
+            result.pages_skipped += 1
+        else:
+            result.pages_error += 1
         return outcome.raw_bytes if r2_key else None
 
     home_body = await _do(base, "homepage")
@@ -260,13 +288,13 @@ async def fetch_church(
         except Exception:
             links = {}
         for kind in ("about", "beliefs", "ministries", "services"):
-            if written >= max_pages:
+            if result.pages >= max_pages:
                 break
             if kind in links:
                 await _do(links[kind], kind)
                 await asyncio.sleep(PER_DOMAIN_DELAY_S)
 
-    return written
+    return result
 
 
 async def run_fetch_batch(
@@ -277,19 +305,75 @@ async def run_fetch_batch(
     fresh_days: int,
     crawl_run_id: int | None,
 ) -> dict:
+    await repo.bound_fetch_transaction()
     targets = await repo.churches_due_for_fetch(limit=batch_size, fresh_days=fresh_days)
-    rows_processed = 0
-    rows_ok = 0
-    rows_error = 0
+    # Leave no selection transaction open while doing network I/O.
+    await repo.con.commit()
+    counts = dict(rows_processed=0, rows_ok=0, rows_error=0, rows_skipped=0,
+                  pages_ok=0, pages_error=0, pages_skipped=0,
+                  targets_selected=len(targets), targets_remaining=len(targets), budget_exhausted=False)
+    deadline = time.monotonic() + BATCH_BUDGET_S
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
         for t in targets:
-            rows_processed += 1
+            remaining = deadline - time.monotonic()
+            if remaining <= 0:
+                counts['budget_exhausted'] = True
+                break
             try:
-                await fetch_church(
-                    client, repo, r2, t["church_id"], t["website"], crawl_run_id
-                )
-                rows_ok += 1
+                async with asyncio.timeout(min(CHURCH_BUDGET_S, remaining)):
+                    async with repo.con.transaction():
+                        await repo.bound_fetch_transaction()
+                        result = await fetch_church(
+                            client, repo, r2, t['church_id'], t['website'], crawl_run_id
+                        )
+                        next_counts = _add_result(counts, result)
+                        if crawl_run_id is not None:
+                            await repo.update_run_progress(crawl_run_id, next_counts)
+                # Only publish counters after this church committed.
+                counts = next_counts
             except Exception as e:
                 log.exception("fetch failed church=%s: %s", t["church_id"], e)
-                rows_error += 1
-    return {"rows_processed": rows_processed, "rows_ok": rows_ok, "rows_error": rows_error}
+                # The church transaction rolled back, so earlier churches
+                # survive and even SQL failures cannot poison the next one.
+                next_counts = _add_result(counts, FetchResult(pages_error=1))
+                try:
+                    async with repo.con.transaction():
+                        await repo.bound_fetch_transaction()
+                        await repo.insert_artifact(
+                            church_id=t['church_id'], url=t['website'], kind='homepage',
+                            http_status=0, fetch_error=f'church-failed:{type(e).__name__}',
+                            robots_allowed=True, content_hash=None, r2_key=None,
+                            bytes_raw=None, bytes_text=None, crawl_run_id=crawl_run_id,
+                        )
+                        if crawl_run_id is not None:
+                            await repo.update_run_progress(crawl_run_id, next_counts)
+                except (DataError, IntegrityError):
+                    # A deleted church or invalid row can also reject the
+                    # diagnostic artifact. Isolate it; a connection failure,
+                    # in contrast, must abort rather than pretend to persist.
+                    log.warning('cannot persist failure artifact church=%s', t['church_id'], exc_info=True)
+                    async with repo.con.transaction():
+                        await repo.bound_fetch_transaction()
+                        if crawl_run_id is not None:
+                            await repo.update_run_progress(crawl_run_id, next_counts)
+                counts = next_counts
+        if counts['targets_remaining'] and time.monotonic() >= deadline:
+            counts['budget_exhausted'] = True
+    return counts
+
+
+def _add_result(counts: dict, result: FetchResult) -> dict:
+    out = dict(counts)
+    out['rows_processed'] += 1
+    out['targets_remaining'] -= 1
+    # A church with some usable pages advances extract even if an optional
+    # page failed. Page-level errors still make the run partial.
+    if result.pages_ok:
+        out['rows_ok'] += 1
+    elif result.pages_error:
+        out['rows_error'] += 1
+    else:
+        out['rows_skipped'] += 1
+    for key in ('pages_ok', 'pages_error', 'pages_skipped'):
+        out[key] += getattr(result, key)
+    return out

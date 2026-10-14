@@ -114,6 +114,88 @@ DATABASE_URL=... pytest tests/test_parity.py # endpoint parity against Postgres
 
 `tests/test_no_sqlite_in_routes.py` is a CI grep that fails if anything reintroduces `sqlite3.connect`, `?` placeholders, or `.lastrowid` into runtime route code.
 
+### Crawl reliability and rollout
+
+The [October 14 failed fetch job](https://github.com/zhou100/church_map/actions/runs/38630161317/job/116079431356)
+started at 20:13 UTC and hit curl's 600-second limit at 20:23 with zero response
+bytes. This establishes a request timeout, **not its backend root cause**. The
+old 50-church serial request, end-of-batch commit, synchronous storage calls and
+success counters provided several independent ways to lose or hide progress.
+Production impact and the existence/size of any stranded queue remain unverified.
+
+Fetch now defaults to 5 churches (maximum 25), with a 240-second loop budget,
+45 seconds per church, a 300-second runner limit, and a 330-second request budget
+covering claim and finalization. Database transactions use LOCAL 10-second statement
+and 3-second lock timeouts; error cleanup gets a separate 10-second limit. A timed-out church rolls
+back; earlier churches and their run counters are already committed. A failed
+church gets an attempt record and the usual 48-hour backoff. Unstarted targets
+remain due for a later request. Scheduled Actions makes up to ten sequential
+5-church requests, preserving the nominal 50/run capacity, and stops on an empty
+selection. Manual dispatch makes one request. No new worker is required.
+
+Fetch uses a 540-second database lease, committed before network work, to reject
+overlap with HTTP 409. An optional `Idempotency-Key` (1–128 characters) identifies
+one invocation: the same key replays its counters without starting more work.
+A running replay is HTTP 202; a failed/expired replay is HTTP 500. Use a new key
+for a deliberate new attempt. Actions uses the run id plus pass number and also
+checks the JSON status, so HTTP success alone does not imply completed work.
+The lease is longer than the runner limit; after a process dies, a later claim
+reconciles its expired run without erasing committed counters.
+
+Fetch `rows_ok` counts churches with at least one usable HTML page verified in R2.
+`rows_error` counts churches with no usable pages and a failure; `rows_skipped`
+counts churches excluded by robots. `pages_ok/error/skipped` expose optional-page
+failures, and `budget_exhausted`/`targets_remaining` expose incomplete batches.
+Any page error or exhausted budget makes a run partial. `/api/admin/crawl/status`
+includes committed counters, heartbeat/progress timestamps and metadata while
+the run is active. A hard process kill can leave it running until lease expiry.
+
+R2 uses 3-second connect and 10-second read socket timeouts and at most two total
+SDK attempts. Fetch runs these synchronous SDK operations in a thread so they
+cannot block async cancellation. Cancellation cannot kill an already-running
+SDK thread: an idempotent upload may finish without a DB reference, and a later
+fetch safely verifies/reuses the object. Socket limits do not establish a hard
+wall-clock bound for DNS or a peer that keeps trickling bytes.
+
+Extract selection, requeue eligibility and stats share one consumable predicate:
+HTTP 200, nonempty R2 key, no fetch error, robots allowed. New failed fetches are
+skipped rather than pending; historical invalid pending rows no longer block
+requeue. Stats counts them as `crawl.queue.invalid_pending`, and extract reports
+`state=degraded` until those historical rows are investigated separately.
+`state=idle` requires both an empty consumable queue and a recent clean check-in;
+backlog with overdue progress is `stalled`. `pipeline_ok` gates alert resolution
+and the public status display; a green Actions run alone is not full health.
+Tag progress uses committed processed rows because even unmatched church names
+advance its watermark; fetch and extract require successful content work.
+
+Same-content refetches update verified storage references and fetch timestamps.
+They retain successful extraction results and `error`/`no-text` terminal states.
+Only artifacts explicitly skipped for `no-html:*` become pending when their HTML
+is restored. A missing-object observation only marks an artifact terminal if its
+R2 reference and fetch timestamp still match, so a concurrent extraction cannot
+undo that repair even when a same-day fetch restores the same key.
+Re-extracting an older model's successful result still requires the
+existing explicit, bounded requeue operation. No automatic paid backfill is added.
+
+On an approved deployment, apply migration `0006_crawl_reliability.sql` before
+running the new backend. The existing container entrypoint does this. It adds
+run columns, a request-key index and a small lease table; it rewrites no church or
+artifact rows. Index creation runs in the migration transaction and briefly locks
+`crawl_runs`. Coordinate backend deployment with the new workflow's batch size
+and header. A code rollback can leave the additive schema in place; do not drop
+it while new workers are live. Rolling back code also restores the old reliability
+risks. Deployment, production queue cleanup, actual refetches and paid requeue
+must be authorized separately; none are part of this patch's validation.
+The root and frontend Vercel configs disable automatic deployment for this exact
+repair branch using [Vercel's branch configuration](https://vercel.com/docs/project-configuration/git-configuration#git.deploymentenabled),
+so the authorized push/PR does not request a preview deployment. Other branches
+retain their existing deployment policy.
+
+Regression tests use frozen synthetic HTML and mocked HTTP/R2. SQL tests run in
+the existing CI Postgres service with the real migration runner. On Windows use
+`PYTHONUTF8=1` and a private `--basetemp` if the shared pytest temp directory has
+restrictive ACLs. No live origin, R2, model or production DB is needed.
+
 ## API
 
 ```text

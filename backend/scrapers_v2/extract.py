@@ -34,6 +34,7 @@ import json
 import logging
 import os
 from dataclasses import dataclass
+from datetime import datetime
 from typing import Any
 
 import httpx
@@ -300,6 +301,7 @@ async def extract_for_church(
     artifact_ids: list[int],
     kinds: list[str],
     r2_keys: list[str],
+    fetched_ats: list[datetime],
     api_key: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> bool:
@@ -322,8 +324,13 @@ async def extract_for_church(
             # never fix this; re-*fetching* is the only route back, so say so
             # in the status rather than filing it under "page was empty".
             detail = f"no-html:{got.missing}/{got.keys}"
-            await repo.mark_artifacts_status(artifact_ids, status="skipped", error_detail=detail)
-            await repo.mark_church_extract_error(church_id, detail)
+            marked = await repo.mark_artifacts_status(
+                artifact_ids, status="skipped", error_detail=detail, expected_r2_keys=r2_keys,
+                expected_fetched_ats=fetched_ats,
+            )
+            await repo.mark_church_extract_error(
+                church_id, detail if marked == len(artifact_ids) else 'transient:archive-changed',
+            )
             return False
         await repo.mark_artifacts_status(artifact_ids, status="skipped", error_detail="no-text")
         await repo.mark_church_extract_error(church_id, "no-text")
@@ -399,6 +406,7 @@ async def run_extract_batch(
                     artifact_ids=list(t["artifact_ids"]),
                     kinds=list(t["kinds"]),
                     r2_keys=list(t["r2_keys"]),
+                    fetched_ats=list(t['fetched_ats']),
                     client=client,
                 )
                 if ok:

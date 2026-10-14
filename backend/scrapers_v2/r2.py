@@ -21,11 +21,12 @@ from typing import Any
 try:
     import boto3
     from botocore.config import Config
-    from botocore.exceptions import ClientError
+    from botocore.exceptions import BotoCoreError, ClientError
 except ImportError:  # pragma: no cover
     boto3 = None
     Config = None
     ClientError = Exception
+    BotoCoreError = Exception
 
 
 class R2Error(Exception):
@@ -83,7 +84,10 @@ class R2Client:
             aws_access_key_id=self.access_key_id,
             aws_secret_access_key=self.secret_access_key,
             region_name="auto",
-            config=Config(signature_version="s3v4", retries={"max_attempts": 3, "mode": "standard"}),
+            config=Config(
+                signature_version="s3v4", connect_timeout=3, read_timeout=10,
+                retries={"total_max_attempts": 2, "mode": "standard"},
+            ),
         )
         return self._client
 
@@ -96,7 +100,7 @@ class R2Client:
         try:
             self._ensure().head_object(Bucket=self.bucket, Key=key)
             return True
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             if self._is_missing(e):
                 return False
             raise R2Error(f"R2 head failed: {e}") from e
@@ -109,14 +113,17 @@ class R2Client:
                 Body=html,
                 ContentType="text/html; charset=utf-8",
             )
-        except ClientError as e:
+        except (ClientError, BotoCoreError) as e:
             raise R2Error(f"R2 put failed: {e}") from e
 
     def get_html(self, key: str) -> bytes:
         try:
             r = self._ensure().get_object(Bucket=self.bucket, Key=key)
-            return r["Body"].read()
-        except ClientError as e:
+            try:
+                return r["Body"].read()
+            finally:
+                r["Body"].close()
+        except (ClientError, BotoCoreError) as e:
             if self._is_missing(e):
                 raise R2NotFound(f"R2 key absent: {key}") from e
             raise R2Error(f"R2 get failed for {key}: {e}") from e

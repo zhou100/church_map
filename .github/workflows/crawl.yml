@@ -41,7 +41,7 @@ on:
         default: 'fetch'
         options: [fetch, extract, tag, all]
       batch:
-        description: 'Batch size'
+        description: 'Batch size (fetch: 1-25; leave empty for stage defaults)'
         required: false
         default: ''
 
@@ -55,16 +55,32 @@ jobs:
       (github.event_name == 'workflow_dispatch' &&
        (github.event.inputs.stage == 'fetch' || github.event.inputs.stage == 'all'))
     runs-on: ubuntu-latest
+    timeout-minutes: 55
     steps:
       - name: POST /api/admin/crawl/fetch
         env:
           BACKEND_URL: ${{ secrets.BACKEND_URL }}
           CRAWL_TOKEN: ${{ secrets.CRAWL_TOKEN }}
-          BATCH: ${{ github.event.inputs.batch || '50' }}
+          BATCH: ${{ github.event.inputs.batch || '5' }}
+          PASSES: ${{ github.event_name == 'schedule' && '10' || '1' }}
         run: |
-          curl -fsS --max-time 600 -X POST \
-            -H "X-Crawl-Token: $CRAWL_TOKEN" \
-            "$BACKEND_URL/api/admin/crawl/fetch?batch=$BATCH"
+          set -euo pipefail
+          # Preserve the nominal 50 churches/scheduled run with ten bounded
+          # requests. A retry of this Actions run replays the same pass keys.
+          for pass in $(seq 1 "$PASSES"); do
+            result=$(curl -fsS --max-time 360 -X POST \
+              -H "X-Crawl-Token: $CRAWL_TOKEN" \
+              -H "Idempotency-Key: fetch-${GITHUB_RUN_ID}-${pass}" \
+              "$BACKEND_URL/api/admin/crawl/fetch?batch=$BATCH")
+            printf '%s\n' "$result"
+            # HTTP 202 (still running) and zero-progress failures must not
+            # turn a duplicate invocation into a green completed fetch.
+            printf '%s' "$result" | jq -e \
+              '.status == "ok" or (.status == "partial" and .rows_ok > 0)' >/dev/null
+            if printf '%s' "$result" | jq -e '.targets_selected == 0' >/dev/null; then
+              break
+            fi
+          done
 
   extract:
     needs: [fetch]
