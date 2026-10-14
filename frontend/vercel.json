@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "fix/crawl-reliability-20261014": false
+    }
+  },
   "cleanUrls": true,
   "rewrites": [{ "source": "/(.*)", "destination": "/" }]
 }

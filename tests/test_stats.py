@@ -69,6 +69,40 @@ def _build(**kw):
     return build_stats(COUNTS, BY_VERSION, HEALTH, now=NOW, **kw)
 
 
+def test_recent_empty_stage_is_idle_but_backlog_with_no_progress_is_stalled():
+    health = {
+        'last_success': [{'stage': stage, 'last_success': NOW, 'last_progress': None}
+                         for stage in ('fetch', 'extract', 'tag')],
+        'has_backlog': {'fetch': False, 'extract': True, 'tag': False},
+    }
+    out = build_stats(COUNTS, BY_VERSION, health, now=NOW)['crawl']
+    assert out['stages']['fetch']['state'] == 'idle'
+    assert not out['stages']['fetch']['stale']
+    assert out['stages']['extract']['state'] == 'stalled'
+    assert out['stages']['extract']['stale']
+    assert not out['pipeline_ok']
+
+
+def test_empty_queue_without_recent_check_in_does_not_hide_dead_scheduler():
+    health = {'has_backlog': {stage: False for stage in ('fetch', 'extract', 'tag')}}
+    out = build_stats({}, [], health, now=NOW)['crawl']
+    assert not out['pipeline_ok']
+    assert all(s['stale'] for s in out['stages'].values())
+
+
+def test_invalid_pending_is_degraded_even_when_consumable_queue_is_idle():
+    health = {
+        'last_success': [{'stage': s, 'last_success': NOW, 'last_progress': NOW}
+                         for s in ('fetch', 'extract', 'tag')],
+        'has_backlog': {s: False for s in ('fetch', 'extract', 'tag')},
+        'queue': {'extract': 0, 'invalid_pending': 1, 'tag': 0},
+    }
+    out = build_stats({}, [], health, now=NOW)['crawl']
+    assert out['stages']['extract']['state'] == 'degraded'
+    assert out['stages']['extract']['degraded']
+    assert not out['pipeline_ok']
+
+
 # --- percentages -----------------------------------------------------------
 
 

@@ -12,6 +12,7 @@ to lowercase, so passing `Churches` would silently return zero rows.
 from __future__ import annotations
 
 import json
+from datetime import datetime
 from typing import Any
 
 from psycopg import AsyncConnection
@@ -394,6 +395,16 @@ class UserRepository:
 # ----- Crawl pipeline (Phase B) --------------------------------------------
 
 
+# Use this same predicate everywhere a page must be readable by extract.
+# It describes metadata eligibility, not proof that the object still exists.
+CONSUMABLE_HTML = """a.http_status = 200 AND a.r2_key IS NOT NULL
+    AND a.r2_key <> '' AND a.fetch_error IS NULL AND a.robots_allowed"""
+
+
+class CrawlBusy(Exception):
+    pass
+
+
 class CrawlRepository:
     """SQL surface for the R2-backed crawl pipeline.
 
@@ -410,6 +421,82 @@ class CrawlRepository:
         self.con = con
 
     # ----- crawl_runs ------------------------------------------------------
+
+    async def bound_fetch_transaction(self) -> None:
+        # LOCAL is essential with transaction pooling: session settings could
+        # leak to another caller or disappear on the next transaction.
+        async with self.con.cursor() as cur:
+            await cur.execute("SET LOCAL statement_timeout = '10s'")
+            await cur.execute("SET LOCAL lock_timeout = '3s'")
+
+    async def claim_run(
+        self, stage: str, batch_size: int, request_key: str | None, *, lease_seconds: int
+    ) -> tuple[dict, bool]:
+        """Serialize claims briefly, then release the DB lock on commit.
+
+        A committed lease survives per-church commits and process death. Never
+        use session advisory locks with the transaction-mode pooler.
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                "SELECT *, expires_at > clock_timestamp() AS active "
+                "FROM crawl_stage_leases WHERE stage=%s FOR UPDATE", (stage,),
+            )
+            lease = await cur.fetchone()
+            if lease['run_id'] and not lease['active']:
+                await cur.execute(
+                    "UPDATE crawl_runs SET status='error', finished_at=clock_timestamp(), "
+                    "error='lease expired; worker may have stopped' "
+                    "WHERE id=%s AND status='running'", (lease['run_id'],),
+                )
+            if request_key:
+                await cur.execute(
+                    "SELECT * FROM crawl_runs WHERE stage=%s AND request_key=%s",
+                    (stage, request_key),
+                )
+                previous = await cur.fetchone()
+                if previous:
+                    return previous, True
+            if lease["active"]:
+                raise CrawlBusy(f"{stage} already running (run_id={lease['run_id']})")
+            await cur.execute(
+                "INSERT INTO crawl_runs (stage, batch_size, triggered_by, request_key, heartbeat_at) "
+                "VALUES (%s, %s, 'github-actions', %s, clock_timestamp()) RETURNING *",
+                (stage, batch_size, request_key),
+            )
+            run = await cur.fetchone()
+            await cur.execute(
+                "UPDATE crawl_stage_leases SET run_id=%s, "
+                "expires_at=clock_timestamp() + make_interval(secs => %s) WHERE stage=%s",
+                (run["id"], lease_seconds, stage),
+            )
+            return run, False
+
+    async def update_run_progress(self, run_id: int, counts: dict) -> None:
+        async with self.con.cursor() as cur:
+            await cur.execute(
+                """UPDATE crawl_runs SET
+                       progress_at=CASE WHEN %s > rows_ok THEN clock_timestamp() ELSE progress_at END,
+                       heartbeat_at=clock_timestamp(), rows_processed=%s, rows_ok=%s,
+                       rows_error=%s, rows_skipped=%s, metadata=%s::jsonb
+                     WHERE id=%s AND status='running'""",
+                (counts['rows_ok'], counts['rows_processed'], counts['rows_ok'],
+                 counts['rows_error'], counts.get('rows_skipped', 0), json.dumps(counts), run_id),
+            )
+
+    async def release_run(self, run_id: int) -> None:
+        async with self.con.cursor() as cur:
+            await cur.execute(
+                "UPDATE crawl_stage_leases SET run_id=NULL, expires_at=NULL WHERE run_id=%s",
+                (run_id,),
+            )
+
+    async def fail_run(self, run_id: int, error: str) -> None:
+        async with self.con.cursor() as cur:
+            await cur.execute(
+                "UPDATE crawl_runs SET status='error', finished_at=clock_timestamp(), error=%s "
+                "WHERE id=%s", (error, run_id),
+            )
 
     async def start_run(self, stage: str, batch_size: int, triggered_by: str) -> int:
         sql = """
@@ -452,7 +539,7 @@ class CrawlRepository:
         sql = """
             SELECT id, stage, started_at, finished_at, status,
                    batch_size, rows_processed, rows_ok, rows_error,
-                   triggered_by, error
+                   triggered_by, error, heartbeat_at, progress_at, rows_skipped, metadata
               FROM crawl_runs
              ORDER BY started_at DESC
              LIMIT %s
@@ -496,11 +583,12 @@ class CrawlRepository:
         # / robots-disallowed / 5xx'd doesn't get retried every 4 hours.
         # Without this backoff, a few hundred permanently-broken sites would
         # consume every batch and starve never-tried churches.
-        sql = """
+        sql = f"""
             WITH latest_ok AS (
                 SELECT church_id, MAX(fetched_at) AS last_ok
-                  FROM raw_crawl_artifacts
-                 WHERE kind = 'homepage' AND http_status = 200
+                  FROM raw_crawl_artifacts a
+                 WHERE kind = 'homepage' AND {CONSUMABLE_HTML}
+                   AND NOT (extract_status = 'skipped' AND COALESCE(extract_error_detail, '') LIKE 'no-html:%%')
                  GROUP BY church_id
             ),
             latest_attempt AS (
@@ -538,17 +626,34 @@ class CrawlRepository:
         bytes_text: int | None,
         crawl_run_id: int | None,
     ) -> int | None:
-        # ON CONFLICT DO NOTHING on (church_id, url, content_hash) gives us
-        # idempotency: re-fetching the same body of the same URL is a no-op.
-        # Returns the artifact id on insert, None if a duplicate was skipped.
+        # Refresh verified storage metadata on same-content fetches. Preserve
+        # successful/terminal extraction state, except the specific no-html
+        # state: restoring its bytes is precisely what makes it retryable.
         sql = """
             INSERT INTO raw_crawl_artifacts (
                 church_id, url, kind, http_status, fetch_error,
                 robots_allowed, content_hash, r2_key, bytes_raw, bytes_text,
-                crawl_run_id
+                crawl_run_id, extract_status
             )
-            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (church_id, url, content_hash) DO NOTHING
+            VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+            ON CONFLICT (church_id, url, content_hash) DO UPDATE SET
+                fetched_at=clock_timestamp(), http_status=EXCLUDED.http_status,
+                fetch_error=EXCLUDED.fetch_error, robots_allowed=EXCLUDED.robots_allowed,
+                r2_key=EXCLUDED.r2_key, bytes_raw=EXCLUDED.bytes_raw,
+                bytes_text=EXCLUDED.bytes_text, crawl_run_id=EXCLUDED.crawl_run_id,
+                extract_status=CASE
+                    WHEN raw_crawl_artifacts.extract_status='skipped'
+                     AND raw_crawl_artifacts.extract_error_detail LIKE 'no-html:%%'
+                    THEN 'pending' ELSE raw_crawl_artifacts.extract_status END,
+                extract_error_detail=CASE
+                    WHEN raw_crawl_artifacts.extract_status='skipped'
+                     AND raw_crawl_artifacts.extract_error_detail LIKE 'no-html:%%'
+                    THEN NULL ELSE raw_crawl_artifacts.extract_error_detail END,
+                extracted_at=CASE
+                    WHEN raw_crawl_artifacts.extract_status='skipped'
+                     AND raw_crawl_artifacts.extract_error_detail LIKE 'no-html:%%'
+                    THEN NULL ELSE raw_crawl_artifacts.extracted_at END
+            WHERE EXCLUDED.extract_status='pending'
             RETURNING id
         """
         async with self.con.cursor() as cur:
@@ -558,6 +663,7 @@ class CrawlRepository:
                     church_id, url, kind, http_status, fetch_error,
                     robots_allowed, content_hash, r2_key, bytes_raw, bytes_text,
                     crawl_run_id,
+                    'pending' if http_status == 200 and r2_key and not fetch_error and robots_allowed else 'skipped',
                 ),
             )
             row = await cur.fetchone()
@@ -569,43 +675,17 @@ class CrawlRepository:
         # Group pending artifacts by church so a single LLM call covers all
         # pages for that church. Returns one row per church with a list of
         # artifact ids and their R2 keys + kinds.
-        sql = """
+        page_order = "array_position(ARRAY['homepage','about','beliefs','ministries','services'], a.kind), a.id"
+        sql = f"""
             SELECT
                 a.church_id,
-                ARRAY_AGG(a.id ORDER BY
-                    CASE a.kind
-                        WHEN 'homepage'   THEN 0
-                        WHEN 'about'      THEN 1
-                        WHEN 'beliefs'    THEN 2
-                        WHEN 'ministries' THEN 3
-                        WHEN 'services'   THEN 4
-                        ELSE 5
-                    END
-                ) AS artifact_ids,
-                ARRAY_AGG(a.r2_key ORDER BY
-                    CASE a.kind
-                        WHEN 'homepage'   THEN 0
-                        WHEN 'about'      THEN 1
-                        WHEN 'beliefs'    THEN 2
-                        WHEN 'ministries' THEN 3
-                        WHEN 'services'   THEN 4
-                        ELSE 5
-                    END
-                ) AS r2_keys,
-                ARRAY_AGG(a.kind ORDER BY
-                    CASE a.kind
-                        WHEN 'homepage'   THEN 0
-                        WHEN 'about'      THEN 1
-                        WHEN 'beliefs'    THEN 2
-                        WHEN 'ministries' THEN 3
-                        WHEN 'services'   THEN 4
-                        ELSE 5
-                    END
-                ) AS kinds
+                ARRAY_AGG(a.id ORDER BY {page_order}) AS artifact_ids,
+                ARRAY_AGG(a.r2_key ORDER BY {page_order}) AS r2_keys,
+                ARRAY_AGG(a.kind ORDER BY {page_order}) AS kinds,
+                ARRAY_AGG(a.fetched_at ORDER BY {page_order}) AS fetched_ats
               FROM raw_crawl_artifacts a
              WHERE a.extract_status = 'pending'
-               AND a.http_status = 200
-               AND a.r2_key IS NOT NULL
+               AND {CONSUMABLE_HTML}
              GROUP BY a.church_id
              ORDER BY MIN(a.fetched_at) ASC
              LIMIT %s
@@ -620,9 +700,11 @@ class CrawlRepository:
         *,
         status: str,
         error_detail: str | None = None,
-    ) -> None:
+        expected_r2_keys: list[str] | None = None,
+        expected_fetched_ats: list[datetime] | None = None,
+    ) -> int:
         if not artifact_ids:
-            return
+            return 0
         sql = """
             UPDATE raw_crawl_artifacts
                SET extract_status       = %s,
@@ -630,8 +712,33 @@ class CrawlRepository:
                    extracted_at         = NOW()
              WHERE id = ANY(%s)
         """
+        params = (status, error_detail, artifact_ids)
+        if expected_r2_keys is not None:
+            if len(expected_r2_keys) != len(artifact_ids):
+                raise ValueError('artifact ids and expected keys must align')
+            # A concurrent same-content refetch may have repaired the key
+            # since extract selected/read it. Do not make that repair terminal
+            # using an observation about the old, missing object.
+            sql += """ AND EXISTS (
+                SELECT 1 FROM unnest(%s::bigint[], %s::text[]) AS expected(id, r2_key)
+                 WHERE expected.id=raw_crawl_artifacts.id
+                   AND expected.r2_key=raw_crawl_artifacts.r2_key
+            )"""
+            params += (artifact_ids, expected_r2_keys)
+        if expected_fetched_ats is not None:
+            if len(expected_fetched_ats) != len(artifact_ids):
+                raise ValueError('artifact ids and expected fetch times must align')
+            # Same-day recovery may upload the same deterministic key. The
+            # refreshed timestamp also fences stale observations in that case.
+            sql += """ AND EXISTS (
+                SELECT 1 FROM unnest(%s::bigint[], %s::timestamptz[]) AS expected(id, fetched_at)
+                 WHERE expected.id=raw_crawl_artifacts.id
+                   AND expected.fetched_at=raw_crawl_artifacts.fetched_at
+            )"""
+            params += (artifact_ids, expected_fetched_ats)
         async with self.con.cursor() as cur:
-            await cur.execute(sql, (status, error_detail, artifact_ids))
+            await cur.execute(sql, params)
+            return cur.rowcount
 
     async def write_extraction(
         self,
@@ -691,7 +798,7 @@ class CrawlRepository:
         while the re-queue reports nothing done. The runbook says "repeat
         until it reaches zero", so it has to be able to reach zero.
         """
-        sql = """
+        sql = f"""
             SELECT
                 COUNT(*) AS total,
                 COUNT(*) FILTER (
@@ -699,11 +806,13 @@ class CrawlRepository:
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
+                           AND {CONSUMABLE_HTML}
                     )
                     AND EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'ok'
+                           AND {CONSUMABLE_HTML}
                     )
                 ) AS awaiting_queue
               FROM churches c
@@ -754,7 +863,7 @@ class CrawlRepository:
         the three pipeline stages, and this is a queue manipulation, not a
         stage.
         """
-        sql = """
+        sql = f"""
             WITH stale AS (
                 SELECT church_id
                   FROM churches c
@@ -765,11 +874,13 @@ class CrawlRepository:
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
+                           AND {CONSUMABLE_HTML}
                    )
                    AND EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'ok'
+                           AND {CONSUMABLE_HTML}
                    )
                  ORDER BY church_id
                  LIMIT %s
@@ -780,6 +891,7 @@ class CrawlRepository:
               FROM stale s
              WHERE a.church_id = s.church_id
                AND a.extract_status = 'ok'
+               AND {CONSUMABLE_HTML}
             RETURNING a.church_id
         """
         async with self.con.cursor() as cur:
@@ -909,8 +1021,8 @@ class StatsRepository:
         toward its 24h budget purely because the re-extraction batches had
         errors in them.
 
-        So `last_progress` — a run that finished and got at least one row
-        through — is what staleness is measured against. `rows_ok > 0`
+        So `last_progress` measures committed useful work: fetch writes a
+        timestamp per church; older/other stages use completion. `rows_ok > 0`
         matters: a batch where everything failed is not evidence of a working
         pipeline. `last_success` stays strict and is reported alongside, since
         "last completely clean run" is a real thing to want to know.
@@ -918,11 +1030,12 @@ class StatsRepository:
         last_sql = """
             SELECT stage,
                    MAX(finished_at) FILTER (WHERE status = 'ok') AS last_success,
-                   MAX(finished_at) FILTER (
-                       WHERE status IN ('ok', 'partial') AND rows_ok > 0
+                   MAX(COALESCE(progress_at, finished_at)) FILTER (
+                       WHERE rows_ok > 0 OR (
+                           stage='tag' AND status IN ('ok', 'partial') AND rows_processed > 0
+                       )
                    )                                             AS last_progress
               FROM crawl_runs
-             WHERE status IN ('ok', 'partial')
              GROUP BY stage
         """
         window_sql = """
@@ -931,9 +1044,24 @@ class StatsRepository:
              WHERE started_at >= NOW() - make_interval(days => %s)
              GROUP BY status
         """
+        queue_sql = f"""
+            SELECT COUNT(DISTINCT a.church_id) FILTER (
+                       WHERE a.extract_status='pending' AND {CONSUMABLE_HTML}
+                   ) AS extract,
+                   COUNT(*) FILTER (
+                       WHERE a.extract_status='pending' AND NOT ({CONSUMABLE_HTML})
+                   ) AS invalid_pending,
+                   (SELECT COUNT(*) FROM churches WHERE name_tagged_at IS NULL) AS tag
+              FROM raw_crawl_artifacts a
+        """
         async with self.con.cursor(row_factory=dict_row) as cur:
             await cur.execute(last_sql)
             last = await cur.fetchall()
             await cur.execute(window_sql, (window_days,))
             window = await cur.fetchall()
-        return {"last_success": last, "window": window, "window_days": window_days}
+            await cur.execute(queue_sql)
+            queue = await cur.fetchone()
+        due = await CrawlRepository(self.con).churches_due_for_fetch(limit=1, fresh_days=30)
+        backlog = {'fetch': bool(due), 'extract': queue['extract'] > 0, 'tag': queue['tag'] > 0}
+        return {"last_success": last, "window": window, "window_days": window_days,
+                "has_backlog": backlog, "queue": queue}

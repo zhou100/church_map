@@ -1,4 +1,9 @@
 {
+  "git": {
+    "deploymentEnabled": {
+      "fix/crawl-reliability-20261014": false
+    }
+  },
   "framework": "vite",
   "installCommand": "cd frontend && npm ci --include=dev",
   "buildCommand": "cd frontend && npm run build",

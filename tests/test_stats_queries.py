@@ -105,12 +105,21 @@ def test_partial_run_with_nothing_through_is_not_progress():
     single row is not working, and must not read as fresh — `rows_ok > 0` is
     what stops "grinding uselessly" from looking identical to "healthy"."""
     async def body(con, repo):
-        await _add_run(con, stage="tag", status="partial", rows_ok=0)
-        return await _health_for(repo, "tag")
+        await _add_run(con, stage="extract", status="partial", rows_ok=0)
+        return await _health_for(repo, "extract")
 
     row = _run(body)
     assert not _is_sentinel(row["last_success"])
     assert not _is_sentinel(row["last_progress"])
+
+
+def test_tag_watermark_advances_even_when_no_name_matches():
+    async def body(con, repo):
+        await _add_run(con, stage='tag', status='ok', rows_ok=0)
+        return await _health_for(repo, 'tag')
+
+    row = _run(body)
+    assert _is_sentinel(row['last_progress'])
 
 
 def test_failed_run_counts_as_neither():

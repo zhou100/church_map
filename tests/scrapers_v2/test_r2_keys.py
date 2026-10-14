@@ -4,6 +4,36 @@ from datetime import datetime, timezone
 from backend.scrapers_v2.r2 import content_hash_of, r2_key_for
 
 
+def test_sdk_has_finite_timeouts_and_total_retry_limit(monkeypatch):
+    from backend.scrapers_v2 import r2
+    seen = {}
+
+    def client(*args, **kw):
+        seen.update(kw)
+        return object()
+    monkeypatch.setattr(r2.boto3, 'client', client)
+    bucket = r2.R2Client(account_id='fixture', access_key_id='fixture',
+                         secret_access_key='fixture', bucket='fixture')
+    bucket._ensure()
+    config = seen['config']
+    assert (config.connect_timeout, config.read_timeout) == (3, 10)
+    assert config.retries == {'total_max_attempts': 2, 'mode': 'standard'}
+
+
+def test_sdk_connection_failures_are_recoverable_r2_errors():
+    import pytest
+    from botocore.exceptions import EndpointConnectionError
+    from backend.scrapers_v2.r2 import R2Client, R2Error
+
+    class BrokenClient:
+        def head_object(self, **kw):
+            raise EndpointConnectionError(endpoint_url='https://fixture.test')
+    bucket = R2Client()
+    bucket._client = BrokenClient()
+    with pytest.raises(R2Error):
+        bucket.head('key')
+
+
 def test_content_hash_stable():
     a = content_hash_of("Hello, world.")
     b = content_hash_of("Hello, world.")

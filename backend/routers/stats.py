@@ -147,13 +147,14 @@ def build_stats(
     # becomes an explicit null.
     rows = health.get("last_success", [])
     seen = {row["stage"]: row.get("last_success") for row in rows}
-    # A run that finished and got at least one row through. Staleness is
+    # Committed useful work (including an active fetch's checkpoints). Staleness is
     # measured against this, not against the last flawless run: `status='ok'`
     # means zero rows failed, so one bad row in a batch makes it 'partial' and
     # the strict clock stops. During the v3.1 backfill, whose batches fail on
     # a real fraction of churches, that clock would stop for the duration and
     # report a stage-wide outage that isn't happening.
     progress = {row["stage"]: row.get("last_progress") for row in rows}
+    checked = {row['stage']: row.get('last_success') for row in rows}
     last_success = {stage: _iso(seen.get(stage)) for stage in CRAWL_STAGES}
 
     at = now or datetime.now(timezone.utc)
@@ -161,6 +162,14 @@ def build_stats(
     for stage in CRAWL_STAGES:
         ts = progress.get(stage)
         age = int((at - ts).total_seconds()) if isinstance(ts, datetime) else None
+        has_backlog = health.get('has_backlog', {}).get(stage)
+        checked_at = checked.get(stage)
+        check_age = int((at - checked_at).total_seconds()) if isinstance(checked_at, datetime) else None
+        # An empty queue only proves idle if the stage has also checked in.
+        # Unknown backlog remains conservative for old/missing stats data.
+        idle = has_backlog is False and check_age is not None and check_age <= STAGE_MAX_AGE_S[stage]
+        stale_stage = not idle and (age is None or age > STAGE_MAX_AGE_S[stage])
+        degraded = stage == 'extract' and health.get('queue', {}).get('invalid_pending', 0) > 0
         stages[stage] = {
             # Last completely clean run — kept because "nothing has failed in
             # this stage since X" is worth knowing, just not worth alerting on.
@@ -169,9 +178,12 @@ def build_stats(
             "age_seconds": age,
             "max_age_seconds": STAGE_MAX_AGE_S[stage],
             # Never having made progress counts as stale, not as "no opinion".
-            "stale": True if age is None else age > STAGE_MAX_AGE_S[stage],
+            'has_backlog': has_backlog,
+            'degraded': degraded,
+            'state': 'degraded' if degraded else ('idle' if idle else ('stalled' if stale_stage else 'progressing')),
+            "stale": stale_stage,
         }
-    pipeline_ok = not any(s["stale"] for s in stages.values())
+    pipeline_ok = not any(s["stale"] or s['degraded'] for s in stages.values())
 
     return {
         "churches": {
@@ -210,6 +222,7 @@ def build_stats(
             "pipeline_ok": pipeline_ok,
             "stages": stages,
             "last_success": last_success,
+            'queue': health.get('queue', {}),
             "runs": {
                 "window_days": health.get("window_days"),
                 "ok": window.get("ok", 0),

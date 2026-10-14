@@ -12,6 +12,7 @@ every batch until someone noticed the numbers plateau.
 from __future__ import annotations
 
 import asyncio
+from datetime import datetime, timezone
 
 import pytest
 
@@ -22,6 +23,7 @@ CHURCH = 4242
 ARTIFACTS = [11, 12]
 KINDS = ["homepage", "about"]
 KEYS = ["raw_html/4242/2026-05-01/aaa.html", "raw_html/4242/2026-05-01/bbb.html"]
+FETCHED_ATS = [datetime(2026, 5, 1, tzinfo=timezone.utc)] * 2
 
 PAGE = b"<html><body><h1>Grace Chapel</h1><p>" + b"We gather every Sunday. " * 20 + b"</p></body></html>"
 
@@ -47,8 +49,9 @@ class FakeRepo:
         self.church_status: str | None = None
         self.wrote_extraction = False
 
-    async def mark_artifacts_status(self, artifact_ids, *, status, error_detail=None):
+    async def mark_artifacts_status(self, artifact_ids, *, status, error_detail=None, expected_r2_keys=None, expected_fetched_ats=None):
         self.artifact_calls.append((list(artifact_ids), status, error_detail))
+        return len(artifact_ids)
 
     async def mark_church_extract_error(self, church_id, status):
         self.church_status = status
@@ -65,6 +68,7 @@ def _run(r2, repo, **kw):
             artifact_ids=ARTIFACTS,
             kinds=KINDS,
             r2_keys=KEYS,
+            fetched_ats=FETCHED_ATS,
             **kw,
         )
     )
@@ -126,6 +130,18 @@ def test_absent_r2_objects_report_no_html_not_no_text():
     assert (ids, status) == (ARTIFACTS, "skipped")
     assert detail == "no-html:2/2"
     assert repo.church_status == "no-html:2/2"
+
+
+def test_concurrent_archive_repair_is_retryable_instead_of_no_html():
+    class RepairedRepo(FakeRepo):
+        async def mark_artifacts_status(self, artifact_ids, *, status, error_detail=None, expected_r2_keys=None, expected_fetched_ats=None):
+            assert expected_r2_keys == KEYS
+            assert expected_fetched_ats == FETCHED_ATS
+            return 0  # no current key still matches the missing objects read
+    repo = RepairedRepo()
+    assert _run(FakeR2({}), repo) is False
+    assert repo.church_status == 'transient:archive-changed'
+    assert not repo.wrote_extraction
 
 
 def test_readable_but_empty_pages_are_no_text():
