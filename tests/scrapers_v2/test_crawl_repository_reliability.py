@@ -127,8 +127,12 @@ def test_stale_missing_key_observation_cannot_undo_concurrent_repair(restored_ke
 def test_no_text_200_does_not_make_a_church_fresh():
     async def body(con, repo):
         cid = await church(con)
-        await artifact(repo, cid, r2_key=None, content_hash=None, fetch_error='no-text')
-        # Bypass the intentional attempt backoff, not the freshness rule.
+        aid = await artifact(repo, cid, r2_key=None, content_hash=None, fetch_error='no-text')
+        # NOW() is fixed within this fixture transaction. Put the attempt
+        # strictly before it so the test isolates freshness from backoff.
+        await con.execute(
+            "UPDATE raw_crawl_artifacts SET fetched_at=NOW()-INTERVAL '1 hour' WHERE id=%s", (aid,),
+        )
         due = await repo.churches_due_for_fetch(10000, 30, failure_backoff_hours=0)
         assert cid in {r['church_id'] for r in due}
     db_test(body)
