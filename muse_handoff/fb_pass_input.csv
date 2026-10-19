@@ -1,0 +1,34 @@
+church_id,tier,osm_name,current_name,city,latitude,longitude,current_status,official_url,known_facebook_url,needs
+76674,1_unresolved,Pilgrim Baptist Church,Pilgrim Baptist Church,San Mateo,37.57438,-122.32303,unresolved,http://www.pilgrimbcsm.org/,,status;service_times
+76681,1_unresolved,Shoreview Community Methodist Church,Shoreview United Methodist Church,San Mateo,37.57355,-122.31469,unresolved,,,status;street_address;phone;service_times
+76686,1_unresolved,Bayside Community Church,Bayside Community Church,Foster City,37.56091,-122.24878,unresolved,http://baysidechurch.com/,,status;street_address;phone;service_times
+76657,1_unresolved,Berean Bible Church,,Belmont,37.50585,-122.28618,unresolved,,,status;street_address;phone;service_times
+76658,1_unresolved,Fale Hufanga Tongan United Methodist Church,Fale Hufanga Tongan UMC,San Carlos,37.50572,-122.28614,unresolved,,,status
+76666,1_unresolved,Iglesia Ni Cristo - Local Congregation of Burlingame,,Burlingame,37.57938,-122.35469,unresolved,,,status;street_address;phone;service_times
+76685,1_unresolved,Unity Church of Burlingame,,Burlingame,37.57656,-122.34534,unresolved,,,status;street_address;phone;service_times
+77675,1_unresolved,Tabernacle of Praise,,North Fair Oaks,37.47333,-122.20417,unresolved,,,status;street_address;phone;service_times
+76640,1_unresolved,Bethany Baptist Church,,Pacifica,37.58569,-122.49693,unresolved,,,status;street_address;phone;service_times
+76643,1_unresolved,Holy Cross Lutheran Church,,Pacifica,37.59193,-122.49199,unresolved,,,status;street_address;phone;service_times
+76644,1_unresolved,Lighthouse Christian Fellowship Church,,Pacifica,37.59177,-122.49205,unresolved,,,status;street_address;phone;service_times
+76645,1_unresolved,Pacifica Christian Church,,Pacifica,37.58633,-122.49581,unresolved,,,status;street_address;phone;service_times
+77671,1_unresolved,Christ Gospel Church of Redwood City,,Redwood City,37.47611,-122.22889,unresolved,,,status;street_address;phone;service_times
+76650,1_unresolved,Calvary Lutheran Church,,San Bruno,37.61333,-122.41019,unresolved,,,status;street_address;phone;service_times
+76654,1_unresolved,"First Church of Christ, Scientist",,San Bruno,37.62188,-122.41331,unresolved,,,status;street_address;phone;service_times
+76665,2_fill_gaps,First Baptist Church,First Baptist Church,San Mateo,37.53771,-122.31191,active,https://www.fbcsanmateo.org/,,street_address;phone
+76669,2_fill_gaps,Good Shepherd Lutheran Church,The Lutheran Church of the Good Shepherd,Burlingame,37.58503,-122.33745,active,https://www.lcgsburlingame.org/,,phone
+76670,2_fill_gaps,Grace Lutheran Church,Grace Lutheran Church,San Mateo,37.53744,-122.31164,active,http://www.gracelutheransanmateo.org/,,street_address;phone
+76673,2_fill_gaps,Macedonia Church of God in Christ,Macedonia Church of God in Christ,San Mateo,37.57049,-122.32469,active,,https://www.facebook.com/people/Macedonia-Church-of-God-in-Christ/100064878064479/,service_times
+77956,2_fill_gaps,Congregational Church of San Mateo CCSM,Congregational Church of San Mateo (United Church of Christ),San Mateo,37.56865,-122.32804,active,http://ccsm-ucc.org/,https://www.facebook.com/CCSM.UCC/,service_times
+77749,2_fill_gaps,Calvary San Mateo,Calvary San Mateo,Highlands-Baywood Park,37.51522,-122.32609,active,https://calvarysanmateo.org/,,street_address;phone
+76661,2_fill_gaps,Our Lady of Lebanon Eastern Catholic Church,Our Lady of Lebanon Maronite Catholic Church,Millbrae,37.60410,-122.39358,active,http://www.olol-sf.org/,https://www.facebook.com/ololsf/,phone
+77804,2_fill_gaps,Church of the Good Shepherd,Church of the Good Shepherd,Pacifica,37.64205,-122.48953,active,http://www.gschurchca.org/,,service_times
+76646,2_fill_gaps,Saint Andrew Presbyterian Church of Pacifica,St Andrew Presbyterian Church,Pacifica,37.59133,-122.47636,active,https://www.standrewpacifica.org/,,street_address;phone;service_times
+76648,2_fill_gaps,Vista Del Mar Baptist Church,New Life Christian Fellowship,Pacifica,37.59119,-122.47636,active,https://www.newlifepacifica.com/,,phone
+77746,2_fill_gaps,Centro Christiano Sion,Centro Cristiano Sion,Redwood City,37.48705,-122.22037,active,http://www.visionmundial.us/,,street_address;phone;service_times
+77673,2_fill_gaps,Mount Zion Baptist Church,Mt. Zion Baptist Church,Redwood City,37.47361,-122.22083,active,http://www.mtzionrwc.com/,,phone
+78086,2_fill_gaps,Peninsula Hope Church,Peninsula Hope Church,Redwood City,37.48893,-122.22810,active,http://www.peninsulahope.org/,,street_address;phone
+76692,2_fill_gaps,Redeemer Lutheran Church,Redeemer Redwood City,Redwood City,37.47910,-122.23747,active,,,service_times
+76652,2_fill_gaps,Community Methodist Church,San Bruno Tongan First UMC,San Bruno,37.62466,-122.41331,active,,,street_address;phone;service_times
+76653,2_fill_gaps,First Baptist Church,San Bruno Bible Church,San Bruno,37.61799,-122.41331,active,https://sanbrunobible.com/,,street_address;phone
+76656,2_fill_gaps,Saint Johns Evangelical Church,St. John's United Church of Christ,San Bruno,37.62438,-122.40997,active,https://stjohnsunitedchurch.org/,,phone
+76684,2_fill_gaps,First Baptist Church of San Carlos,First Baptist Church of San Carlos,San Carlos,37.50327,-122.25913,active,http://fbcsancarlos.org/,,phone;service_times
