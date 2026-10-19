@@ -4,6 +4,9 @@ Usage:
     python3 muse_handoff/validate_returns.py A_calibration muse_handoff/returns/results_A.csv \
         muse_handoff/returns/new_candidates_A.csv [--received-at 2026-10-19T17:27:00Z]
 
+For a redo file covering only some rows of a batch, pass `-` as the candidates
+file and add --redo (IDs must belong to the batch; full coverage not required).
+
 Prints ERROR lines (rule violations) and WARN lines (needs human review), then a
 coverage summary. Exit code 1 if any ERROR. Stdlib only; reads local files only.
 """
@@ -61,9 +64,10 @@ LANG_ALIASES = {
     "mandarin": ("mandarin", "普通話", "普通话", "國語", "国语"),
     "cantonese": ("cantonese", "粵語", "粤语", "廣東話", "广东话"),
     "vietnamese": ("vietnamese", "tiếng việt", "tieng viet"),
-    "japanese": ("japanese", "日本語"),
+    "japanese": ("japanese", "日本語", "日語", "日语"),
 }
-TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点)|noon|\d{1,2}:\d{2}", re.I)
+PERSONAL_PHONE_RE = re.compile(r"\b(cell|mobile|personal|rector's|pastor's|priest's|father's)\b", re.I)
+TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点|時|时)|noon|\d{1,2}:\d{2}", re.I)
 
 problems: list[tuple[str, str, str]] = []
 
@@ -154,14 +158,14 @@ def check_common(where: str, r: dict, received_at: datetime | None) -> None:
         err(where, f"checked_at {r['checked_at']} is after the file was received ({received_at:%H:%M}Z)")
 
 
-def check_results(batch: str, path: Path, received_at: datetime | None) -> list[dict]:
+def check_results(batch: str, path: Path, received_at: datetime | None, redo: bool = False) -> list[dict]:
     expected = {r["church_id"] for r in csv.DictReader(MANIFEST.open(encoding="utf-8")) if r["batch"] == batch}
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
     ids = Counter(r["church_id"] for r in rows)
     for cid, n in ids.items():
         if n > 1:
             err(cid, f"appears {n} times")
-    for cid in expected - set(ids):
+    for cid in (set() if redo else expected - set(ids)):
         err(cid, "missing from results")
     for cid in set(ids) - expected:
         err(cid, "not in this batch of the manifest")
@@ -206,6 +210,10 @@ def check_results(batch: str, path: Path, received_at: datetime | None) -> list[
             aliases = LANG_ALIASES.get(lang.lower(), (lang.lower(),))
             if lang != "English" and not any(a in seen for a in aliases):
                 warn(w, f"service language {lang} not visible in excerpt or verbatim times")
+
+        # D-2: personal numbers are never kept, even if the church published them.
+        if r["phone"] and PERSONAL_PHONE_RE.search(r["notes"] + " " + r["phone_excerpt"]):
+            err(w, "phone looks like a personal number (D-2): leave blank, note 'personal number withheld'")
 
         # Consistency between verdicts.
         if r["match_confidence"] == "high" and r["url_evidence"] == "name_only":
@@ -271,15 +279,17 @@ def summarize(rows: list[dict]) -> None:
 
 def main(argv: list[str]) -> int:
     received_at = None
+    redo = "--redo" in argv
+    argv = [a for a in argv if a != "--redo"]
     if "--received-at" in argv:
         i = argv.index("--received-at")
         received_at = parse_ts(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
     batch, results_path, candidates_path = argv[1], Path(argv[2]), Path(argv[3])
-    rows = check_results(batch, results_path, received_at)
+    rows = check_results(batch, results_path, received_at, redo)
     for r in rows:
         check_common(r["church_id"], r, received_at)
-    cands = check_candidates(candidates_path, received_at)
+    cands = [] if str(candidates_path) == "-" else check_candidates(candidates_path, received_at)
     for level, where, msg in sorted(problems, key=lambda p: (p[0], p[1])):
         print(f"{level:5} {where:38} {msg}")
     print(f"\n{sum(p[0] == 'ERROR' for p in problems)} errors, {sum(p[0] == 'WARN' for p in problems)} warnings")

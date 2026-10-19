@@ -76,7 +76,7 @@ What this changes:
 
 - **Map pins are almost all present, but routable addresses are almost all missing.** Most OSM `address` values are a bare street name ("Oak Grove Avenue"). The first plan's `has_address` test would have counted those as complete.
 - `city` is filled for every OSM record, probably derived from the coordinates. It is not independent evidence that a pin is right.
-- The directory includes non-congregations and non-Christian places. In the pilot bbox: two convents, a Buddhist temple, two synagogues, Falun Dafa, and "ROBAM USA" (a kitchen-appliance company — the only record with a full street address). Nationally: Jewish 539, Islamic 341, Buddhist 228 by `denomination`. **Owner decision needed:** hide, keep, or label these (section 12).
+- The directory includes non-congregations and non-Christian places. In the pilot bbox: two convents, a Buddhist temple, two synagogues, Falun Dafa, and "ROBAM USA" (a kitchen-appliance company — the only record with a full street address). Nationally: Jewish 539, Islamic 341, Buddhist 228 by `denomination`. **Decided 2026-10-19** (section 12): hide non-Christian places, convents, and businesses; keep nontrinitarian Christian groups with a clear label.
 - The pilot area is clearly under-covered by OSM (77 records for San Bruno–Redwood City). Discovering missing congregations matters as much as fixing existing rows.
 - `dedup_report.csv` (114 candidate duplicate pairs from May) already exists and can be loaded as a seed.
 
@@ -304,7 +304,7 @@ Muse does **not** receive: ChurchMap database or R2 credentials, API keys, Churc
 
 **Do not (N):**
 
-- **N1.** Collect personal data: no names of pastors, staff, or members; no comments, reviews, check-ins, member lists, or photos of people; no posts written by individuals. A general church office phone or Page-level contact is fine.
+- **N1.** Collect personal data: no names of pastors, staff, or members; no comments, reviews, check-ins, member lists, or photos of people; no posts written by individuals. A general church office phone or Page-level contact is fine. **[v2.1]** If the only phone the church publishes is a person's own number (a pastor's or priest's cell, a "call Pastor X" line), leave `phone` blank and write "personal number withheld" in `notes`, even though the church posted it.
 - **N2.** Open private or closed Groups, or friends-only content, even if the browsing account can see them.
 - **N3.** Take actions as the account: no likes, follows, joining groups, messages, comments, or friend requests. Do not contact any church by any channel.
 - **N4.** Bypass login walls, CAPTCHAs, paywalls, robots blocks, or rate limits on any site.
@@ -474,6 +474,74 @@ Returned 2026-10-19: `results_A.csv` (19 rows), `new_candidates_A.csv` (9), and 
 3. Decide on Facebook. If the 403 can't be fixed, run batch B as web-only research. Muse still pays off for missing churches and OSM corrections, but drop the "Facebook lift" goal.
 4. Then say "go" for batch B with brief v2.
 
+**Redo of batch A (`results_A_redo.csv`, received 18:30Z): 0 errors, and all 5 rows fixed.**
+
+| Row | Change |
+|---|---|
+| 76681 | Now `unresolved`. The tool-output citations were removed. Muse states the UMC listing was "search-rendered only; exact page text not retrievable". This **confirms the original row cited tool output as a umc.org page: batch A fabrication count = 1 (a misattributed citation), now corrected.** |
+| 76675 | ZIP is now 94402, citing the church's own 2017 newsletter. The live site still says 94030; noted. |
+| 76676 | Source upgraded from a 2020 bulletin to the parish's 2025 handbook; confidence lowered to `medium`. |
+| 76686 | Aggregator facts moved to `notes` as leads; confidence `low`. |
+| 76673 | Facebook URL moved to `notes` as a lead. |
+
+The redo's `checked_at` values are one second apart (17:56:44–48Z), so they were stamped when the file was written, not when each row was checked.
+
+`muse_handoff/returns/results_A_merged.csv` holds batch A with the redo applied. Its only remaining errors are timestamps:
+- 7 untouched rows carry the reconstructed 17:40Z;
+- the 5 redo rows predate the redo file but postdate the original file.
+
+When seeding dbt, set `checked_at` to null for the 7 reconstructed rows and set `checked_at_reliable = false`. The facts stand or fall on the audit, not on these timestamps.
+
+### Batch B outcome (internal, not for Muse)
+
+Returned 2026-10-19 at about 18:13Z: `results_B.csv` (58 rows) and `new_candidates_B.csv` (15). Both sha256 values match Muse's D9 manifest.
+
+**Brief v2 worked.**
+
+- The mechanical check went from 16 errors to **1**: candidate "Faith Community Church of the Peninsula" has ZIP 94402 with Belmont (Twin Pines Lane is 94002).
+- `checked_at` values are spread out and fall before receipt.
+- There are no tool-output excerpts and no `high` confidence on `name_only` evidence.
+
+**Coverage:**
+
+| Item | Batch B |
+|---|---|
+| Status | 41 active, 16 unresolved, 1 merged |
+| Out of scope | 8: 4 `non_christian`, 2 `religious_house`, 1 `business` (ROBAM), 1 `unknown` |
+| Street addresses | 31 (26 from the church's own site) |
+| Phones | 25 |
+| Service times | 29 |
+| Visit-ready, pending audit | 8 |
+| Duplicates | 2 pairs (77786 = 77746; 76628 = 77804) |
+| Renames | 5 |
+| City corrections | 6 |
+| New congregations | 15, including two Cantonese ones (活泉華人教會, 恩信播道會), a Filipino UCC, and a Spanish-language Foursquare church |
+
+**Facebook lift is 0 again.** The connector works for `me`, so an account is linked, but it can't read Pages.
+
+**Muse's time reports are not credible.** The run log claims 661 researcher-minutes ("~11 h across 6 workers") plus about 40 coordinator minutes. But the brief only existed from 17:32Z, and the files arrived at 18:13Z: at most **41 minutes** of wall-clock time, with every `checked_at` between 17:56Z and 18:05Z. Measure Muse's cost as our own send → receive wall-clock, not `minutes_spent`. Batch A's "4.5 h" is equally unreliable.
+
+**Other items:**
+
+- **76246:** the phone is the priest's personal cell, published as the parish contact. Excluded per D-2.
+- **Weak sources:**
+  - 76692's address comes from FMCSA, the federal motor-carrier registry.
+  - 77749's active status rests on a Play Store listing.
+- **`results_A_redo.csv` was not returned.**
+
+**Audit:** `muse_handoff/returns/audit_worksheet.csv` (101 fields) now also covers:
+
+- the seeded random B sample (`random.seed(20261019)`, 11 IDs), with values hidden;
+- 5 flagged B records.
+
+**Combined A + B (77 seed rows):**
+
+- 55 active, 19 unresolved, 3 closed or merged;
+- 8–9 out of scope;
+- 47 street addresses;
+- about 18 visit-ready pending audit;
+- **24 new congregations**, about 31% more than OSM listed.
+
 ---
 
 ## 7. Database architecture: extend what already exists
@@ -604,11 +672,42 @@ If the week slips, drop the case-study cells first.
 
 This document authorizes no external action by itself. Sending the Muse brief is Yujun's action. Production schema changes, persistent credential setup, paid extraction or enrichment, source imports, production writes, and deployment each need specific owner approval. Implement locally on a branch, with fixtures first.
 
+### Decided 2026-10-19 (owner delegated items 1 and 3; the phone rule is the owner's own call)
+
+**D-1. What ChurchMap shows: Christian congregations.** The product rates churches on worship, sermons, and theology, so the map should show places a person can attend for Christian worship. Records are never deleted; they get a `scope_status`.
+
+| `scope_status` | Who | On the map | National count in the local snapshot (by `denomination` / name) |
+|---|---|---|---:|
+| `in_scope` | Catholic, Orthodox, Protestant, nondenominational, Messianic Jewish congregations, etc. | Shown | (rest) |
+| `in_scope_labeled` | Nontrinitarian Christian groups: The Church of Jesus Christ of Latter-day Saints, Jehovah's Witnesses, Christian Science, Iglesia ni Cristo, Unity | **Shown**, labeled with the group's own name; filterable once a tradition filter ships | ~1,680 (LDS ~1,074, JW ~525, Christian Science ~73) |
+| `out_of_scope` | Non-Christian places (Jewish, Muslim, Buddhist, Hindu, Sikh, Bahá'í, Unitarian Universalist, Scientology, Spiritualist, Falun Gong, …) | Hidden | ~1,550 |
+| `not_a_congregation` | Convents, monasteries, and other religious houses without a public worship schedule; businesses; non-worship offices | Hidden | ~270 by name pattern, plus Muse finds |
+| `pending` | `unknown` entity, or mixed tags such as `Christian;Muslim` | As today, until reviewed | small |
+
+Why the labeled bucket is shown, not hidden: these groups call themselves Christian. Hiding them would be the product making a theological ruling. Labeling them by their own name gives users the information and lets them filter. Mapping corrections: OSM `Mormon` is displayed as "The Church of Jesus Christ of Latter-day Saints", and `Jehovahs Witness` as "Jehovah's Witnesses".
+
+Muse's role:
+- Don't spend discovery time on LDS meetinghouses or Kingdom Halls. Their official locators can be bulk-checked later.
+- Report them in `new_candidates` only if found incidentally, with the tradition named in `notes`.
+
+Applying the decision:
+- **Now:** `scope_status` is computed in dbt (`int_location_readiness`) from the Muse `entity_type` plus a `denomination` → scope seed. Map-readiness counts use in-scope rows only.
+- **Production hiding and labels:** a separate small PR (a migration adding `scope_status` plus API filtering, with labels in the UI under `DESIGN.md`). It needs approval as usual. Nothing changes in production as a side effect of this plan.
+
+**D-2. Personal phone numbers are never public.** A phone that the source identifies as an individual's (a cell, or a named person's line) is:
+- not shown on the map;
+- not stored in dbt seeds or production;
+- even when the church itself published it as its contact.
+
+It may remain only in the gitignored raw returns, for audit. Applied now: **76246**'s phone (the priest's cell) is excluded. Muse rule N1 [v2.1] and `validate_returns.py` enforce this going forward. Existing OSM and Google phones are business listings and are not re-classified.
+
+**D-3. Facebook on the public map:** link only to a church's own Page, and only when the church's website links to it. Facts whose only source is Facebook are not shown. With a Facebook lift of 0 in both batches, nothing is lost.
+
 Open decisions for the owner:
 
-1. **Non-church records** (synagogues, temples, mosques, convents, businesses): hide from the map, keep but label, or keep as is?
+1. ~~Non-church records~~ → decided, D-1.
 2. **Muse setup** (section 6 blanks): which account it browses Facebook as, its terms on reusing output publicly, and its time/usage limits.
-3. **Facebook-sourced facts on the public map:** link only to the church's own Page, show facts with a "from Facebook, checked <date>" label, or keep them internal until verified elsewhere.
+3. ~~Facebook-sourced facts on the public map~~ → decided, D-3.
 4. **Google-enriched fields** in analytics: use them or reduce them to a flag, pending a terms check.
 5. **Where plans live:** move this file and the cold-start plan to `docs/plans/` and commit, or keep them outside the repo.
 
