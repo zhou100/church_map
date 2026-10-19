@@ -6,6 +6,7 @@ Usage:
 
 For a redo file covering only some rows of a batch, pass `-` as the candidates
 file and add --redo (IDs must belong to the batch; full coverage not required).
+Use batch ALL for a file spanning batches (e.g. the Facebook pass).
 
 Prints ERROR lines (rule violations) and WARN lines (needs human review), then a
 coverage summary. Exit code 1 if any ERROR. Stdlib only; reads local files only.
@@ -66,6 +67,7 @@ LANG_ALIASES = {
     "vietnamese": ("vietnamese", "tiếng việt", "tieng viet"),
     "japanese": ("japanese", "日本語", "日語", "日语"),
 }
+NEGATED_PERSONAL_RE = re.compile(r"\bnot (identified as |labell?ed as |a )?personal\b", re.I)
 PERSONAL_PHONE_RE = re.compile(r"\b(cell|mobile|personal|rector's|pastor's|priest's|father's)\b", re.I)
 TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点|時|时)|noon|\d{1,2}:\d{2}", re.I)
 
@@ -159,7 +161,8 @@ def check_common(where: str, r: dict, received_at: datetime | None) -> None:
 
 
 def check_results(batch: str, path: Path, received_at: datetime | None, redo: bool = False) -> list[dict]:
-    expected = {r["church_id"] for r in csv.DictReader(MANIFEST.open(encoding="utf-8")) if r["batch"] == batch}
+    expected = {r["church_id"] for r in csv.DictReader(MANIFEST.open(encoding="utf-8"))
+                if batch == "ALL" or r["batch"] == batch}
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
     ids = Counter(r["church_id"] for r in rows)
     for cid, n in ids.items():
@@ -212,7 +215,8 @@ def check_results(batch: str, path: Path, received_at: datetime | None, redo: bo
                 warn(w, f"service language {lang} not visible in excerpt or verbatim times")
 
         # D-2: personal numbers are never kept, even if the church published them.
-        if r["phone"] and PERSONAL_PHONE_RE.search(r["notes"] + " " + r["phone_excerpt"]):
+        phone_ctx = NEGATED_PERSONAL_RE.sub("", r["notes"] + " " + r["phone_excerpt"])
+        if r["phone"] and PERSONAL_PHONE_RE.search(phone_ctx):
             err(w, "phone looks like a personal number (D-2): leave blank, note 'personal number withheld'")
 
         # Consistency between verdicts.

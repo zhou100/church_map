@@ -166,6 +166,8 @@ The conflict screen is crude (it checks whether the first street word appears in
 
 ## 3. Establish an honest quality baseline
 
+> **Update 2026-10-19:** the owner stopped the human audit after 5 blind churches (30 fields) and judged further hand-auditing not worth the time. The results are in section 6 ("Human audit outcome"). From here on, accuracy is protected by the automated controls listed there, not by a growing human sample. The design below is kept for reference.
+
 ### Week one: 30-record calibration, overlapped with Muse
 
 - **19 records = Muse batch A** (every San Mateo + Foster City record in the seed manifest). Audited independently by Yujun **before** reading Muse's output, so they also serve as Muse's answer key.
@@ -231,7 +233,7 @@ Order:
 
 Before sending, fill in:
 
-- Account Muse browses Facebook as (logged out / a dedicated account / Yujun's personal account): `__________`. *Batch A: the Facebook connector CLI returned 403 on every call, so Muse browsed logged out and saw only Page names and follower counts.*
+- Account Muse browses Facebook as: **Yujun's linked account, authorized by Yujun on 2026-10-19 for read-only, public-content checks** (D2, N2, N3 apply). *Batch A: the connector CLI returned 403 and Muse browsed logged out; logged-in Page reads began with `results_A_fbcheck.csv`.*
 - Muse's terms on reusing its output in a public website: `__________`
 - Time or usage limits per task: `__________`
 
@@ -492,6 +494,78 @@ The redo's `checked_at` values are one second apart (17:56:44–48Z), so they we
 
 When seeding dbt, set `checked_at` to null for the 7 reconstructed rows and set `checked_at_reliable = false`. The facts stand or fall on the audit, not on these timestamps.
 
+**Logged-in Facebook check of batch A (`results_A (1).csv`, renamed `results_A_fbcheck.csv`).** This was a new full version of A, built from the **original** `results_A.csv` rather than the redo, so it reverted 4 of the 5 redo fixes (5 errors again).
+
+It also contained the first real Facebook lift:
+- **76673** was confirmed active via the church's own Page (latest post 2026-10-17), with address and phone from the Page. Its posts also announce Zoom and Stockton services, so the worship location is unknown.
+- `fb_last_post_date` was filled for 76673, 76677, and 77956.
+- 76678 gained a phone from its Page.
+
+`results_A_v3.csv` combines the redo version of 76675, 76676, 76681, and 76686 with the Facebook version of 76673, 76674, 76677, 76678, 76683, and 77956. It has **0 errors** and is the current batch A. Under D-3, facts sourced only from Facebook (76673's address and phone, 76678's phone) stay internal until the Facebook pass below decides whether D-3 should change.
+
+**Facebook pass FB-1 (sent after this revision).**
+- Brief: `muse_handoff/BRIEF_FB_pass.md`. Input: `muse_handoff/fb_pass_input.csv`.
+- Scope: 15 unresolved rows plus 18 active rows with gaps.
+- Muse starts from `returns/fb_pass_current_rows.csv` and must not revert earlier fixes.
+- Its run log reports the Facebook lift counts we need to revisit D-3.
+
+**Facebook pass FB-1 outcome (received 19:53Z).**
+
+- **Integrity checks:**
+  - The file hash matches Muse's D9 manifest.
+  - **0 errors** after fixing a validator false positive (notes saying "not personal").
+  - **No regressions:** every changed fact carries an `fb_page` source.
+  - The claimed 167 minutes across 6 browser windows fits inside the 49-minute window, so this time the timing is plausible.
+- **Own Pages found:** 17 of 33.
+- **Tier 1 (unresolved): 0 of 15 resolved.** Muse found 3 Pages (76686, 76658, 76643), all last posted 2–9 years ago.
+- **Tier 2 (active with gaps), Facebook-only fills:**
+
+  | Field | Rows filled |
+  |---|---:|
+  | Street addresses | 4 |
+  | Phones | 8 |
+  | Service times | 6 |
+
+  A further **3 phones were withheld as personal** (Mobile-labeled), showing that D-2 works in practice.
+- **Freshness:** 11 of the 14 active rows with Pages had a Page post within 3 months. But 3 service times come from posts 18–36 months old (76646 June 2022, 76673 Oct 2023, 76684 Apr 2025), and 78086's Page last posted in 2022.
+- **Contradictions:**
+  - **77749** is in Belmont 94002 (3254 Lori Dr), not Highlands-Baywood Park.
+  - **76692** was renamed **Bridge City Church** on 2024-08-18. The run log says 2026, but the row's own excerpt says 2024. As a result, batch B candidate "Bridge City Church" (468 Grand St) is **the same congregation as 76692 — drop it.**
+- **Shared building:** 76648 New Life lists the same address as 76646 St. Andrew Presbyterian (1125 Terra Nova Blvd), so these are two congregations in one building.
+- **D-3 revised** (section 12). Under the revised rule, about 10 rows gain publishable Facebook facts. Old schedules, stale Pages, and unresolved rows stay internal.
+
+**Current consolidated results:** `muse_handoff/returns/results_current.csv` has 77 rows: batch A v3 + batch B, with the FB-1 rows overriding. D-2 is already applied there (76246's personal phone removed).
+
+| Item | Count |
+|---|---:|
+| Status | 56 active, 19 unresolved, 1 closed, 1 merged |
+| Entity type | 68 congregations, 9 other |
+| Street addresses | 52 |
+| Phones | 48 |
+| Service times | 51 |
+| Own Facebook Pages | 22 |
+
+The seed manifest started with 1 house-numbered address and 6 websites. This file is the input for the dbt seeds (Day 4).
+
+**Human audit outcome (2026-10-19; owner stopped after 5 churches).**
+
+The owner audited 5 churches blind: 76672 and 76662 from batch A, and 76692, 76655, and 77702 from the random batch B sample. That is 30 fields, scored against `audit_key.csv`.
+
+- **28 of 30 fields agree.** Status, website, street address, pin, phone, and service times all agree for 4 of the 5 churches. Differences were only formatting, or Muse listing more services: for 76655, both campuses.
+- **The 2 disagreements are a definition question, not a Muse error.**
+  - 76692: the owner found "Redeemer Lutheran" **closed**, with no service times. Muse reports it **active** with Sunday services, because the congregation's own Page states it "was renamed as Bridge City Church" (a church replant) at the same 468 Grand St.
+  - Both are true. **Decision: treat it as a rename.** The map shows Bridge City Church, active, at 468 Grand St. The old name goes in `notes`.
+- **No factual errors and no fabrications were found in the sample.** But with about 28 independent fields, this only rules out field error rates above roughly 10% (rule of three: 3/28). It says nothing reliable at the church level.
+
+**Compensating controls, replacing further human audit:**
+
+1. **Automated source re-verification before any promotion.**
+   - Re-fetch every non-Facebook `*_source_url` from our side and check that the cited excerpt (normalized whitespace) still appears on the page. Rows that fail are not promoted.
+   - Facebook-sourced facts keep the D-3 date and label rules, and are checked by the next Muse pass, not by us. Our crawler must never fetch facebook.com.
+   - This directly targets the one fabrication seen so far (76681).
+2. **The mechanical validator** (`validate_returns.py`) on every return.
+3. **"Checked <date>" labels** on displayed facts, plus owner and visitor corrections (owner corrections flow, Later).
+
 ### Batch B outcome (internal, not for Muse)
 
 Returned 2026-10-19 at about 18:13Z: `results_B.csv` (58 rows) and `new_candidates_B.csv` (15). Both sha256 values match Muse's D9 manifest.
@@ -654,7 +728,7 @@ If the week slips, drop the case-study cells first.
 ### Definition of done
 
 - Production routable-address / coordinate counts are reproducible from the committed SQL, with snapshot time and denominators.
-- 30 audited records, with verdicts, evidence URLs, and minutes, stored as a seed.
+- ~~30 audited records~~ → 5 blind churches audited (owner stopped). Automated source re-verification (section 6) replaces further human audit.
 - Muse batch A returned, mechanically validated, and scored against the audit, including a fabrication count and minutes per row.
 - LLM usage is recorded for every new extraction run (or null with a reason).
 - A fresh clone reproduces the dbt build, tests, and map-readiness view from fixtures and seeds.
@@ -701,13 +775,22 @@ Applying the decision:
 
 It may remain only in the gitignored raw returns, for audit. Applied now: **76246**'s phone (the priest's cell) is excluded. Muse rule N1 [v2.1] and `validate_returns.py` enforce this going forward. Existing OSM and Google phones are business listings and are not re-classified.
 
-**D-3. Facebook on the public map:** link only to a church's own Page, and only when the church's website links to it. Facts whose only source is Facebook are not shown. With a Facebook lift of 0 in both batches, nothing is lost.
+**D-3 (revised 2026-10-19 after the Facebook pass FB-1). Facebook on the public map.** Link to a church's own Page when there is `fb_page_evidence`. A fact whose only source is the church's own Page **may be shown, labeled "from the church's Facebook page, checked <date>"**, when all of the following hold:
+- the row is `active`;
+- the Page itself posted within the last 12 months;
+- for service times, the cited post itself is within 12 months. Older schedules stay internal.
+
+Phones follow D-2. Facebook alone never makes a row `active` if the Page's last post is more than 12 months old, and facts from stale Pages stay internal.
+
+Why: FB-1 resolved none of the dead records, but it filled real gaps for live churches. The congregation's own Page is their own publication, so the label keeps provenance honest.
+
+*Original D-3 (superseded):* link only when the website links to the Page; never show Facebook-only facts.
 
 Open decisions for the owner:
 
 1. ~~Non-church records~~ → decided, D-1.
 2. **Muse setup** (section 6 blanks): which account it browses Facebook as, its terms on reusing output publicly, and its time/usage limits.
-3. ~~Facebook-sourced facts on the public map~~ → decided, D-3.
+3. ~~Facebook-sourced facts on the public map~~ → decided, D-3 (revised after FB-1).
 4. **Google-enriched fields** in analytics: use them or reduce them to a flag, pending a terms check.
 5. **Where plans live:** move this file and the cold-start plan to `docs/plans/` and commit, or keep them outside the repo.
 
