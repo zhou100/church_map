@@ -538,9 +538,11 @@ class CrawlRepository:
         bytes_text: int | None,
         crawl_run_id: int | None,
     ) -> int | None:
-        # ON CONFLICT DO NOTHING on (church_id, url, content_hash) gives us
-        # idempotency: re-fetching the same body of the same URL is a no-op.
-        # Returns the artifact id on insert, None if a duplicate was skipped.
+        # Deduplicate content, but record that an unchanged page was checked
+        # again. Leaving fetched_at untouched keeps the same old homepage at
+        # the front of churches_due_for_fetch forever, starving other sites.
+        # Preserve the archived source and extraction state: an unchanged
+        # fetch must not silently enroll another paid extraction.
         sql = """
             INSERT INTO raw_crawl_artifacts (
                 church_id, url, kind, http_status, fetch_error,
@@ -548,7 +550,8 @@ class CrawlRepository:
                 crawl_run_id
             )
             VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-            ON CONFLICT (church_id, url, content_hash) DO NOTHING
+            ON CONFLICT (church_id, url, content_hash) DO UPDATE
+                SET fetched_at = EXCLUDED.fetched_at
             RETURNING id
         """
         async with self.con.cursor() as cur:
@@ -684,8 +687,11 @@ class CrawlRepository:
         until the extract stage overwrites it.
 
         `awaiting_queue` is what the re-queue can actually act on right now:
-        stale, not already queued, and holding at least one 'ok' artifact to
-        put back. That last condition matters — a church can be stale with
+        stale, not already queued, and holding at least one usable 'ok'
+        artifact to put back. Pending/ok must use the same HTTP/R2 eligibility
+        as pending_extract_targets: failed fetches also default to 'pending',
+        but cannot be extracted and must not block successful archived pages.
+        That last condition matters — a church can be stale with
         nothing re-queueable (artifacts all errored, or never written), and
         counting those would leave `awaiting_queue` permanently above zero
         while the re-queue reports nothing done. The runbook says "repeat
@@ -699,11 +705,13 @@ class CrawlRepository:
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
+                           AND a.http_status = 200 AND a.r2_key IS NOT NULL
                     )
                     AND EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'ok'
+                           AND a.http_status = 200 AND a.r2_key IS NOT NULL
                     )
                 ) AS awaiting_queue
               FROM churches c
@@ -728,7 +736,8 @@ class CrawlRepository:
         bookkeeping, error handling, and the GitHub Actions schedule that
         paces it.
 
-        Only artifacts currently 'ok' are touched:
+        Only usable artifacts currently 'ok' are touched (HTTP 200 with an
+        R2 key, matching pending_extract_targets):
           - 'pending' is already queued, and re-queueing would be a no-op
           - 'error' and 'skipped' failed for a reason that a new prompt won't
             fix; re-queueing them just spends the same money to fail again
@@ -765,11 +774,13 @@ class CrawlRepository:
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
+                           AND a.http_status = 200 AND a.r2_key IS NOT NULL
                    )
                    AND EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'ok'
+                           AND a.http_status = 200 AND a.r2_key IS NOT NULL
                    )
                  ORDER BY church_id
                  LIMIT %s
@@ -780,6 +791,7 @@ class CrawlRepository:
               FROM stale s
              WHERE a.church_id = s.church_id
                AND a.extract_status = 'ok'
+               AND a.http_status = 200 AND a.r2_key IS NOT NULL
             RETURNING a.church_id
         """
         async with self.con.cursor() as cur:
