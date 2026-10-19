@@ -1,0 +1,39 @@
+denomination_key,scope_status,display_tradition
+mormon,in_scope_labeled,The Church of Jesus Christ of Latter-day Saints
+latter-day saints,in_scope_labeled,The Church of Jesus Christ of Latter-day Saints
+latter day saints,in_scope_labeled,The Church of Jesus Christ of Latter-day Saints
+church of jesus christ of latter-day saints,in_scope_labeled,The Church of Jesus Christ of Latter-day Saints
+fundamentalist church of jesus christ of latter-day saints,in_scope_labeled,Fundamentalist Church of Jesus Christ of Latter-Day Saints
+community of christ,in_scope_labeled,Community of Christ
+jehovahs witness,in_scope_labeled,Jehovah's Witnesses
+christ scientist,in_scope_labeled,Christian Science
+christian science,in_scope_labeled,Christian Science
+christian scientist,in_scope_labeled,Christian Science
+scientist,in_scope_labeled,Christian Science
+iglesia ni cristo,in_scope_labeled,Iglesia ni Cristo
+unity,in_scope_labeled,Unity
+jewish,out_of_scope,
+orthodox jewish,out_of_scope,
+conservative jewish,out_of_scope,
+jewish renewal,out_of_scope,
+islamic,out_of_scope,
+nation of islam,out_of_scope,
+buddhist,out_of_scope,
+hindu,out_of_scope,
+sikh,out_of_scope,
+bahai,out_of_scope,
+jain,out_of_scope,
+taoist,out_of_scope,
+shinto,out_of_scope,
+zoroastrian,out_of_scope,
+pagan,out_of_scope,
+falun gong,out_of_scope,
+scientologist,out_of_scope,
+scientology,out_of_scope,
+spiritualist,out_of_scope,
+spiritual science,out_of_scope,
+religious science,out_of_scope,
+unitarian universalist,out_of_scope,
+unitarian universalist association,out_of_scope,
+christian;muslim,pending,
+methodist;jehovahs witness,pending,

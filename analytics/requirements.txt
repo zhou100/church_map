@@ -1,0 +1,4 @@
+# Analytics sidecar only; not installed into the backend image.
+dbt-core==1.8.8
+dbt-postgres==1.8.2
+psycopg[binary]>=3.2

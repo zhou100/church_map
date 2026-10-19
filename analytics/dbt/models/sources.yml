@@ -1,0 +1,13 @@
+version: 2
+
+sources:
+  - name: raw
+    description: Sanitized snapshot loaded by analytics/scripts/load_snapshot.py.
+    tables:
+      - name: churches
+        description: One row per directory record (OSM + manual). Map-relevant columns only.
+        columns:
+          - name: church_id
+            tests: [unique, not_null]
+      - name: snapshot_meta
+        description: One row describing where and when the snapshot was taken.

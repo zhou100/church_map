@@ -1,0 +1,118 @@
+version: 2
+
+models:
+  - name: stg_churches
+    description: One directory record per church_id, lightly cleaned.
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+
+  - name: stg_muse_results
+    description: One Muse verdict per manifest church (latest pass).
+    columns:
+      - name: church_id
+        tests:
+          - unique
+          - not_null
+          - relationships: {to: ref('stg_churches'), field: church_id}
+      - name: entity_type
+        tests:
+          - accepted_values: {values: [congregation, religious_house, non_christian, business, other, unknown]}
+      - name: muse_status
+        tests:
+          - accepted_values: {values: [active, closed, moved, merged, unresolved]}
+      - name: match_confidence
+        tests:
+          - accepted_values: {values: [high, medium, low]}
+      - name: address_source_type
+        tests:
+          - accepted_values: {values: [own_site, fb_page, denomination, other]}
+      - name: phone_source_type
+        tests:
+          - accepted_values: {values: [own_site, fb_page, denomination, other]}
+      - name: service_source_type
+        tests:
+          - accepted_values: {values: [own_site, fb_page, denomination, other]}
+      - name: last_pass
+        tests:
+          - accepted_values: {values: [A, A_redo, A_fbcheck, B, FB1]}
+
+  - name: stg_muse_candidates
+    description: One congregation reported missing from the manifest.
+    columns:
+      - name: candidate_id
+        tests: [unique, not_null]
+      - name: found_via
+        tests:
+          - accepted_values: {values: [fb_page_search, fb_group_lead, web_search, denomination_directory, host_church_site]}
+      - name: host_church_id
+        tests:
+          - relationships: {to: ref('stg_churches'), field: church_id}
+
+  - name: int_scope
+    description: Decision D-1 scope per church.
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+      - name: scope_status
+        tests:
+          - not_null
+          - accepted_values: {values: [in_scope, in_scope_labeled, out_of_scope, not_a_congregation, pending, duplicate]}
+
+  - name: int_location_readiness
+    description: One row per church; readiness flags and D-3 display rules.
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+
+  - name: dim_church
+    description: One row per church with display-ready, rule-filtered attributes.
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+
+  - name: mart_coverage_snapshot
+    description: Map-readiness funnel; grain geo_scope x source.
+    tests:
+      - dbt_utils_free_unique_combination:
+          combination: "geo_scope || '|' || source"
+
+  - name: mart_muse_scorecard
+    description: Muse yield by last pass, with an 'all' rollup row.
+    columns:
+      - name: last_pass
+        tests: [unique, not_null]
+
+  - name: mart_new_congregations
+    description: New congregations from Muse discovery, duplicates removed.
+    columns:
+      - name: candidate_id
+        tests: [unique, not_null]
+
+  - name: mart_quality_audit
+    description: Owner's blind audit vs Muse, by field, with an 'all' rollup row.
+    columns:
+      - name: field
+        tests: [unique, not_null]
+
+seeds:
+  - name: muse_results
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+  - name: quality_reviews
+    columns:
+      - name: review_id
+        tests: [unique, not_null]
+      - name: verdict
+        tests:
+          - accepted_values: {values: [agree, disagree, definition_disagreement]}
+  - name: denomination_scope
+    columns:
+      - name: denomination_key
+        tests: [unique, not_null]
+  - name: fact_holds
+    columns:
+      - name: field
+        tests:
+          - accepted_values: {values: [street_address, phone, service_times]}
