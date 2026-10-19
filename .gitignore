@@ -59,3 +59,6 @@ htmlcov/
 # Claude / gstack tooling
 .claude/
 .codex
+
+# Raw Muse returns contain Facebook/website excerpts; keep local
+muse_handoff/returns/
