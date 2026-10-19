@@ -224,12 +224,14 @@ Order:
 ## 6. Muse handoff checklist
 
 > Sections 6.1–6.6 are written to be handed to Muse as-is, together with the input files. Yujun sends them; this plan does not contact Muse.
+>
+> **Brief v2 (2026-10-19, after batch A).** Rules added or tightened since batch A are marked **[v2]**. The batch A review is at the end of this section and is for us, not for Muse.
 
 **About Muse (as described by the owner, not independently verified here):** Meta's own agent. It runs on its own computer, browses the web, and is especially good at Facebook Pages and Groups. That makes it the right tool for the congregations OSM and our crawler miss: small, immigrant, and multilingual churches (Chinese, Tongan, Filipino, Spanish-speaking) whose only web presence is often a Facebook Page.
 
 Before sending, fill in:
 
-- Account Muse browses Facebook as (logged out / a dedicated account / Yujun's personal account): `__________`
+- Account Muse browses Facebook as (logged out / a dedicated account / Yujun's personal account): `__________`. *Batch A: the Facebook connector CLI returned 403 on every call, so Muse browsed logged out and saw only Page names and follower counts.*
 - Muse's terms on reusing its output in a public website: `__________`
 - Time or usage limits per task: `__________`
 
@@ -277,17 +279,27 @@ Muse does **not** receive: ChurchMap database or R2 credentials, API keys, Churc
 - **S3.** The denomination or diocese directory page.
 - **S4.** Another official listing (government, nonprofit registry).
 - **Public Facebook Groups are leads only.** Use them to learn that a congregation exists, then confirm it from S1–S4. Never report a fact whose only source is a Group post.
-- **Map and review sites** (Google Maps, Yelp, etc.) are for locating S1/S2 only. Do not copy facts from them.
+- **[v2] Locate-only sources.** The following may be used to find S1/S2, but never as the source of a fact or an excerpt:
+  - map and review sites (Google Maps, Yelp);
+  - business directories and aggregators (businessyab, church-directory sites, nonprofit databases such as PWI);
+  - **the output of your own search, maps, or places tools.** Text such as "Operating Status", "miles away from query location", or follower counts is tool output, not page text.
+  
+  A useful detail found there may go in `notes`, labelled "lead".
+- **[v2] Exact page.** `<group>_source_url` must be the exact page or document that contains the excerpt: not the site's homepage when the text is on a sub-page, and never truncated.
+- **[v2] Source age.** If the source document is dated more than 24 months ago (e.g. a 2020 bulletin), look for a newer one. If none exists, use it and give its date in `notes`.
 - **When S1 and S2 disagree** (e.g. different service times), report the value from the more recently updated source. Put the other value and both dates in `notes`.
 - **Freshness.** For each Facebook Page, record the date of the most recent post **made by the Page itself** (`fb_last_post_date`). If the newest evidence from any source is older than 12 months, use `status = unresolved` and explain in `notes`, not `active`.
 
 **Do (D):**
 
-- **D1.** Process **batch A only** first and return it. Batch B starts after Yujun replies "go".
+- **D1.** Process one batch at a time. Start a batch only after Yujun replies "go" for it.
 - **D2.** Use only content that is visible to the public: public Pages, public website pages, public Groups. If you can see something only because of the browsing account's friendships or group memberships, do not use it.
 - **D3.** If the given pin is clearly at a different place than the address you found, report `pin_check = off`.
 - **D4.** If two input rows are the same congregation, fill `duplicate_of_church_id` on the second one.
-- **D5.** If a congregation meets in another church's building, report it as its own congregation. Record the host church in `meets_in_building_of`, using the input `church_id` if the host is on our list, otherwise its name.
+- **D5.** If a congregation meets in another church's building, report it as its own congregation. Record the host in `meets_in_building_of`: the input `church_id` if the host is on our list, otherwise the host church's or venue's name (a school or lodge is fine).
+- **[v2] D7.** Write `checked_at` at the moment you check the row. Never fill it in afterwards. If it is lost, leave it blank and say so in the run log.
+- **[v2] D8.** Spend about 15 minutes per row at most. After that, record what you have, mark the rest blank, and explain in `notes`.
+- **[v2] D9.** Before reporting the batch as done, re-open each output file from disk. List each file's path, row count, and sha256 in the run log.
 - **D6.** When uncertain, leave the value blank and say why in `notes`. A blank is better than a guess.
 
 **Do not (N):**
@@ -313,17 +325,17 @@ Three files. The two CSVs are UTF-8 with a header row. Fact groups are `status`,
 | Column | Required | Allowed values / format |
 |---|---|---|
 | `church_id` | yes | From input, unchanged |
-| `entity_type` | yes | `congregation`, `religious_house` (convent, monastery), `non_christian`, `business`, `other`, `unknown` |
-| `status` | yes | `active`, `closed`, `moved`, `merged`, `unresolved` |
+| `entity_type` | yes | `congregation`, `religious_house` (convent, monastery), `non_christian`, `business`, `other`, `unknown`. **[v2]** Describes the entity **named in the input row**, not whoever uses the building now. If the named church closed and another Christian congregation meets there, add that one to `new_candidates`; mention a non-Christian occupant in `notes`. |
+| `status` | yes | `active`, `closed`, `moved`, `merged`, `unresolved`. **[v2]** Use `closed` only when the congregation or its denomination states a permanent closure; "temporarily closed" is `unresolved`. |
 | `status_source_url`, `status_source_type`, `status_excerpt` | if status ≠ `unresolved` | See companions above |
 | `current_name` | if found | Name as the congregation writes it; native script allowed |
 | `official_url` | if found | Homepage URL of the congregation's own website (S1). **Not** a Facebook URL. |
 | `url_evidence` | if `official_url` | `address_matches`, `phone_matches`, `cross_linked`, `name_only`; join several with `;` |
-| `facebook_page_url` | if found | `https://www.facebook.com/<page>`. The congregation's own Page only (S2). |
+| `facebook_page_url` | if found | `https://www.facebook.com/<page>`. The congregation's own Page only (S2). **[v2]** Only together with a non-empty `fb_page_evidence`; otherwise put the URL in `notes` as a lead. |
 | `fb_page_evidence` | if `facebook_page_url` | `links_to_site`, `site_links_to_page`, `posts_as_church`, `address_matches`, `phone_matches`; join with `;` |
 | `fb_last_post_date` | if `facebook_page_url` | `YYYY-MM-DD`, newest post by the Page itself |
 | `street_address` | if found | `123 Main St` (house number required) |
-| `city`, `state`, `zip` | with address | `San Mateo`, `CA`, `94401` |
+| `city`, `state`, `zip` | with address | `San Mateo`, `CA`, `94401`. **[v2]** The ZIP must belong to the city (USPS). If sources disagree, report the one consistent with the city and put the other in `notes`. |
 | `address_source_url`, `address_source_type`, `address_excerpt` | with address | See companions above |
 | `address_is_worship_location` | with address | `yes`, `no` (office/mailing), `unknown` |
 | `meets_in_building_of` | if applicable | Input `church_id` or host church name |
@@ -333,10 +345,10 @@ Three files. The two CSVs are UTF-8 with a header row. Fact groups are `status`,
 | `service_times_verbatim` | optional | Exact text from the source, any language |
 | `service_languages` | optional | Only if stated, e.g. `English;Mandarin;Cantonese` |
 | `service_source_url`, `service_source_type`, `service_excerpt` | with either of the above | See companions above |
-| `match_confidence` | yes | `high` (≥2 independent signals agree), `medium` (1 signal plus name), `low` (name only) |
+| `match_confidence` | yes | **[v2]** Count the signals across `url_evidence` and `fb_page_evidence`: `address_matches`, `phone_matches`, and `cross_linked` (which includes `links_to_site` / `site_links_to_page`). `high` = 2 or more; `medium` = exactly 1; `low` = name only. This measures identity only, not whether the church is active. |
 | `duplicate_of_church_id` | if applicable | Another input `church_id` |
 | `notes` | when anything is blank, uncertain, or conflicting | Short free text; no personal names |
-| `checked_at` | yes | ISO 8601 UTC, e.g. `2026-10-20T18:05:00Z` |
+| `checked_at` | yes | ISO 8601 UTC, e.g. `2026-10-20T18:05:00Z`. **[v2]** The real time of the check (D7). |
 | `minutes_spent` | yes | Integer |
 
 **2. `new_candidates_<batch>.csv` — Christian congregations in the batch's cities that are not in the input.**
@@ -349,12 +361,13 @@ Columns:
 - `source_url`, `source_type`, `excerpt`, `found_via`
 - `notes`, `checked_at`
 
-`found_via` is one of `fb_page_search`, `fb_group_lead`, `web_search`, `denomination_directory`, `host_church_site`. Same sourcing rules apply: a candidate found through a Group still needs an S1–S4 `source_url` and an `excerpt`.
+`found_via` is one of `fb_page_search`, `fb_group_lead`, `web_search`, `denomination_directory`, `host_church_site`. Same sourcing rules apply: a candidate found through a Group still needs an S1–S4 `source_url` and an `excerpt`. **[v2]** If you give a `street_address`, the excerpt must contain it. `checked_at` follows D7.
 
 **3. `run_log_<batch>.md`:**
 
 - total time;
-- whether Facebook was browsed logged in or logged out;
+- **[v2]** the output file manifest (D9);
+- whether the Facebook connector worked, and whether Facebook was browsed logged in or logged out;
 - search methods used;
 - pages or sites that required login or blocked access;
 - paid tools or cost incurred (or "none");
@@ -370,6 +383,16 @@ Mechanical, scripted:
 3. Every non-empty fact group has all three companion columns. The excerpt contains the fact: the house number for an address, the last 4 digits for a phone, and a time token or a stated language for services.
 4. `street_address` begins with a house number; `state = CA`; `zip` is 5 digits; `fb_last_post_date` is a valid date not in the future.
 5. No email addresses or personal names in `notes` or excerpts (regex screen plus a manual skim).
+6. **[v2]** The ZIP belongs to the city.
+7. **[v2]** No excerpt reads like search/places-tool output.
+8. **[v2]** `checked_at` is not later than the time we received the file.
+9. **[v2]** `match_confidence = high` is never paired with `url_evidence = name_only`.
+
+Checks 1–9 are scripted in `muse_handoff/validate_returns.py`:
+
+```bash
+python3 -I muse_handoff/validate_returns.py <batch> <results.csv> <new_candidates.csv> --received-at <UTC time file arrived>
+```
 
 Scored against Yujun's independent audit of the 19 batch-A rows (section 3). Yujun may check Facebook Pages manually, since a person viewing a Page is not automated collection.
 
@@ -401,6 +424,55 @@ Built read-only from `holyhub.db` (`Churches` table), selecting `latitude BETWEE
 - `scope_check` if denomination ∈ {Buddhist, Jewish, Falun Gong, Islamic, Hindu} or the name matches `convent|sisters|temple|USA$`.
 
 Batch A = cities San Mateo and Foster City. Contains OpenStreetMap data © OpenStreetMap contributors, ODbL.
+
+### Batch A outcome (internal, not for Muse)
+
+Returned 2026-10-19: `results_A.csv` (19 rows), `new_candidates_A.csv` (9), and `run_log_A.md`, all in `muse_handoff/returns/`. The seed had no website, house-numbered address, or phone for any of these 19 rows.
+
+**What Muse added:**
+
+| Item | Count |
+|---|---:|
+| Official URLs | 17 (5 `name_only`) |
+| Street addresses | 16 (11 from the church's own site) |
+| Phones | 13 |
+| Service times | 14 |
+| Stated service languages | 6 (Cantonese, Mandarin, Japanese, Vietnamese, Spanish) |
+| Rows that look visit-ready, pending audit | 10 |
+
+**Corrections to OSM:**
+
+- 76663 was renamed Community Baptist Church of San Mateo in 1962.
+- 76667's Methodist congregation is gone; UUSM now meets in the building.
+- 76668 is now Waypoint Church.
+- 76669 is in Burlingame, not San Mateo.
+- 76678 is AME Zion, not AME.
+
+**New congregations:** 9 in two cities (6 with a street address), at least 4 of them Chinese-language. All were found through web search.
+
+**Facebook lift: about zero.** The connector returned 403 on every call, and logged-out browsing showed no posts. As a result, `fb_last_post_date` is filled on 1 row, and that value came from a feed widget on the church's own site.
+
+**Mechanical check: 16 errors.**
+
+- **10 reconstructed timestamps.** `checked_at` 17:40Z is later than our receipt time of 17:27Z on 9 rows. All 9 candidates share one timestamp. The run log confirms an agent rebuilt the files after the first assembly wrote to the wrong path.
+- **76681 Shoreview: misattributed source.** The status and address excerpts read like places-tool output, but are cited to `umc.org`'s homepage. **This counts as a fabrication until the audit shows otherwise.**
+- **76673:** the excerpt is a follower-count tool readout, and the Facebook URL has no `fb_page_evidence`.
+- **76675:** ZIP 94030 belongs to Millbrae. Muse's own phone excerpt shows 94402.
+- **76676 and 76686:** `high` confidence with `name_only` URL evidence.
+
+**Warnings worth acting on:**
+
+- 76674 and 76686 rely on aggregator listings.
+- 76676's address comes from a 2020 bulletin.
+- 76680's address comes from the school's page.
+- Two candidates have an address the excerpt doesn't support.
+
+**Gate status: not passed yet.** Next steps:
+
+1. Yujun audits `muse_handoff/returns/audit_A_worksheet.csv`: 11 records, 30 fields, about an hour.
+2. If 76681 or any other row proves fabricated, send Muse the v2 brief and have it redo **only** the failing rows.
+3. Decide on Facebook. If the 403 can't be fixed, run batch B as web-only research. Muse still pays off for missing churches and OSM corrections, but drop the "Facebook lift" goal.
+4. Then say "go" for batch B with brief v2.
 
 ---
 
