@@ -1,8 +1,9 @@
 # ChurchMap: repository status and agent guide
 
-Updated **2026-10-18 (America/Los_Angeles)**. Live snapshot generated at
-2026-10-19 05:03:46 UTC (October 18, 22:03 PDT). Counts below are a dated
-snapshot; refresh them before making operational decisions.
+Updated **2026-10-18 (America/Los_Angeles)**. Public stats snapshot generated at
+2026-10-19 05:52:23 UTC (October 18, 22:52 PDT); uncached backfill enrollment
+verified at 05:53:06 UTC (22:53 PDT). Counts below are dated snapshots; refresh
+them before making operational decisions.
 
 ## Scope and sources
 
@@ -11,8 +12,10 @@ ChurchMap is the product; this checkout is named `holyhub`, and the remote is
 React/Vite/Leaflet runs on Vercel; FastAPI runs on Render; Supabase Postgres
 stores application data; Cloudflare R2 stores crawled HTML.
 
-- Local committed code baseline: `0d94cfa` (2026-08-07). Remote `main` was
-  `a6f189e` at this audit, two keepalive commits ahead with **no file changes**.
+- Deployed code and local `main`: `ad4b81c`, merged in
+  [PR #39](https://github.com/zhou100/church_map/pull/39) on October 18 at
+  22:30 PDT. Both Render and Vercel production deployments succeeded for that
+  exact revision. This document includes the subsequent backfill enrollment.
 - Implementation is authoritative for shipped behavior. Read
   [CLAUDE.md](CLAUDE.md) for conventions and [DESIGN.md](DESIGN.md) before UI work.
 - [STATUS.md](STATUS.md) and [TODOS.md](TODOS.md) contain July history and the
@@ -32,6 +35,11 @@ stores application data; Cloudflare R2 stores crawled HTML.
   in [backend/routers/admin.py](backend/routers/admin.py). Migration `0004`
   added `raw_crawl_artifacts`, `crawl_runs`, `robots_cache`, and extraction metadata.
   `backend/scrapers/` is frozen v1 reference code; do not run or repair it.
+- **Queue repair deployed (#39).** Unchanged-content fetches refresh their
+  freshness timestamp while preserving archived source and extraction state.
+  Requeue counts, selection, and updates now use the same HTTP 200 / non-null R2
+  key eligibility rules as extraction. Failed-fetch `pending` rows no longer
+  block otherwise usable archived pages.
 - **Extraction produces product data.** Website summaries, denomination,
   languages, programs, worship style, theology, and pull quotes reach profiles
   and search details. Confidence and validated verbatim source snippets are
@@ -104,39 +112,45 @@ or commit secret values.
 ## Verified live status: October 18
 
 Evidence: public [`/api/stats`](https://churchmap-api.onrender.com/api/stats),
-GitHub workflow API, recent job logs, and the open alert issue. No direct
-production DB/R2 inspection or crawl mutations were performed in this audit.
+uncached admin requeue checks, GitHub deployment statuses, workflow logs, and
+alert #37. Production work was performed through the existing admin API and
+crawl workflow; no direct production DB/R2 inspection was performed.
 
 - All four workflows (`crawl`, `keepalive`, `tests`, `evals`) were **active**.
   The ten most recent crawl runs returned `success`. The three latest keepalive
   runs (September 21, October 1, October 11 UTC) also succeeded.
-- **At the initial snapshot, the pipeline was unhealthy:** `crawl.pipeline_ok=false`.
-  Fetch and tag are fresh; extract last made progress on **October 11 at
-  15:24 PDT** (`2026-10-11T22:24:11Z`), about 7 days 7 hours before the snapshot.
-  Freshness budgets are fetch 12 hours, extract 24 hours, and tag 48 hours.
-- The latest inspected [extract run](https://github.com/zhou100/church_map/actions/runs/39165779110)
-  returned `status='ok'` with **0 processed / 0 successful / 0 errors** (run 1280).
-  The latest inspected [fetch run](https://github.com/zhou100/church_map/actions/runs/39201136485)
-  returned **50 processed / 50 ok / 0 errors** (run 1282).
-- [Alert #37](https://github.com/zhou100/church_map/issues/37) remains open. It
-  originated from a fetch failure on October 13; subsequent green runs leave it
-  open because pipeline freshness is still false. It is not proof that fetch
-  is still failing.
+- **The pipeline is healthy:** `crawl.pipeline_ok=true`; every stage is inside
+  its freshness budget (fetch 12 hours, extract 24 hours, tag 48 hours). The
+  initial audit found extraction idle since October 11; recovery is recorded below.
+- The post-deploy [crawl verification](https://github.com/zhou100/church_map/actions/runs/39205060810)
+  succeeded on `ad4b81c`: fetch run 1284 processed **5 / 5 ok / 0 errors**;
+  extract run 1285 processed **5 / 5 ok / 0 errors**; tag run 1286 examined
+  **5 rows / 0 rule matches / 0 errors**. Zero tag matches do not mean failure.
+- [Alert #37](https://github.com/zhou100/church_map/issues/37) was automatically
+  **closed** by that workflow at October 18, 22:33:35 PDT
+  (`2026-10-19T05:33:35Z`). Backend health/search and frontend `/` and `/status`
+  also passed HTTP smoke checks after deployment.
 
-| Coverage metric | July 27 historical snapshot | October 18 live snapshot |
+| Coverage metric | July 27 historical snapshot | October 18 latest snapshot |
 | --- | ---: | ---: |
 | Total churches | 133,939 | 133,939 |
 | With website URL | 8,514 | 8,515 (6.4% of directory) |
 | Successful extraction status (`attempts.ok`) | 5,326 | 5,852 (4.4% of directory) |
-| With website summary | 4,332 | 5,209 (3.9% of directory) |
-| Stale against current prompt/model | 5,316 | 2,528 |
-| Stale, eligible, and awaiting requeue | 3,330 | 1,838 |
+| With website summary | 4,332 | 5,212 (3.9% of directory) |
+| Stale against current prompt/model | 5,316 | 2,513 |
+| Stale, eligible, and awaiting requeue | 3,330 | **0 after enrollment** |
+
+The zero comes from the uncached admin dry run at 22:53 PDT. The preceding
+public stats response still reported 1,982 awaiting queue; its 300-second cache
+can lag enrollment. There are **3,687** current-prompt/model rows. Enrollment
+does not update church-level extraction provenance, so the stale count remains
+2,513 until extractions actually succeed.
 
 Other live counts: 6,200 churches have an extraction-attempt timestamp; 348 have
 terminal `error` status (5.6% of attempts); 5,416 are Google-enriched. The current
 snapshot has zero `no_html`, `no_text`, or `transient` church statuses. These are
 current row states, not cumulative historical failure totals. Over the last
-seven days, `crawl_runs` reports 53 `ok` runs and zero `partial`/`error` runs.
+seven days, `crawl_runs` reports 57 `ok` runs and zero `partial`/`error` runs.
 
 **Read the counters correctly:** `churches.extracted` includes failed attempts;
 `attempts.ok` is the successful-status count; neither guarantees a useful profile.
@@ -158,7 +172,8 @@ extract with `batch=10`. Run **1283** completed with **10 processed, 10 successf
 zero errors**. Fresh public stats at **2026-10-19 05:21:35 UTC (October 18,
 22:21 PDT)** confirmed **`pipeline_ok=true`**, extraction fresh again, **2,518
 stale / 1,638 awaiting queue**, 3,682 current-prompt/model rows, and 5,211 website
-summaries. The remaining 190 churches from this batch provide scheduled work.
+summaries. At that point 190 churches from this batch remained for scheduled work;
+the later post-deploy verification successfully extracted five more.
 Public stats can lag changes by their 300-second cache. No prompt/model change or
 automatic requeue schedule was introduced.
 
@@ -180,34 +195,62 @@ The source fix is in `backend/db/repository.py`, with regression coverage in
 patch; the final suite passed **215 tests, 5 skipped**. Local Postgres 14 applied
 migrations 0001/0003/0004/0005; pgvector migration 0002 was unavailable locally.
 Skips were two superseded legacy tests and three parity cases needing populated
-San Francisco data. These source changes are included in this repair; verify
-deployment against the merged revision. The production row distribution behind
-the additional defects has not been inspected directly. The live recovery above
-used the existing deployed API.
+San Francisco data. PR CI and merged-main CI then passed **215 tests, 5 skipped**
+against Postgres 16 with pgvector and all five migrations applied. The deployed
+repair made **344 additional churches** eligible for requeue: the uncached count
+rose from 1,638 before deployment to 1,982 after deployment, confirming the
+pending-eligibility defect's production impact. Individual production artifact
+rows have not been inspected directly.
+
+### Deployment and remaining backfill enrollment
+
+[PR #39](https://github.com/zhou100/church_map/pull/39) merged as
+`ad4b81c79c7cbf8eda8f26ebac59134aa737d9f7` at 22:30:28 PDT. Render reported
+success at 22:31:33 PDT and Vercel at 22:31:11 PDT, both for that exact SHA.
+The successful workflow and alert closure above verified the live pipeline.
+
+At the user's explicit request, the remaining eligible backfill was enrolled
+once at **22:53 PDT** through `POST /api/admin/crawl/requeue`:
+
+- **1,982 additional churches / 4,552 artifacts**, in **10 bounded batches**:
+  nine batches of 200 churches and one of 182.
+- An uncached dry run verified the decreasing count after every batch:
+  `1982 → 1782 → 1582 → 1382 → 1182 → 982 → 782 → 582 → 382 → 182 → 0`.
+- Final dry run: **2,513 stale churches, 0 awaiting queue, 0 would requeue**.
+  No further enrollment is needed for the currently requeueable stale set.
+- The existing schedule remains **75 churches per extract run, three runs/day**.
+  Queueing lets those scheduled runs perform paid extraction later; it does not
+  mean the 1,982 churches have already been processed. No extra extraction run
+  was triggered during this enrollment operation.
+
+Including the earlier recovery, 2,182 churches have been enrolled in this
+session. Fifteen were verified successfully extracted before the latest
+enrollment, leaving an inferred **2,167 enrolled churches** for the daily jobs
+at that moment. The public API does not expose exact eligible pending queue
+depth, so this arithmetic is not a fresh DB measurement. The difference of
+**346** between 2,513 stale and 2,167 enrolled is not automatically recoverable
+work; terminal/unusable artifact cases need separate inspection. `awaiting_queue=0`
+means enrollment is complete, **not that the backfill is finished**.
 
 ## Remaining gaps and next actions, in priority order
 
-1. **Verify deployment and finish the deliberate backfill.** The first
-   200-church recovery chunk is queued and extraction is working again. Confirm
-   the repository fix is live before relying on its corrected eligibility counts and
-   fetch freshness. The latest uncached requeue dry run has 1,638 churches still
-   available to enroll; cron cannot enroll them itself. Use the token-protected
-   `POST /api/admin/crawl/requeue?dry_run=true&limit=200` to size the next chunk.
-   For a deliberate backfill, `dry_run=false&limit=200` writes the bounded chunk
-   and causes paid extraction on subsequent runs. Follow the runbook in
-   [TODOS.md](TODOS.md), watch per-batch outcomes, and repeat in bounded chunks.
-   Keep requeue out of cron. Do not treat the pre-recovery difference of 690
-   stale churches as
-   already queued: inspect their artifact statuses, HTTP codes, and R2 keys
-   against `pending_extract_targets`; terminal/unusable artifacts need a separate
-   recovery decision. Done means requeueable backlog drained, extraction success
-   and summary coverage advancing, and remaining terminal cases accounted for.
+1. **Let scheduled extraction drain the enrolled backfill.** Deployment and
+   enrollment are verified; the current requeueable stale set is fully enrolled.
+   Monitor actual `rows_processed` / `rows_ok` / `rows_error`, stage freshness,
+   current-prompt/model counts, and summary coverage. Stale should fall as
+   re-extractions succeed. If progress stops, distinguish an empty eligible queue
+   from terminal failures instead of requeueing blindly. Investigate the inferred
+   346 remaining stale cases against artifact status, HTTP code, and R2 keys;
+   `no_html` requires refetching, while transient failures should remain retryable.
+   Keep requeue out of cron. Future prompt/model changes still require deliberate,
+   bounded enrollment, using the dry-run-first runbook in [TODOS.md](TODOS.md).
 2. **Make operational health describe useful work.** Separate eligible queue
    depth, expected idle stages, extraction yield, terminal failures, and real
    archived-page yield. Distinguish an intentionally empty queue from an
-   unqueued backfill. After deployment, verify that unchanged homepage refetches
-   leave the due queue and other sites advance; the timestamp defect is now
-   reproduced and fixed locally. Alerting currently reacts to workflow failures; it
+   unqueued backfill. Measure whether unchanged homepage refetches now leave the
+   due queue and other sites advance; the timestamp fix is deployed and regression
+   tested, but per-site production queue movement is not directly exposed.
+   Alerting currently reacts to workflow failures; it
    does not independently open an issue merely because `/api/stats` is stale.
    Keepalive also cannot recover itself if it stops running. An independent
    freshness check would cover both silent-failure paths.
@@ -249,7 +292,8 @@ used the existing deployed API.
   actual stage results, and inspect `crawl-alert` issues. Admin `/status` needs
   the crawl token. Record snapshot time, deployed prompt/model, queue counts,
   and data-quality outcomes; green workflow badges alone do not establish health.
-- The initial status audit was documentation-only. The follow-up repair requeued
-  one bounded production batch, ran ten paid extractions, and tested repository
-  changes against isolated Postgres. It did not deploy code, change production
-  schema, rotate secrets, or rerun Google Places enrichment.
+- The initial audit was documentation-only. Subsequent authorized work deployed
+  PR #39, verified 15 successful paid extractions, and enrolled 2,182 churches
+  across the initial recovery and the remaining bounded backfill. The latest
+  enrollment added queue work only. Production schema, secrets, prompt/model,
+  crawl cadence, and Google Places enrichment were not changed.
