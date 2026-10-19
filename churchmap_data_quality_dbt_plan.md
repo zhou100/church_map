@@ -699,6 +699,30 @@ Pin compatible dbt Core and `dbt-postgres` versions. CI runs against an isolated
 
 ---
 
+### Status 2026-10-19: week-one dbt project built (`analytics/`)
+
+The week-one dbt project is in place:
+
+- **Data:** the sanitized local snapshot (133,939 records) plus seeds built from the Muse returns. Excerpts, notes, and personal phones are stripped by `analytics/scripts/build_seeds.py`.
+- **Tests:** 66 nodes (7 seeds, 11 models, 48 data tests) pass in about 5 seconds against a local Postgres 14 cluster on port 5433.
+- **Run instructions:** `analytics/README.md`.
+
+| Measure | Value |
+|---|---|
+| National scope (D-1) | 130,430 in scope; 1,685 labeled; 1,552 out of scope; 269 not a congregation; 3 pending |
+| National routable directory addresses | 5,876 + 10 manual |
+| Coordinates in repeated clusters | 76 |
+| Peninsula pilot | 77 records → 66 in scope → 56 verified active → 45 verified addresses → **40 visit-ready**, from 0 before Muse |
+| New congregations | 23 (16 with a street address) |
+| Audit | 28/30 fields agree; 2 definition disagreements |
+
+Deviations from the design above:
+
+- **Postgres:** a local Postgres 14 cluster instead of Docker (the Docker daemon is not running in this environment).
+- **Source:** the source is the May SQLite snapshot, not a production export (that still needs approval).
+- **CI:** not wired yet.
+- **Incremental models:** none, as planned.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:

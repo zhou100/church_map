@@ -1,0 +1,41 @@
+-- Grain: one church (church_id). Display-ready attributes plus readiness flags.
+select
+    c.church_id,
+    coalesce(m.current_name, c.osm_name)                         as display_name,
+    c.osm_name,
+    c.denomination,
+    s.display_tradition,
+    s.scope_status,
+    s.scope_basis,
+    c.source,
+    c.external_id,
+    coalesce(m.city, c.city)                                     as city,
+    c.state,
+    c.latitude,
+    c.longitude,
+    r.in_muse_pilot,
+    r.muse_status,
+    r.verified_active,
+    case when r.address_displayable then m.street_address end    as display_street_address,
+    case when r.address_displayable then m.zip end               as display_zip,
+    case when r.address_displayable then m.address_source_type end as address_source_type,
+    case when r.phone_displayable then m.phone end               as display_phone,
+    case when r.service_displayable then m.service_times end     as display_service_times,
+    m.service_languages,
+    case when r.website_verified then m.official_url end         as verified_website,
+    case when r.fb_page_linkable then m.facebook_page_url end    as facebook_page_url,
+    m.fb_last_post_date,
+    r.has_routable_directory_address,
+    r.coords_ok,
+    r.in_repeated_cluster,
+    r.address_displayable,
+    r.phone_displayable,
+    r.service_displayable,
+    r.visit_ready,
+    m.match_confidence,
+    m.checked_at                                                 as muse_checked_at,
+    m.last_pass                                                  as muse_last_pass
+from {{ ref('stg_churches') }} c
+join {{ ref('int_scope') }} s using (church_id)
+join {{ ref('int_location_readiness') }} r using (church_id)
+left join {{ ref('stg_muse_results') }} m using (church_id)

@@ -1,0 +1,72 @@
+name: churchmap_analytics
+version: "0.1.0"
+config-version: 2
+profile: churchmap_analytics
+
+model-paths: ["models"]
+seed-paths: ["seeds"]
+test-paths: ["tests"]
+target-path: "target"
+clean-targets: ["target", "dbt_packages"]
+
+vars:
+  # Date the D-3 freshness rules are evaluated against. Pin it for reproducible
+  # builds; defaults to the day of the Muse returns.
+  as_of_date: "2026-10-19"
+
+models:
+  churchmap_analytics:
+    staging:
+      +materialized: view
+    intermediate:
+      +materialized: view
+    marts:
+      +materialized: table
+
+seeds:
+  churchmap_analytics:
+    +schema: seeds
+    +quote_columns: false
+    muse_manifest:
+      +column_types: {church_id: bigint, latitude: double precision, longitude: double precision}
+    muse_results:
+      +column_types:
+        church_id: bigint
+        duplicate_of_church_id: bigint
+        fb_last_post_date: date
+        checked_at: timestamptz
+        minutes_spent: integer
+        personal_phone_withheld: boolean
+        checked_at_reliable: boolean
+        zip: text
+        phone: text
+        meets_in_building_of: text
+        facebook_page_url: text
+        fb_page_evidence: text
+        service_languages: text
+        status_source_url: text
+        status_source_type: text
+    muse_candidates:
+      +column_types:
+        host_church_id: bigint
+        duplicate_of_church_id: bigint
+        possible_match_church_id: bigint
+        fb_last_post_date: date
+        checked_at: timestamptz
+        checked_at_reliable: boolean
+        zip: text
+        phone: text
+        # Columns that can be entirely empty in a batch: agate would guess integer.
+        current_name_native: text
+        street_address: text
+        official_url: text
+        facebook_page_url: text
+        fb_page_evidence: text
+        service_languages: text
+        host_venue_name: text
+    quality_reviews:
+      +column_types: {church_id: bigint, reviewed_on: date, auditor_value: text, muse_value: text}
+    dedup_candidates:
+      +column_types: {keep_id: bigint, drop_id: bigint, score: double precision}
+    fact_holds:
+      +column_types: {church_id: bigint}
