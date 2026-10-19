@@ -1,0 +1,78 @@
+church_id,name,known_city,state,latitude,longitude,known_street,known_website,known_phone,osm_ref,denomination_hint,gaps,batch
+76686,Bayside Community Church,Foster City,CA,37.56091,-122.24878,,,,osm:358831039,Christian,url;street_address;phone;identity_status,A_calibration
+76672,Island United Church,Foster City,CA,37.56056,-122.26477,Balclutha Drive,,,osm:358830960,Christian,url;street_address;phone;identity_status,A_calibration
+76662,Saint Ambrose Episcopal Church,Foster City,CA,37.54521,-122.27247,,,,osm:358830887,Episcopal,url;street_address;phone;identity_status,A_calibration
+76663,Chinese Baptist Church,San Mateo,CA,37.57216,-122.31886,,,,osm:358830913,Baptist,url;street_address;phone;identity_status,A_calibration
+77956,Congregational Church of San Mateo CCSM,San Mateo,CA,37.56865,-122.32804,Tilton Avenue,,,osm:8131919165,Congregational,url;street_address;phone;identity_status,A_calibration
+76665,First Baptist Church,San Mateo,CA,37.53771,-122.31191,,,,osm:358830927,Baptist,url;street_address;phone;identity_status,A_calibration
+76667,First Methodist Church,San Mateo,CA,37.57160,-122.32941,,,,osm:358830944,Methodist,url;street_address;phone;identity_status,A_calibration
+76668,First Presbyterian Church,San Mateo,CA,37.54299,-122.30941,,,,osm:358830945,Presbyterian,url;street_address;phone;identity_status,A_calibration
+76669,Good Shepherd Lutheran Church,San Mateo,CA,37.58503,-122.33745,,,,osm:358830952,Lutheran,url;street_address;phone;identity_status,A_calibration
+76670,Grace Lutheran Church,San Mateo,CA,37.53744,-122.31164,,,,osm:358830954,Lutheran,url;street_address;phone;identity_status,A_calibration
+76673,Macedonia Church of God in Christ,San Mateo,CA,37.57049,-122.32469,,,,osm:358830962,Christian,url;street_address;phone;identity_status,A_calibration
+76674,Pilgrim Baptist Church,San Mateo,CA,37.57438,-122.32303,,,,osm:358830967,Baptist,url;street_address;phone;identity_status,A_calibration
+76675,Saint Andrews Lutheran Church,San Mateo,CA,37.55394,-122.31557,,,,osm:358830969,Lutheran,url;street_address;phone;identity_status,A_calibration
+76676,Saint Bartholomews Roman Catholic Church,San Mateo,CA,37.55477,-122.33663,,,,osm:358830970,Catholic,url;street_address;phone;identity_status,A_calibration
+76677,Saint Gregory Roman Catholic Church,San Mateo,CA,37.53994,-122.30775,,,,osm:358830974,Catholic,url;street_address;phone;identity_status,A_calibration
+76678,Saint James African Methodist Episcopal Church,San Mateo,CA,37.57410,-122.32330,,,,osm:358830976,Methodist,url;street_address;phone;identity_status,A_calibration
+76680,Saint Timothys Roman Catholic Church,San Mateo,CA,37.57438,-122.31080,,,,osm:358830982,Catholic,url;street_address;phone;identity_status,A_calibration
+76681,Shoreview Community Methodist Church,San Mateo,CA,37.57355,-122.31469,,,,osm:358830993,Methodist,url;street_address;phone;identity_status,A_calibration
+76683,Sturge Presbyterian Church,San Mateo,CA,37.57188,-122.31858,,,,osm:358830996,Presbyterian,url;street_address;phone;identity_status,A_calibration
+76657,Berean Bible Church,Belmont,CA,37.50585,-122.28618,,,,osm:358830691,Christian,url;street_address;phone;identity_status,B_main
+76658,Fale Hufanga Tongan United Methodist Church,Belmont,CA,37.50572,-122.28614,,,,osm:358830697,Methodist,url;street_address;phone;identity_status,B_main
+77745,Good Shepherd Episcopal Church,Belmont,CA,37.51778,-122.27464,,,,osm:1313239263,Anglican,url;street_address;phone;identity_status,B_main
+76671,Hillsdale Methodist Church,Belmont,CA,37.53133,-122.30330,,,,osm:358830959,Methodist,url;street_address;phone;identity_status,B_main
+77702,Hope Evangelical Lutheran Church,Belmont,CA,37.52453,-122.30496,,,,osm:568282463,Christian,url;street_address;phone;identity_status,B_main
+76664,The Church of Jesus Christ of Latter-day Saints,Belmont,CA,37.53007,-122.30656,,,,osm:358830916,Mormon,url;street_address;phone;identity_status,B_main
+76666,Iglesia Ni Cristo - Local Congregation of Burlingame,Burlingame,CA,37.57938,-122.35469,Oak Grove Avenue,,,osm:358830943,Iglesia Ni Cristo,url;street_address;phone;identity_status,B_main
+76247,New Life Community Church,Burlingame,CA,37.58086,-122.35908,Palm Drive,https://nlcommunitychurch.org/,,osm:281390112,Baptist,street_address;phone;identity_status,B_main
+76246,Orthodox Church of All Russian Saints,Burlingame,CA,37.57976,-122.35780,,,,osm:276586756,Russian Orthodox,url;street_address;phone;identity_status,B_main
+76679,Saint Pauls Episcopal Church,Burlingame,CA,37.57660,-122.35219,,,,osm:358830981,Episcopal,url;street_address;phone;identity_status,B_main
+76682,Sisters of the Holy Family Convent,Burlingame,CA,37.58105,-122.36858,,,,osm:358830995,Catholic,url;street_address;phone;identity_status;scope_check,B_main
+76257,Trinity Lutheran Church,Burlingame,CA,37.58480,-122.36785,,,,osm:351121382,Lutheran,url;street_address;phone;identity_status,B_main
+76685,Unity Church of Burlingame,Burlingame,CA,37.57656,-122.34534,,,,osm:358831036,Christian,url;street_address;phone;identity_status,B_main
+76256,Saint Matthias Catholic Church,Emerald Lake Hills,CA,37.47450,-122.26066,,,,osm:350649318,Catholic,url;street_address;phone;identity_status,B_main
+77695,Shinnyo-En California Buddhist Temple,Emerald Lake Hills,CA,37.45419,-122.26090,,,,osm:441770129,Buddhist,url;street_address;phone;identity_status;scope_check,B_main
+77676,Temple Beth Jacob,Emerald Lake Hills,CA,37.45722,-122.24111,,,,osm:358855465,Jewish,url;street_address;phone;identity_status;scope_check,B_main
+77749,Calvary San Mateo,Highlands-Baywood Park,CA,37.51522,-122.32609,Lori Drive,https://calvarysanmateo.org/,+1-650-394-7388,osm:1416664921,Christian,street_address;identity_status,B_main
+76659,Peninsula Temple Sholom,Hillsborough,CA,37.58049,-122.39414,,http://sholom.org,+1-650-697-2266,osm:358830714,Jewish,street_address;identity_status;scope_check,B_main
+76271,Sisters of Mercy,Hillsborough,CA,37.58327,-122.38331,,,,osm:358776112,Catholic,url;street_address;phone;identity_status;scope_check,B_main
+76691,Saint Anthonys Catholic Church,Menlo Park,CA,37.46966,-122.20135,Middlefield Road,https://stanthonyofpaduamp.org/,,osm:358831171,Catholic,street_address;phone;identity_status,B_main
+78050,Falun Dafa,Millbrae,CA,37.60038,-122.39140,Broadway,,,osm:10981800128,Falun Gong,url;street_address;phone;identity_status;scope_check,B_main
+76661,Our Lady of Lebanon Eastern Catholic Church,Millbrae,CA,37.60410,-122.39358,,,,osm:358830783,Catholic,url;street_address;phone;identity_status,B_main
+76660,Saint Dunstans Roman Catholic Church,Millbrae,CA,37.60610,-122.39911,,,,osm:358830719,Catholic,url;street_address;phone;identity_status,B_main
+77675,Tabernacle of Praise,North Fair Oaks,CA,37.47333,-122.20417,,,,osm:358855462,Christian,url;street_address;phone;identity_status,B_main
+76640,Bethany Baptist Church,Pacifica,CA,37.58569,-122.49693,,,,osm:358830551,Baptist,url;street_address;phone;identity_status,B_main
+76628,Church of the Good Shepherd,Pacifica,CA,37.63235,-122.49027,,,,osm:358830310,Christian,url;street_address;phone;identity_status,B_main
+77804,Church of the Good Shepherd,Pacifica,CA,37.64205,-122.48953,Oceana Boulevard,https://www.gschurchca.org/,+1 650 355 2593,osm:3462569411,Christian,street_address;identity_status,B_main
+76643,Holy Cross Lutheran Church,Pacifica,CA,37.59193,-122.49199,,,,osm:358830566,Lutheran,url;street_address;phone;identity_status,B_main
+76644,Lighthouse Christian Fellowship Church,Pacifica,CA,37.59177,-122.49205,,,,osm:358830574,Christian,url;street_address;phone;identity_status,B_main
+76645,Pacifica Christian Church,Pacifica,CA,37.58633,-122.49581,,,,osm:358830587,Christian,url;street_address;phone;identity_status,B_main
+76646,Saint Andrew Presbyterian Church of Pacifica,Pacifica,CA,37.59133,-122.47636,,,,osm:358830589,Presbyterian,url;street_address;phone;identity_status,B_main
+77802,True Jesus Church,Pacifica,CA,37.64665,-122.49037,Edgemar Avenue,,+1 650 359 7183,osm:3443724682,Christian,url;street_address;identity_status,B_main
+76648,Vista Del Mar Baptist Church,Pacifica,CA,37.59119,-122.47636,,,,osm:358830608,Baptist,url;street_address;phone;identity_status,B_main
+77670,Calvary Baptist Church,Redwood City,CA,37.47139,-122.22833,,,,osm:358855412,Baptist,url;street_address;phone;identity_status,B_main
+77746,Centro Christiano Sion,Redwood City,CA,37.48705,-122.22037,,,,osm:1350903685,Christian,url;street_address;phone;identity_status,B_main
+77671,Christ Gospel Church of Redwood City,Redwood City,CA,37.47611,-122.22889,,,,osm:358855417,Christian,url;street_address;phone;identity_status,B_main
+77672,Kingdom Hall of Jehovahs Witnesses,Redwood City,CA,37.47639,-122.23639,,,,osm:358855433,Jehovahs Witness,url;street_address;phone;identity_status,B_main
+77673,Mount Zion Baptist Church,Redwood City,CA,37.47361,-122.22083,,,,osm:358855440,Baptist,url;street_address;phone;identity_status,B_main
+78086,Peninsula Hope Church,Redwood City,CA,37.48893,-122.22810,Jefferson Avenue,,,osm:11777325909,,url;street_address;phone;identity_status,B_main
+76692,Redeemer Lutheran Church,Redwood City,CA,37.47910,-122.23747,,,,osm:358831199,Lutheran,url;street_address;phone;identity_status,B_main
+77674,Redwood Church,Redwood City,CA,37.47556,-122.23583,,,,osm:358855451,Christian,url;street_address;phone;identity_status,B_main
+77786,Vision Mundial Ministries,Redwood City,CA,37.48706,-122.22026,,,,osm:2650152874,Christian,url;street_address;phone;identity_status,B_main
+76650,Calvary Lutheran Church,San Bruno,CA,37.61333,-122.41019,,,,osm:358830630,Lutheran,url;street_address;phone;identity_status,B_main
+76631,Church of God,San Bruno,CA,37.63327,-122.41414,,,,osm:358830503,Christian,url;street_address;phone;identity_status,B_main
+76651,Church of the Highlands,San Bruno,CA,37.62281,-122.44737,,,,osm:358830636,Christian,url;street_address;phone;identity_status,B_main
+76633,Church of the Nazarene,San Bruno,CA,37.61787,-122.42324,,,,osm:358830509,Nazarene,url;street_address;phone;identity_status,B_main
+76652,Community Methodist Church,San Bruno,CA,37.62466,-122.41331,,,,osm:358830638,Methodist,url;street_address;phone;identity_status,B_main
+76653,First Baptist Church,San Bruno,CA,37.61799,-122.41331,,,,osm:358830642,Baptist,url;street_address;phone;identity_status,B_main
+76654,"First Church of Christ, Scientist",San Bruno,CA,37.62188,-122.41331,,,,osm:358830643,Christ Scientist,url;street_address;phone;identity_status,B_main
+77719,Peace Lutheran Church,San Bruno,CA,37.62040,-122.44121,,,,osm:770915989,Lutheran,url;street_address;phone;identity_status,B_main
+76655,Saint Andrews Episcopal Church of Millbrae-San Bruno,San Bruno,CA,37.61311,-122.41576,,,,osm:358830671,Episcopal,url;street_address;phone;identity_status,B_main
+76638,Saint Brunos Roman Catholic Church,San Bruno,CA,37.62882,-122.41553,,,,osm:358830539,Catholic,url;street_address;phone;identity_status,B_main
+76656,Saint Johns Evangelical Church,San Bruno,CA,37.62438,-122.40997,,,,osm:358830673,Christian,url;street_address;phone;identity_status,B_main
+76687,Episcopal Church of the Epiphany,San Carlos,CA,37.49744,-122.26052,,,,osm:358831096,Episcopal,url;street_address;phone;identity_status,B_main
+76684,First Baptist Church of San Carlos,San Carlos,CA,37.50327,-122.25913,,,,osm:358831021,Baptist,url;street_address;phone;identity_status,B_main
+76689,Saint Charles Catholic Church,San Carlos,CA,37.49522,-122.26608,,,,osm:358831112,Catholic,url;street_address;phone;identity_status,B_main
+77933,ROBAM USA,South San Francisco,CA,37.64630,-122.40278,267 Wattis Way,https://robamusa.com/,+1-844-762-2687,osm:6998095137,,identity_status;scope_check,B_main
+77884,Saint Augustine Church,South San Francisco,CA,37.64596,-122.46378,Callan Boulevard,,,osm:5726994133,Catholic,url;street_address;phone;identity_status,B_main
