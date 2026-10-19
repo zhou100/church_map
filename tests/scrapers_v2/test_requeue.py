@@ -195,3 +195,133 @@ def test_errored_artifacts_are_left_alone():
         assert stale_prompt not in got
 
     run_with_fixture(body)
+
+
+@pytest.mark.parametrize("http_status,r2_key", [(0, None), (200, None), (503, "bad/key")])
+def test_unextractable_pending_fetch_does_not_block_requeue(http_status, r2_key):
+    """A failed fetch defaults to pending, but cannot be consumed by extract."""
+    async def body(r, ids):
+        stale_prompt = ids[0]
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                """INSERT INTO raw_crawl_artifacts
+                       (church_id, url, kind, http_status, r2_key)
+                   VALUES (%s, 'https://failed.test/', 'homepage', %s, %s)""",
+                (stale_prompt, http_status, r2_key),
+            )
+        counts = await r.count_stale_extractions(CURRENT_VERSION, CURRENT_MODEL)
+        assert counts["awaiting_queue"] == 2
+        got = set(await r.requeue_stale_extractions(CURRENT_VERSION, CURRENT_MODEL, limit=1))
+        assert got == {stale_prompt}
+        targets = await r.pending_extract_targets(limit=10)
+        target = next(t for t in targets if t["church_id"] == stale_prompt)
+        assert len(target["artifact_ids"]) == 1
+
+    run_with_fixture(body)
+
+
+@pytest.mark.parametrize("http_status,r2_key", [(0, None), (200, None), (503, "bad/key")])
+def test_unusable_ok_artifact_does_not_swallow_requeue_slot(http_status, r2_key):
+    async def body(r, ids):
+        blocker, next_up = ids[:2]
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                "UPDATE raw_crawl_artifacts SET http_status=%s, r2_key=%s WHERE church_id=%s",
+                (http_status, r2_key, blocker),
+            )
+        counts = await r.count_stale_extractions(CURRENT_VERSION, CURRENT_MODEL)
+        assert counts["awaiting_queue"] == 1
+        got = set(await r.requeue_stale_extractions(CURRENT_VERSION, CURRENT_MODEL, limit=1))
+        assert got == {next_up}
+
+    run_with_fixture(body)
+
+
+def test_usable_pending_artifact_still_blocks_duplicate_requeue():
+    async def body(r, ids):
+        already_queued, next_up = ids[:2]
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                "UPDATE raw_crawl_artifacts SET extract_status='pending' WHERE church_id=%s",
+                (already_queued,),
+            )
+        assert (await r.count_stale_extractions(CURRENT_VERSION, CURRENT_MODEL))["awaiting_queue"] == 1
+        got = set(await r.requeue_stale_extractions(CURRENT_VERSION, CURRENT_MODEL, limit=1))
+        assert got == {next_up}
+
+    run_with_fixture(body)
+
+
+def test_requeue_only_changes_usable_ok_artifacts():
+    async def body(r, ids):
+        cid = ids[0]
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                """INSERT INTO raw_crawl_artifacts
+                       (church_id, url, kind, http_status, extract_status)
+                   VALUES (%s, 'https://unusable.test/', 'about', 200, 'ok')
+                   RETURNING id""",
+                (cid,),
+            )
+            unusable_id = (await cur.fetchone())[0]
+        got = await r.requeue_stale_extractions(CURRENT_VERSION, CURRENT_MODEL, limit=1)
+        assert got == [cid]
+        async with r.con.cursor() as cur:
+            await cur.execute("SELECT extract_status FROM raw_crawl_artifacts WHERE id=%s", (unusable_id,))
+            assert await cur.fetchone() == ("ok",)
+
+    run_with_fixture(body)
+
+
+@pytest.mark.parametrize("status", ["ok", "pending", "error", "skipped"])
+def test_unchanged_refetch_refreshes_freshness_without_reextracting(status):
+    """An unchanged homepage must leave the due queue without losing its state."""
+    async def body(r, ids):
+        cid = ids[0]
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                """UPDATE raw_crawl_artifacts
+                      SET fetched_at=NOW() - INTERVAL '40 days', extract_status=%s,
+                          extracted_at=NOW() - INTERVAL '39 days'
+                    WHERE church_id=%s""",
+                (status, cid),
+            )
+            await cur.execute(
+                "SELECT id, extracted_at FROM raw_crawl_artifacts WHERE church_id=%s", (cid,)
+            )
+            artifact_id, extracted_at = await cur.fetchone()
+        assert cid in {t["church_id"] for t in await r.churches_due_for_fetch(100, 30)}
+        await r.insert_artifact(
+            church_id=cid, url=f"https://rq{cid}.test", kind="homepage",
+            http_status=200, fetch_error=None, robots_allowed=True,
+            content_hash=f"rqh{cid}", r2_key=f"new-date/rqk{cid}",
+            bytes_raw=100, bytes_text=50, crawl_run_id=None,
+        )
+        assert cid not in {t["church_id"] for t in await r.churches_due_for_fetch(100, 30)}
+        async with r.con.cursor() as cur:
+            await cur.execute(
+                "SELECT id, extract_status, extracted_at, r2_key FROM raw_crawl_artifacts WHERE church_id=%s",
+                (cid,),
+            )
+            assert await cur.fetchall() == [(artifact_id, status, extracted_at, f"rqk{cid}")]
+
+    run_with_fixture(body)
+
+
+def test_changed_content_still_creates_pending_extraction():
+    async def body(r, ids):
+        cid = ids[0]
+        await r.insert_artifact(
+            church_id=cid, url=f"https://rq{cid}.test", kind="homepage",
+            http_status=200, fetch_error=None, robots_allowed=True,
+            content_hash=f"changed-{cid}", r2_key=f"changed/rqk{cid}",
+            bytes_raw=100, bytes_text=50, crawl_run_id=None,
+        )
+        targets = await r.pending_extract_targets(limit=10)
+        target = next(t for t in targets if t["church_id"] == cid)
+        assert target["r2_keys"] == [f"changed/rqk{cid}"]
+        async with r.con.cursor() as cur:
+            await cur.execute("SELECT COUNT(*) FROM raw_crawl_artifacts WHERE church_id=%s", (cid,))
+            assert await cur.fetchone() == (2,)
+
+    run_with_fixture(body)
