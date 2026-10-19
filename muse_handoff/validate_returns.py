@@ -7,6 +7,8 @@ Usage:
 For a redo file covering only some rows of a batch, pass `-` as the candidates
 file and add --redo (IDs must belong to the batch; full coverage not required).
 Use batch ALL for a file spanning batches (e.g. the Facebook pass).
+Other manifests: --manifest muse_handoff/batch_C_manifest.csv. Candidates-only
+check (e.g. task CN): pass `-` as the results file.
 
 Prints ERROR lines (rule violations) and WARN lines (needs human review), then a
 coverage summary. Exit code 1 if any ERROR. Stdlib only; reads local files only.
@@ -25,6 +27,8 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
 ENUMS = {
+    "task": {"C", "CN"},
+    "candidate_status": {"active", "unresolved"},
     "entity_type": {"congregation", "religious_house", "non_christian", "business", "other", "unknown"},
     "status": {"active", "closed", "moved", "merged", "unresolved"},
     "source_type": {"own_site", "fb_page", "denomination", "other"},
@@ -36,7 +40,7 @@ ENUMS = {
     "found_via": {"fb_page_search", "fb_group_lead", "web_search", "denomination_directory", "host_church_site"},
 }
 
-# San Mateo County ZIPs -> cities (USPS primary names; a ZIP may serve several).
+# ZIPs -> USPS city names for San Mateo County and the South Bay (a ZIP may serve several).
 ZIP_CITIES = {
     "94002": {"Belmont"}, "94005": {"Brisbane"}, "94010": {"Burlingame", "Hillsborough"},
     "94014": {"Daly City"}, "94015": {"Daly City"}, "94019": {"Half Moon Bay"},
@@ -46,14 +50,29 @@ ZIP_CITIES = {
     "94070": {"San Carlos"}, "94080": {"South San Francisco"},
     "94401": {"San Mateo"}, "94402": {"San Mateo", "Hillsborough"}, "94403": {"San Mateo"},
     "94404": {"San Mateo", "Foster City"},
+    # Coast and south San Mateo County
+    "94018": {"El Granada", "Half Moon Bay"}, "94020": {"La Honda"}, "94021": {"Loma Mar"},
+    "94028": {"Portola Valley", "Ladera", "Menlo Park"}, "94037": {"Montara"}, "94038": {"Moss Beach"},
+    "94060": {"Pescadero"}, "94074": {"San Gregorio"}, "94128": {"San Francisco"},
+    # North Santa Clara County (batch C) and South Bay (task CN)
+    "94022": {"Los Altos", "Los Altos Hills"}, "94024": {"Los Altos", "Los Altos Hills"},
+    "94301": {"Palo Alto"}, "94303": {"Palo Alto", "East Palo Alto"}, "94304": {"Palo Alto"},
+    "94305": {"Stanford", "Palo Alto"}, "94306": {"Palo Alto"},
+    "94040": {"Mountain View"}, "94041": {"Mountain View"}, "94043": {"Mountain View"},
+    "94085": {"Sunnyvale"}, "94086": {"Sunnyvale"}, "94087": {"Sunnyvale"}, "94089": {"Sunnyvale"},
+    "95014": {"Cupertino"}, "95008": {"Campbell"}, "95030": {"Los Gatos"}, "95032": {"Los Gatos"},
+    "95035": {"Milpitas"}, "95050": {"Santa Clara"}, "95051": {"Santa Clara"}, "95054": {"Santa Clara"},
+    "95070": {"Saratoga"},
+    **{str(z): {"San Jose"} for z in list(range(95110, 95140)) + [95148]},
 }
 
 FACT_GROUPS = {
-    # group -> predicate: is the group "filled" on this row?
+    # group -> predicate: is the group "filled" on this row? (kids exists from v3)
     "status": lambda r: r["status"] not in ("", "unresolved"),
     "address": lambda r: bool(r["street_address"]),
     "phone": lambda r: bool(r["phone"]),
     "service": lambda r: bool(r["service_times_verbatim"] or r["service_languages"]),
+    "kids": lambda r: bool(r.get("kids_program_verbatim")),
 }
 
 THIRD_PARTY_HOSTS = ("businessyab.", "yelp.", "google.", "christianity.com", "pwi.org", "mapquest.", "chamberofcommerce.")
@@ -117,7 +136,7 @@ def check_zip_city(where: str, r: dict) -> None:
     if not re.fullmatch(r"\d{5}", z):
         err(where, f"zip {z!r} is not 5 digits")
     elif z not in ZIP_CITIES:
-        warn(where, f"zip {z} not in San Mateo County table; check manually")
+        warn(where, f"zip {z} not in the ZIP table; check manually")
     elif city and city not in ZIP_CITIES[z]:
         err(where, f"zip {z} belongs to {sorted(ZIP_CITIES[z])}, not {city!r}")
 
@@ -160,8 +179,36 @@ def check_common(where: str, r: dict, received_at: datetime | None) -> None:
         err(where, f"checked_at {r['checked_at']} is after the file was received ({received_at:%H:%M}Z)")
 
 
-def check_results(batch: str, path: Path, received_at: datetime | None, redo: bool = False) -> list[dict]:
-    expected = {r["church_id"] for r in csv.DictReader(MANIFEST.open(encoding="utf-8"))
+def check_fact_groups(w: str, r: dict) -> None:
+    for g, filled in FACT_GROUPS.items():
+        if f"{g}_source_url" not in r or not filled(r):
+            continue
+        missing = [c for c in (f"{g}_source_url", f"{g}_source_type", f"{g}_excerpt") if not r[c]]
+        if missing:
+            err(w, f"{g} fact without {', '.join(missing)}")
+        if r[f"{g}_source_type"] and r[f"{g}_source_type"] not in ENUMS["source_type"]:
+            err(w, f"{g}_source_type={r[f'{g}_source_type']!r} not allowed")
+        if r[f"{g}_source_url"] and urlparse(r[f"{g}_source_url"]).path in ("", "/") \
+                and r[f"{g}_source_type"] == "denomination":
+            warn(w, f"{g}_source_url is a bare homepage; cannot locate the cited listing")
+    ex = r.get("address_excerpt", "")
+    house = re.match(r"\s*(\d+)", r.get("street_address") or "")
+    if house and ex and house.group(1) not in ex:
+        err(w, "address_excerpt does not contain the house number")
+    if r.get("phone") and r.get("phone_excerpt") and digits(r["phone"])[-4:] not in digits(r["phone_excerpt"]):
+        err(w, "phone_excerpt does not contain the phone's last 4 digits")
+    if r.get("service_times_verbatim") and r.get("service_excerpt") and not TIME_RE.search(r["service_excerpt"]):
+        err(w, "service_excerpt has no time token")
+    phone_ctx = NEGATED_PERSONAL_RE.sub("", r.get("notes", "") + " " + r.get("phone_excerpt", ""))
+    if r.get("phone") and PERSONAL_PHONE_RE.search(phone_ctx):
+        err(w, "phone looks like a personal number (D-2): leave blank, note 'personal number withheld'")
+    if r.get("match_confidence") == "high" and r.get("url_evidence") == "name_only":
+        err(w, "match_confidence=high but url_evidence=name_only (high needs >=2 independent signals)")
+
+
+def check_results(batch: str, path: Path, received_at: datetime | None, redo: bool = False,
+                  manifest: Path = MANIFEST) -> list[dict]:
+    expected = {r["church_id"] for r in csv.DictReader(manifest.open(encoding="utf-8"))
                 if batch == "ALL" or r["batch"] == batch}
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
     ids = Counter(r["church_id"] for r in rows)
@@ -234,8 +281,38 @@ def check_results(batch: str, path: Path, received_at: datetime | None, redo: bo
     return rows
 
 
+def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
+    refs = Counter(r["candidate_ref"] for r in rows)
+    for ref, n in refs.items():
+        if not ref or n > 1:
+            err(f"cand:{ref or '(blank)'}", f"candidate_ref blank or repeated ({n}x)")
+    for r in rows:
+        w = f"{r['candidate_ref']}:{r['candidate_name'][:28]}"
+        for col in ("candidate_name", "city", "status", "found_via", "match_confidence", "task"):
+            if not r[col]:
+                err(w, f"missing required {col}")
+        if r["task"] and r["task"] not in ENUMS["task"]:
+            err(w, f"task={r['task']!r} not allowed")
+        if r["status"] and r["status"] not in ENUMS["candidate_status"]:
+            err(w, f"status={r['status']!r} not allowed (candidates: active or unresolved)")
+        if r["found_via"] and r["found_via"] not in ENUMS["found_via"]:
+            err(w, f"found_via={r['found_via']!r} not allowed")
+        if r["match_confidence"] and r["match_confidence"] not in ENUMS["match_confidence"]:
+            err(w, f"match_confidence={r['match_confidence']!r} not allowed")
+        check_multi(w, "url_evidence", r["url_evidence"], "url_evidence")
+        if r["status"] == "active" and not r["status_source_url"]:
+            err(w, "status=active without status_source_url")
+        if not r["street_address"]:
+            warn(w, "no street address (cannot be pinned)")
+        check_fact_groups(w, r)
+        check_common(w, r, received_at)
+
+
 def check_candidates(path: Path, received_at: datetime | None) -> list[dict]:
     rows = list(csv.DictReader(path.open(encoding="utf-8")))
+    if rows and "candidate_ref" in rows[0]:
+        check_candidates_v3(rows, received_at)
+        return rows
     for i, r in enumerate(rows, 1):
         w = f"cand{i}:{r['candidate_name'][:30]}"
         for col in ("candidate_name", "city", "source_url", "excerpt"):
@@ -283,6 +360,11 @@ def summarize(rows: list[dict]) -> None:
 
 def main(argv: list[str]) -> int:
     received_at = None
+    manifest = MANIFEST
+    if "--manifest" in argv:
+        i = argv.index("--manifest")
+        manifest = Path(argv[i + 1])
+        argv = argv[:i] + argv[i + 2:]
     redo = "--redo" in argv
     argv = [a for a in argv if a != "--redo"]
     if "--received-at" in argv:
@@ -290,14 +372,15 @@ def main(argv: list[str]) -> int:
         received_at = parse_ts(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
     batch, results_path, candidates_path = argv[1], Path(argv[2]), Path(argv[3])
-    rows = check_results(batch, results_path, received_at, redo)
+    rows = [] if str(results_path) == "-" else check_results(batch, results_path, received_at, redo, manifest)
     for r in rows:
         check_common(r["church_id"], r, received_at)
     cands = [] if str(candidates_path) == "-" else check_candidates(candidates_path, received_at)
     for level, where, msg in sorted(problems, key=lambda p: (p[0], p[1])):
         print(f"{level:5} {where:38} {msg}")
     print(f"\n{sum(p[0] == 'ERROR' for p in problems)} errors, {sum(p[0] == 'WARN' for p in problems)} warnings")
-    summarize(rows)
+    if rows:
+        summarize(rows)
     print(f"\nNew candidates: {len(cands)}; with street address: {sum(1 for r in cands if r['street_address'])}; "
           f"found_via: {dict(Counter(r['found_via'] for r in cands))}")
     return 1 if any(p[0] == "ERROR" for p in problems) else 0

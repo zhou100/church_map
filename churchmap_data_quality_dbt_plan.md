@@ -415,6 +415,32 @@ Scored against Yujun's independent audit of the 19 batch-A rows (section 3). Yuj
 - **New candidates are never auto-inserted as pins.** Each needs review, geocoding from its stated address, and a duplicate check against existing `church_id`s. Use `meets_in_building_of` to avoid merging two congregations that share a building.
 - **Accepted website URLs may later enter the crawl queue.** Paid extraction for them is a separate, deliberate `requeue`/backfill decision.
 
+### Round 3: brief v3, tasks C and CN (prepared 2026-10-19)
+
+`muse_handoff/BRIEF_v3.md` replaces BRIEF_v2 and BRIEF_FB_pass and holds every rule in one file. What v3 adds:
+
+- a **kids** fact group (children's programs, verbatim);
+- per-fact sources and excerpts on discoveries, so they can be verified like results rows;
+- USPS city names that must match the ZIP (D10);
+- per-city discovery caps;
+- an explicit scope rule (N8).
+
+**Inputs:**
+
+| File | Contents | Tracked in git |
+|---|---|---|
+| `muse_handoff/batch_C_manifest.csv` | 85 OSM records: rest of San Mateo County, plus Palo Alto, Stanford, Los Altos, Mountain View, Sunnyvale, Cupertino. 28 are in Daly City. `handling`: full 71, scope_check_only 11, labeled_minimal 3. sha256 `6714ecbb…` | yes (public OSM) |
+| `muse_handoff/outbox/known_congregations_v3.csv` | 315 known congregations (292 directory records in the C and CN cities, using Muse's current names and addresses where verified; 23 earlier discoveries), for de-duplication | no (Muse-derived) |
+| `results_TEMPLATE_v3.csv` (40 columns), `new_candidates_TEMPLATE_v3.csv` (43 columns) | Output templates | yes |
+
+**Tasks:**
+- **C:** verify the 85 records, then discover up to 25 missing congregations per city.
+- **CN:** Chinese-language congregations across the Peninsula and South Bay, up to 60 rows, new ones first. A known congregation is reported again only when Muse can add language, service, or kids facts.
+
+**Validator:** now supports `--manifest`, v3 candidates, the kids group, and South Bay ZIPs. Old returns re-validate unchanged (A v3: 0 errors; B: the same 2; FB-1: 0).
+
+**Follow-up before ingesting v3 returns:** extend `analytics/scripts/build_seeds.py` and the dbt staging models for the kids group and v3 candidates.
+
 ### Regenerating the manifest
 
 Built read-only from `holyhub.db` (`Churches` table), selecting `latitude BETWEEN 37.45 AND 37.65 AND longitude BETWEEN -122.50 AND -122.18`, ordered by batch, city, name. `gaps` is derived as follows:

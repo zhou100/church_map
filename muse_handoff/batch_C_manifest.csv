@@ -1,0 +1,86 @@
+church_id,name,known_city,state,latitude,longitude,known_street,known_website,known_phone,osm_ref,denomination_hint,gaps,handling,batch
+76331,Church of the Visitacion,Brisbane,CA,37.70950,-122.40850,,,,osm:358805043,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76259,Convent of the Good Shepherd,Brisbane,CA,37.72465,-122.41775,,,,osm:358764041,Catholic,url;street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+76353,Greater New Light Baptist Church,Brisbane,CA,37.72799,-122.38080,,,,osm:358805272,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77987,Korean First Baptist Church of San Francisco,Broadmoor,CA,37.68233,-122.49155,,,,osm:8332415649,,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77986,Risen Church,Broadmoor,CA,37.68257,-122.49157,,,,osm:8332415648,,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77754,St. Andrew's Catholic Church,Broadmoor,CA,37.67622,-122.47391,,,,osm:1573723029,Catholic,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76632,Church of the Holy Angels,Colma,CA,37.68822,-122.46749,,,,osm:358830506,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77425,Bethel Lutheran Church,Cupertino,CA,37.32071,-122.01121,,,,osm:358838694,Lutheran,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77996,Chinese Church in Christ,Cupertino,CA,37.32833,-122.03503,Bandley Drive,https://www.ccic-cupertino.org/,,osm:8495975876,Christian,street_address;phone;identity_status;service_times;kids,full,C_main
+77426,Creekside Bible Church,Cupertino,CA,37.31605,-122.01440,Miller Avenue,https://www.creeksidebiblechurch.com/,,osm:358838698,Baptist,street_address;phone;identity_status;service_times;kids,full,C_main
+77409,Hillview Bible Church,Cupertino,CA,37.30355,-122.04107,,,,osm:358838450,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77410,Home of Christ Chinese Church,Cupertino,CA,37.30050,-122.02079,,,,osm:358838509,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77436,Raynor Park Christian Church,Cupertino,CA,37.34466,-122.00885,,,,osm:358838866,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77809,Bay Church,Daly City,CA,37.74292,-122.46940,,,,osm:3634734005,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77929,Bodhi Meditation Center,Daly City,CA,37.74197,-122.49728,,,+1-415-889-6898,osm:6874544911,Buddhist,url;street_address;identity_status;service_times;kids,scope_check_only,C_main
+76348,Broad Street Baptist Church,Daly City,CA,37.71384,-122.46159,,,,osm:358805223,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77740,Calvary Armenian Congregational Church,Daly City,CA,37.71358,-122.47625,,,,osm:1205459615,Congregational,url;street_address;phone;identity_status;service_times;kids,full,C_main
+78162,Chinese Bible Church,Daly City,CA,37.74631,-122.47560,,,,osm:13307160922,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76307,Community Assembly of God Church,Daly City,CA,37.72270,-122.44414,,,,osm:358804549,Assemblies of God,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77738,Congregation Beth Israel-Judea,Daly City,CA,37.71309,-122.47459,,,,osm:1205459534,Jewish,url;street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+77760,Corpus Christi Church,Daly City,CA,37.72657,-122.43531,,,,osm:1784088153,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76350,Cosmopolitan Baptist Church,Daly City,CA,37.71382,-122.45886,,,,osm:358805240,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76309,First United Presbyterian Church,Daly City,CA,37.73428,-122.49191,,,,osm:358804587,Presbyterian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77915,GKI-SF Indonesian Presbyterian Church,Daly City,CA,37.73076,-122.47518,,https://gkisf.org/,+1 415 689 9740,osm:6615153569,Presbyterian,street_address;identity_status;service_times;kids,full,C_main
+76359,Geneva Avenue United Methodist Church,Daly City,CA,37.71382,-122.43497,,,,osm:358805515,Methodist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76642,Golden Gate Presbyterian Church,Daly City,CA,37.70451,-122.45796,,,,osm:358830564,Presbyterian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76310,Grace United Methodist Church,Daly City,CA,37.74243,-122.49372,,,,osm:358804595,Methodist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77955,"Iglesia ""Cristo Viene""",Daly City,CA,37.70526,-122.45822,,,,osm:8109944260,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76312,Ingleside Presbyterian Church,Daly City,CA,37.72354,-122.45692,,,,osm:358804608,Presbyterian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77739,Lake Merced Church of Christ,Daly City,CA,37.71403,-122.47702,,,,osm:1205459599,Church of Christ,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76313,Lakeside Presbyterian Church,Daly City,CA,37.73075,-122.47543,,www.lakesidesf.org,+1 415 564 8833,osm:358804626,Presbyterian,street_address;identity_status;service_times;kids,full,C_main
+76298,Lutheran Church of Our Savior,Daly City,CA,37.71938,-122.47192,,,,osm:358803774,Lutheran,url;street_address;phone;identity_status;service_times;kids,full,C_main
+78012,Paradise Missionary Baptist Church,Daly City,CA,37.71677,-122.44966,,,,osm:8893716219,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+78085,Pilgrim Community Church,Daly City,CA,37.71445,-122.46650,Randolph Street,https://pilgrimcommunityucc.weebly.com/,,osm:11746456807,Christian,street_address;phone;identity_status;service_times;kids,full,C_main
+76318,Saint Emydius Roman Catholic Church,Daly City,CA,37.72326,-122.46192,,,,osm:358804766,Catholic,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76647,Saint Luke Temple Christian Methodist Episcopal Church,Daly City,CA,37.70493,-122.45553,,,,osm:358830592,Methodist,url;street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+76324,Saint Thomas More Roman Catholic Church,Daly City,CA,37.71189,-122.47284,,,,osm:358804831,Catholic,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77980,Salvation Army All Nations Corps,Daly City,CA,37.71580,-122.47100,,,,osm:8262441683,Salvation Army,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77705,Temple United Methodist Church,Daly City,CA,37.71765,-122.47197,,,,osm:610748101,Methodist,url;street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+77828,The Church of God in San Francisco,Daly City,CA,37.74318,-122.47534,,,,osm:4069447304,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76649,Vista Grande Avenue Christian Church,Daly City,CA,37.70299,-122.46442,,,,osm:358830612,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76690,Christ Temple Apostolic Church,East Palo Alto,CA,37.47299,-122.16080,,,,osm:358831144,Christian,url;street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+77669,Community Church,East Palo Alto,CA,37.46611,-122.14194,,,,osm:358855400,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76688,Ladera Community United Church of Christ,Ladera,CA,37.39744,-122.19302,,,,osm:358831102,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77682,Los Altos United Methodist Church,Los Altos,CA,37.36028,-122.09833,Magdalena Avenue,https://laumc.org/,,osm:358857370,United Methodist,street_address;phone;identity_status;service_times;kids,full,C_main
+77677,Zen Meditation Center,Los Altos,CA,37.40111,-122.10139,,,,osm:358857284,Zen,url;street_address;phone;identity_status;service_times;kids,full,C_main
+78147,Chapel,Loyola,CA,37.24619,-122.14470,,,,osm:13083930515,,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77995,樂道基督浸信會;Logos Baptist Church,Loyola,CA,37.35114,-122.07711,,https://www.logosbc.org/,,osm:8495928777,Southern Baptist,street_address;phone;identity_status;service_times;kids,full,C_main
+76368,"First Church of Christ, Scientist",Menlo Park,CA,37.45934,-122.17570,,,,osm:358816524,Christ Scientist,url;street_address;phone;identity_status;service_times;kids,labeled_minimal,C_main
+77399,Chinese Church In Christ,Mountain View,CA,37.41764,-122.09014,Sierra Vista Avenue,,,osm:358838269,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77427,First Baptist Church of Mountain View,Mountain View,CA,37.36661,-122.08718,,,,osm:358838699,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77963,First Church of Christ Scientist,Mountain View,CA,37.36104,-122.07660,Bryant Avenue,,,osm:8197273301,Christ Scientist,url;street_address;phone;identity_status;service_times;kids,labeled_minimal,C_main
+77400,Mountain View Chinese Christian Church,Mountain View,CA,37.39050,-122.08607,,,,osm:358838292,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+78121,Peninsula Muslim Association,Mountain View,CA,37.39083,-122.07368,Villa Street,https://pmawebsite.org/,,osm:12651122701,,street_address;phone;identity_status;service_times;kids,full,C_main
+78179,Peninsula Muslim Association,Mountain View,CA,37.39083,-122.07368,Villa Street,https://pmawebsite.org,,osm:13637306603,Islamic,street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+77761,Saint Athanasius Catholic Church,Mountain View,CA,37.40533,-122.09641,North Rengstorff Avenue,http://www.saintathanasius.com/,+1-650-961-8600,osm:1797692556,Catholic,street_address;identity_status;service_times;kids,full,C_main
+77401,Valley Bible Fellowship Church,Mountain View,CA,37.38550,-122.07746,,,,osm:358838329,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76641,Church of Christ,Pacifica,CA,37.59582,-122.50872,,,,osm:358830554,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77803,San Francisco Filipino Seventh-day Adventist Church,Pacifica,CA,37.65407,-122.48115,Hickey Boulevard,,,osm:3457953093,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76629,Westside Baptist Church,Pacifica,CA,37.65139,-122.47828,Inverness Drive,,+1 650 355 0522,osm:358830368,Baptist,url;street_address;identity_status;service_times;kids,full,C_main
+77957,Bay Area Christian Church,Palo Alto,CA,37.44836,-122.11860,East Bayshore Road,,,osm:8176911100,Protestant,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77397,Free Will Baptist Church,Palo Alto,CA,37.42883,-122.14802,,,,osm:358838152,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+78122,Iman Community Association,Palo Alto,CA,37.42781,-122.14528,Cambridge Avenue,http://imanca.org,,osm:12651728901,,street_address;phone;identity_status;service_times;kids,full,C_main
+78000,Unitarian Universalist Church of Palo Alto,Palo Alto,CA,37.41936,-122.11263,Charleston Road,https://www.uucpa.org/,+1-650-494-0541,osm:8577832469,Unitarian Universalist,street_address;identity_status;service_times;kids,scope_check_only,C_main
+76367,Christ Episcopal Church,Portola Valley,CA,37.38223,-122.23053,,,,osm:358816516,Episcopal,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76369,Our Lady of the Wayside Roman Catholic Church,Portola Valley,CA,37.38383,-122.23386,,,,osm:358816537,Catholic,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77811,Tori,Portola Valley,CA,37.37639,-122.29823,,,,osm:3742150237,Shinto,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76370,Valley United Presbyterian Church,Portola Valley,CA,37.38367,-122.23492,,,,osm:358816557,Presbyterian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76273,Woodside Priory,Portola Valley,CA,37.37577,-122.21247,,,,osm:358779266,Catholic,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76630,Alls Souls Roman Catholic Church,South San Francisco,CA,37.65688,-122.41442,,,,osm:358830489,Catholic,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76634,Faith Tabernacle Assembly of God Church,South San Francisco,CA,37.66410,-122.40858,,,,osm:358830515,Assemblies of God,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76635,First Baptist Church,South San Francisco,CA,37.65771,-122.41969,,,,osm:358830517,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76636,"First Church of Christ, Scientist",South San Francisco,CA,37.65799,-122.41719,,,,osm:358830518,Christ Scientist,url;street_address;phone;identity_status;service_times;kids,labeled_minimal,C_main
+76637,First Southen Baptist Church,South San Francisco,CA,37.65910,-122.42692,,,,osm:358830519,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76639,Saint Pauls Community Methodist Church,South San Francisco,CA,37.65771,-122.41581,,,,osm:358830543,Methodist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77932,"Center for Inter-Religious Community, Learning and Experiences",Stanford,CA,37.42516,-122.17032,,,,osm:6920713362,Multifaith,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77434,Church of the Nazarene,Sunnyvale,CA,37.35242,-122.03931,,,,osm:358838844,Nazarene,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77431,Crosswalk Church,Sunnyvale,CA,37.37381,-122.04814,,,,osm:358838799,Christian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77398,First Baptist Church of Sunnyvale,Sunnyvale,CA,37.37605,-122.04802,,,,osm:358838192,Baptist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77432,First Orthodox Presbyterian Church,Sunnyvale,CA,37.37002,-122.05753,Brookfield Avenue,,,osm:358838804,Presbyterian,url;street_address;phone;identity_status;service_times;kids,full,C_main
+76245,Sunnyvale Hindu Temple & Community Center,Sunnyvale,CA,37.40518,-122.01456,Persian Drive,http://www.sunnyvale-hindutemple.org/,+1 408-734-4554,osm:266651403,Hindu,street_address;identity_status;service_times;kids,scope_check_only,C_main
+77873,Taha Services,Sunnyvale,CA,37.40961,-121.99063,Hammerwood Avenue,https://www.tahausa.org/,,osm:5150854578,Islamic,street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+77437,Trinity United Methodist Church,Sunnyvale,CA,37.35283,-122.02715,,,,osm:358838883,Methodist,url;street_address;phone;identity_status;service_times;kids,full,C_main
+77783,Unitarian Universalist Fellowship of Sunnyvale,Sunnyvale,CA,37.35919,-122.05899,South Bernardo Avenue,https://uufs.org/,,osm:2615238436,Unitarian Universalist,street_address;phone;identity_status;service_times;kids,scope_check_only,C_main
+77707,Woodside Village Church,Woodside,CA,37.42888,-122.25845,,,,osm:617408661,Congregational,url;street_address;phone;identity_status;service_times;kids,full,C_main
