@@ -128,7 +128,9 @@ def test_korean_time_in_excerpt_supports_the_times():
     ("2026-10-20T16:508Z", "false"),      # malformed (task D)
     ("2026-10-20T17:59:00Z", "false"),    # after the file was received
 ])
-def test_checked_at_reliability(stamp, reliable):
+def test_checked_at_reliability(stamp, reliable, monkeypatch):
+    # Pin the receipt time: the real registry changes as returns are re-delivered.
+    monkeypatch.setitem(bs.RECEIVED_AT, "results_D.csv", "2026-10-20T17:31:34Z")
     r = bs.sanitize({"checked_at": stamp}, "results_D.csv")
     assert r["checked_at_reliable"] == reliable
 
