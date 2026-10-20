@@ -111,6 +111,14 @@ seeds:
     columns:
       - name: denomination_key
         tests: [unique, not_null]
+  - name: source_checks
+    columns:
+      - name: fact_group
+        tests:
+          - accepted_values: {values: [status, address, phone, service, kids]}
+      - name: verdict
+        tests:
+          - accepted_values: {values: [verified, partial, not_found, not_an_excerpt, fetch_failed, robots_blocked, unsupported, unsafe_url, skipped_facebook]}
   - name: fact_holds
     columns:
       - name: field

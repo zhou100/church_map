@@ -14,6 +14,8 @@ select
     count(*) filter (where muse_has_address)                            as address_found,
     count(*) filter (where address_displayable)                         as address_displayable,
     count(*) filter (where muse_has_address and not address_displayable) as address_needs_review,
+    count(*) filter (where muse_has_address and address_source_type in ('own_site', 'denomination')
+                       and not address_source_verified)                 as address_failed_recheck,
     count(*) filter (where phone_displayable)                           as phone_displayable,
     count(*) filter (where service_displayable)                         as service_displayable,
     count(*) filter (where fb_page_linkable)                            as fb_page_linkable,

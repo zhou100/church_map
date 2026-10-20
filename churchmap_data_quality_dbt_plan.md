@@ -816,6 +816,38 @@ Deviations from the design above:
 - **CI:** not wired yet.
 - **Incremental models:** none, as planned.
 
+### Status 2026-10-20: source re-verification built and gating
+
+`analytics/scripts/recheck_sources.py` is the control that replaces further human audit.
+
+- **How it fetches:** polite and robots-aware (ChurchMapBot user agent, 2 s per host). It only fetches public addresses, re-checks every redirect hop, extracts PDF text, and never fetches Facebook.
+- **How it matches:** the excerpt is matched whole first, then fragment by fragment, after normalizing whitespace, punctuation, and zero-width characters.
+- **Tests:** 15 offline unit tests in `tests/test_recheck_sources.py`.
+- **Bug caught before reporting:** the first run checked facts against the wrong pages (results zipped against an unordered set). It is fixed and has a regression test.
+
+| File | Facts | Verified | Partial | Not found | Not an excerpt | Could not check | Facebook (skipped) |
+|---|---:|---:|---:|---:|---:|---:|---:|
+| `results_current` (77 pilot rows) | 209 | 134 | 3 | 15 | — | 29 | 28 |
+| `new_candidates_CN` | 127 | 70 | 8 | 20 | 7 | 16 | 6 |
+| `new_candidates_A` + `new_candidates_B` | 24 | 16 | 1 | 5 | — | 2 | — |
+
+The "not found" rows have known causes: pages that changed since Muse's visit (weekly announcements, a "15 hours ago" feed widget), JavaScript-rendered sites, PDF text extraction, and query pages (FMCSA). The 7 CN "not an excerpt" rows are descriptions written into excerpt fields ("homepage carries…"), which breaks the verbatim rule.
+
+**Wired into dbt:**
+- Seed `source_checks`; a website or denomination fact is displayable only if its re-check verdict is `verified`.
+- New test `assert_shown_web_facts_were_rechecked`.
+- 70/70 nodes pass.
+- **Pilot visit-ready went from 40 to 33.** Ten active pilot churches have an address that is not yet displayable:
+  - fetch failed: 76691, 77673, 77802;
+  - robots-blocked denomination page: 76671;
+  - not found: 76660, 76664, 76684;
+  - "other" sources: 76680, 76692;
+  - on hold, Facebook-sourced: 76673.
+
+Task E (round 4) re-sources several of these.
+
+**Next:** re-run the check on every Muse return as part of intake. For `not_found` on JavaScript sites, a rendered (headless-browser) second pass is possible later. Rows that still fail go back to Muse for another source.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:

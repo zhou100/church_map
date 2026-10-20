@@ -10,6 +10,8 @@ analytics/dbt/seeds/:
   muse_candidates.csv      new congregations from batches A and B, no excerpts/notes
   quality_reviews.csv      the owner's blind audit, scored against Muse's answers
   dedup_candidates.csv     May dedup report (OSM duplicate pairs)
+  source_checks.csv        re-verification verdict per (church, fact group) from
+                           analytics/scripts/recheck_sources.py; no excerpts or URLs
 
 Static seeds (denomination_scope.csv, fact_holds.csv) are hand-maintained.
 
@@ -169,9 +171,23 @@ def build_static_copies() -> None:
     write("dedup_candidates.csv", list(rows[0]), rows)
 
 
+def build_source_checks() -> None:
+    path = RET / "recheck" / "results_current.csv"
+    rows = []
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                if r["group"] in ("address", "phone", "service", "status", "kids"):
+                    rows.append({"church_id": r["row_key"], "fact_group": r["group"], "verdict": r["verdict"],
+                                 "http_status": r["http_status"], "match_mode": r["match_mode"],
+                                 "checked_at": r["checked_at"]})
+    write("source_checks.csv", ["church_id", "fact_group", "verdict", "http_status", "match_mode", "checked_at"], rows)
+
+
 if __name__ == "__main__":
     SEEDS.mkdir(parents=True, exist_ok=True)
     build_results()
     build_candidates()
     build_reviews()
     build_static_copies()
+    build_source_checks()
