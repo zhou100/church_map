@@ -489,6 +489,25 @@ The rules are unchanged (BRIEF_v3). The task sheet is `muse_handoff/TASKS_round4
 
 **Recommendation:** send round 4 after the C returns pass `validate_returns.py`, so any systematic v3 problem is fixed before a run four times as large.
 
+### Round 5: tasks F and L (prepared 2026-10-20; send after round 4 is delivered)
+
+The task sheet is `muse_handoff/TASKS_round5.md`; the rules are BRIEF_v3 (v3.1).
+
+**Task F, the East Bay.**
+- **Verification:** `batch_F_manifest.csv` has 404 rows (sha256 `7de32c6f…`): 355 full, 37 scope check only, 12 labeled. Only 28 have a website, and cities derived from the pin are often wrong, so Muse corrects them per D10.
+- **Discovery:** capped per city, from Oakland 60 down to 10 for small cities. Fremont, Newark, and Union City are excluded (done in D).
+
+**Task L, other languages in the areas already covered.** Korean (cap 50), Vietnamese (40), Spanish (60), Tagalog/Filipino (30), and other non-English languages (40). Languages must be stated by the church.
+
+**Inputs:** `outbox/known_congregations_v5.csv` (932: the v4 list plus the East Bay directory and CN discoveries; Muse checks its own C, D, and E outputs itself). The validator gained East Bay ZIPs (including multi-city ZIPs) and the task values F and L.
+
+**Caution: the bottleneck is now on our side, not Muse's.** None of rounds A through CN has reached users yet. What's still missing:
+- dbt ingestion of the v3 returns;
+- automated source re-verification;
+- an approved production write path for verified facts and new congregations, plus the D-1 scope and label UI.
+
+Round 5 would roughly double the backlog, and unpublished data goes stale. Run it if Muse capacity is free, but prioritize the ingest-and-publish path for the pilot (San Mateo / Foster City) before rounds 6 and later.
+
 ### Regenerating the manifest
 
 Built read-only from `holyhub.db` (`Churches` table), selecting `latitude BETWEEN 37.45 AND 37.65 AND longitude BETWEEN -122.50 AND -122.18`, ordered by batch, city, name. `gaps` is derived as follows:
