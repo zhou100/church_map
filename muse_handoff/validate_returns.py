@@ -27,7 +27,7 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
 ENUMS = {
-    "task": {"C", "CN"},
+    "task": {"C", "CN", "D", "E"},
     "candidate_status": {"active", "unresolved"},
     "entity_type": {"congregation", "religious_house", "non_christian", "business", "other", "unknown"},
     "status": {"active", "closed", "moved", "merged", "unresolved"},
@@ -60,10 +60,15 @@ ZIP_CITIES = {
     "94305": {"Stanford", "Palo Alto"}, "94306": {"Palo Alto"},
     "94040": {"Mountain View"}, "94041": {"Mountain View"}, "94043": {"Mountain View"},
     "94085": {"Sunnyvale"}, "94086": {"Sunnyvale"}, "94087": {"Sunnyvale"}, "94089": {"Sunnyvale"},
-    "95014": {"Cupertino"}, "95008": {"Campbell"}, "95030": {"Los Gatos"}, "95032": {"Los Gatos"},
+    "95014": {"Cupertino"}, "95008": {"Campbell"}, "95030": {"Los Gatos", "Monte Sereno"}, "95032": {"Los Gatos"},
     "95035": {"Milpitas"}, "95050": {"Santa Clara"}, "95051": {"Santa Clara"}, "95054": {"Santa Clara"},
     "95070": {"Saratoga"},
     **{str(z): {"San Jose"} for z in list(range(95110, 95140)) + [95148]},
+    "95002": {"San Jose", "Alviso"},
+    # San Francisco and the Fremont area (batch D)
+    **{str(z): {"San Francisco"} for z in list(range(94102, 94135)) + [94158]},
+    "94536": {"Fremont"}, "94537": {"Fremont"}, "94538": {"Fremont"}, "94539": {"Fremont"},
+    "94555": {"Fremont"}, "94560": {"Newark"}, "94587": {"Union City"}, "94586": {"Sunol"},
 }
 
 FACT_GROUPS = {
@@ -88,7 +93,10 @@ LANG_ALIASES = {
 }
 NEGATED_PERSONAL_RE = re.compile(r"\bnot (identified as |labell?ed as |a )?personal\b", re.I)
 PERSONAL_PHONE_RE = re.compile(r"\b(cell|mobile|personal|rector's|pastor's|priest's|father's)\b", re.I)
-TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点|時|时)|noon|\d{1,2}:\d{2}", re.I)
+# Accepts CJK numerals too ("下午一時半"): a verbatim excerpt must never need rewriting
+# to satisfy this check (CN round: Muse edited 4 excerpts to add Arabic time tokens).
+TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点|時|时)|noon|\d{1,2}:\d{2}"
+                     r"|[一二三四五六七八九十]{1,3}\s*(時|时|點|点)", re.I)
 
 problems: list[tuple[str, str, str]] = []
 

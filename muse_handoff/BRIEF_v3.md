@@ -2,6 +2,11 @@
 
 **This file replaces `BRIEF_v2.md` and `BRIEF_FB_pass.md`.** It holds every rule in one place. Rules that are new in v3 are marked **[v3]**.
 
+> **v3.1 (2026-10-20, after task CN).** Three clarifications, marked **[v3.1]**:
+> - Excerpts are never edited to pass our checks (N9).
+> - De-duplicate by address as well as name (D4).
+> - Use one language separator format.
+
 ChurchMap helps people find a Christian church that fits them: language, service times, children's programs, and where it actually meets. Your past batches were accurate. This round is bigger and more about **finding congregations our directory is missing**.
 
 ## Two tasks this round
@@ -78,6 +83,8 @@ Rules for this task:
 - **D2.** Use only public content (F1).
 - **D3.** If the pin is clearly at a different place than the address you found, set `pin_check = off`.
 - **D4.** Mark duplicates: for directory rows, use `duplicate_of_church_id`; for discoveries, use `possible_match_id` with the `known_id`.
+  - **[v3.1]** Match on the **street address** too, not only the name: the same house number and street in the same city is a likely match.
+  - The same applies within your own output. Two of your rows at one address are either the same congregation (keep one) or two congregations sharing a building (D5, explained in `match_note`).
 - **D5.** For a congregation meeting in another church's or a venue's building, set `meets_in_building_of` to the host `known_id`/`church_id`, or the host's name.
 - **D6.** When uncertain, leave the value blank and say why in `notes`.
 - **D7.** Write `checked_at` at the real time of each check. Never fill it in afterwards.
@@ -96,6 +103,9 @@ Rules for this task:
 - **N5.** Infer anyone's religion, ethnicity, or language from names, photos, or neighbourhoods. Report languages only when the congregation states them.
 - **N6.** Invent or normalize facts beyond formatting. Copy service times and children's program text verbatim.
 - **N7.** Take screenshots.
+- **[v3.1] N9.** Edit an excerpt to satisfy our validator. Excerpts are verbatim, always. If a verbatim excerpt fails a check (for example, a time written as 一時半), leave it, add "verbatim; validator flag" in `notes`, and we will fix the validator.
+  - The only allowed changes are removing an email address or a personal name: replace it with `[removed]`.
+  - In task CN, 4 excerpts were rewritten to add time tokens. That makes them unverifiable.
 - **N8.** Spend time on non-Christian places, convents, or businesses beyond setting `entity_type`. Don't search for LDS meetinghouses or Kingdom Halls; if you meet one incidentally, name its tradition in `notes`.
 
 ## Output columns
@@ -140,7 +150,7 @@ Definitions unchanged from v2:
 | `street_address`, `zip` + address companions | House number required |
 | `address_is_worship_location`, `meets_in_building_of` | As in results |
 | `phone` + companions | Office phone only (N1) |
-| `service_times_verbatim`, `service_languages` + service companions | Languages only as stated, e.g. `Mandarin;English` |
+| `service_times_verbatim`, `service_languages` + service companions | Languages only as stated. **[v3.1]** Use English names joined by `;` with no spaces, e.g. `Mandarin;Cantonese;English` (`Chinese` only when the source doesn't say which). |
 | `kids_program_verbatim` + kids companions | As in results |
 | `possible_match_id`, `match_note` | `known_id` from the known list if it may be the same congregation, and why |
 | `found_via` | `fb_page_search`, `fb_group_lead`, `web_search`, `denomination_directory`, `host_church_site` |
