@@ -28,6 +28,7 @@ hidden until recheck_sources.py has run on it.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta
 import csv
 import re
 import sys
@@ -41,7 +42,7 @@ sys.path.insert(0, str(HANDOFF))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fact_fingerprint import FACT_FIELDS, fact_fingerprint  # noqa: E402
 from validate_returns import NEGATED_PERSONAL_RE, PERSONAL_PHONE_RE, STRICT_TS_RE  # noqa: E402
-from validate_returns import excerpt_supports_street  # noqa: E402
+from validate_returns import excerpt_supports_service, excerpt_supports_street  # noqa: E402
 from validate_returns import TIME_RE as EXCERPT_TIME_RE  # noqa: E402  (grading has its own TIME_RE)
 
 RET = HANDOFF / "returns"  # replaced by --returns
@@ -175,7 +176,10 @@ def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
         r["checked_at"] = ""
     # The service group has one excerpt for times and languages. If it backs only the
     # languages (no time in it), the times are unsupported and are not published.
-    if r.get("service_times_verbatim") and r.get("service_excerpt") and not EXCERPT_TIME_RE.search(r["service_excerpt"]):
+    if r.get("service_times_verbatim") and r.get("service_excerpt") and (
+            not EXCERPT_TIME_RE.search(r["service_excerpt"])
+            or not excerpt_supports_service(r["service_excerpt"], r["service_times_verbatim"])):
+        # The excerpt has no time, or not the same times on the same days.
         r["service_times_verbatim"] = ""
         r["service_times_unsupported"] = "true"
     else:
@@ -189,6 +193,8 @@ def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
         r["address_unsupported"] = "true"
     else:
         r["address_unsupported"] = "false"
+    wl = (r.get("address_is_worship_location") or "").strip().lower()
+    r["address_is_worship_location"] = {"true": "yes", "false": "no"}.get(wl, wl)  # agent wrote True/False
     r["service_languages"] = normalize_languages(r.get("service_languages", ""))
     return r
 
@@ -297,6 +303,45 @@ def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
     return {r["candidate_id"]: r["source_file"] for r in out}, fps
 
 
+TRANSIENT = ("fetch_failed",)  # a timeout or 5xx; robots blocks and parse failures don't count
+CARRY_DAYS = 30
+
+
+def load_history(stem: str) -> dict[tuple[str, str, str], str]:
+    """Latest 'verified' time per (row_key, group, fact_fingerprint) from the re-check history."""
+    path = RET / "recheck" / "history" / f"{stem}.csv"
+    best: dict[tuple[str, str, str], str] = {}
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                if r["verdict"] == "verified" and r.get("fact_fingerprint"):
+                    k = (r["row_key"], r["group"], r["fact_fingerprint"])
+                    best[k] = max(best.get(k, ""), r["checked_at"])
+    return best
+
+
+def carry_over(verdict: str, checked_at: str, key: tuple[str, str, str],
+               history: dict[tuple[str, str, str], str]) -> tuple[str, str, bool]:
+    """Keep a recent 'verified' through a transient fetch failure.
+
+    Only when the latest check couldn't fetch the page (not when it fetched it and the
+    excerpt was missing), the fact is byte-for-byte the one verified (same fingerprint),
+    and that verification is at most CARRY_DAYS old. Returns (verdict, checked_at,
+    carried); checked_at is then the time of the verification actually relied on."""
+    if verdict not in TRANSIENT:
+        return verdict, checked_at, False
+    last = history.get(key)
+    if not last or not checked_at:
+        return verdict, checked_at, False
+    try:
+        age = datetime.fromisoformat(checked_at.replace("Z", "+00:00")) - datetime.fromisoformat(last.replace("Z", "+00:00"))
+    except ValueError:
+        return verdict, checked_at, False
+    if timedelta(0) <= age <= timedelta(days=CARRY_DAYS):
+        return "verified", last, True
+    return verdict, checked_at, False
+
+
 def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str],
                         fps: dict[tuple[str, str], str]) -> None:
     """Attach re-check verdicts to the facts they were made for.
@@ -305,7 +350,7 @@ def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str]
     being published (value + source URL + excerpt). Otherwise it is "stale": a
     correction made after the check must be re-checked, not inherit "verified".
     """
-    rows, missing, stale = [], set(), 0
+    rows, missing, stale, carried_n = [], set(), 0, 0
     for subject_type, files in (("church", church_files), ("candidate", cand_files)):
         by_file: dict[str, list[str]] = {}
         for sid, fname in files.items():
@@ -316,6 +361,7 @@ def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str]
                 missing.add(fname)
                 continue
             wanted = set(sids)
+            history = load_history(Path(fname).stem)
             with path.open(encoding="utf-8") as f:
                 for r in csv.DictReader(f):
                     key = r["row_key"]
@@ -327,14 +373,21 @@ def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str]
                     current_fp = fps.get((key, group))
                     if current_fp is None:  # that fact is no longer in the row
                         continue
-                    verdict = r["verdict"]
+                    verdict, checked_at, carried = r["verdict"], r["checked_at"], False
                     if r.get("fact_fingerprint") != current_fp:
                         verdict, stale = "stale", stale + 1
+                    else:
+                        verdict, checked_at, carried = carry_over(
+                            verdict, checked_at, (r["row_key"], r["group"], current_fp), history)
+                        carried_n += carried
                     rows.append({"subject_type": subject_type, "subject_id": key, "fact_group": group,
                                  "verdict": verdict, "http_status": r["http_status"],
-                                 "match_mode": r["match_mode"], "checked_at": r["checked_at"]})
+                                 "match_mode": r["match_mode"], "checked_at": checked_at,
+                                 "carried_over": "true" if carried else "false"})
     write("source_checks.csv", ["subject_type", "subject_id", "fact_group", "verdict", "http_status",
-                                "match_mode", "checked_at"], rows)
+                                "match_mode", "checked_at", "carried_over"], rows)
+    if carried_n:
+        print(f"  {carried_n} verdicts carried over a transient fetch failure (verified within {CARRY_DAYS} days)")
     if stale:
         print(f"  WARNING: {stale} re-check verdicts are stale (fact changed or checked before "
               f"fingerprints existed); those facts stay hidden until recheck_sources.py runs again.")

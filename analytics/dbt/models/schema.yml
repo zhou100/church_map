@@ -36,6 +36,9 @@ models:
       - name: kids_source_type
         tests:
           - accepted_values: {values: [own_site, fb_page, denomination, other]}
+      - name: address_is_worship_location
+        tests:
+          - accepted_values: {values: ['yes', 'no', 'unknown']}
       - name: muse_batch
         tests:
           - not_null
@@ -58,6 +61,9 @@ models:
       - name: muse_status
         tests:
           - accepted_values: {values: [active, unresolved]}
+      - name: address_is_worship_location
+        tests:
+          - accepted_values: {values: ['yes', 'no', 'unknown']}
       - name: found_via
         tests:
           - accepted_values: {values: [fb_page_search, fb_group_lead, web_search, denomination_directory, host_church_site]}

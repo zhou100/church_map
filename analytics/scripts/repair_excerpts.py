@@ -44,7 +44,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "muse_handoff"))
 import recheck_sources as rs  # noqa: E402
 from validate_returns import (NAME_ABBREV, STREET_DIRECTION, STREET_SUFFIX,  # noqa: E402
-                              excerpt_supports_street, street_key)
+                              excerpt_supports_service, excerpt_supports_street, service_times_of,
+                              street_key)
 
 EXCERPT_CAP = 200
 REPAIRABLE = ("not_found", "partial", "not_an_excerpt")
@@ -136,22 +137,20 @@ def _times(s: str) -> list[str]:
 
 
 def find_service(text: str, verbatim: str) -> str | None:
-    wanted = set(_times(verbatim))
-    if not wanted:
+    """A passage containing the recorded schedule itself (service_times_verbatim),
+    word for word up to punctuation and spacing. Matching times alone is not enough:
+    "Sunday worship 10 AM" must not be repaired with a page that says "Saturday Bible
+    study 10 AM; Sunday worship 11 AM". If the schedule isn't on the page as recorded,
+    nothing is repaired and the fact stays for review."""
+    words = re.findall(r"[^\W_]+", verbatim or "")
+    if len(words) < 2 or not service_times_of(verbatim):
         return None
-    for hit in TIME_RE.finditer(text):
-        span_end = hit.end()
-        seen = set(_times(hit.group(0)))
-        for later in TIME_RE.finditer(text, hit.end()):
-            if later.end() - hit.start() > EXCERPT_CAP:
-                break
-            seen |= set(_times(later.group(0)))
-            span_end = later.end()
-            if wanted <= seen:
-                break
-        if wanted <= seen:
-            return window(text, hit.start(), span_end)
-    return None
+    pat = re.compile(r"(?<![^\W_])" + r"[\W_]*".join(re.escape(w) for w in words) + r"(?![^\W_])", re.I)
+    hit = pat.search(text)
+    if not hit:
+        return None
+    passage = window(text, hit.start(), hit.end())
+    return passage if passage and excerpt_supports_service(passage, verbatim) else None
 
 
 FINDERS = {

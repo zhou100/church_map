@@ -46,3 +46,48 @@ def test_same_street_in_another_spelling_is_evidence(excerpt, street):
 def test_street_key_stops_at_the_suffix():
     assert street_key("10455 Bandley Dr Ste 100") == ("10455", ("bandley", "dr"))
     assert street_key("Corner of Alameda & Crystal Springs") is None
+
+
+# --- Review of e9980b51, issue 2: service times must match day and time -----------
+
+from validate_returns import excerpt_supports_service  # noqa: E402
+
+
+@pytest.mark.parametrize("excerpt,verbatim", [
+    ("Saturday Bible study 10 AM; Sunday worship 11 AM", "Sunday worship 10 AM"),   # time belongs to Saturday
+    ("Sunday worship 11 AM", "Sunday worship 10 AM"),
+    ("Saturday Mass 5:00 PM", "Sunday Mass 5:00 PM"),                               # same time, other day
+    ("Sunday 9:00 AM", "Sunday 9:00 PM"),
+    ("Sunday Bible study 10 AM; Sunday worship 11 AM", "Sunday worship 10 AM"),     # same day, other activity
+    ("Sunday 10:00 AM Spanish Mass", "Sunday 10:00 AM English Mass"),               # other language
+    ("Worship at 10 AM", "Sunday worship 10 AM"),                                   # day not stated
+])
+def test_service_excerpt_with_other_time_or_day_does_not_support(excerpt, verbatim):
+    assert not excerpt_supports_service(excerpt, verbatim)
+
+
+@pytest.mark.parametrize("excerpt,verbatim", [
+    ("Join the Sunday Celebration / Every Sunday at 10 am Pacific", "Every Sunday at 10 am Pacific"),
+    ("Sunday: 9:00 AM English, 11:00 AM English, 3:00 PM Vietnamese", "Sunday: 9:00 AM English, 11:00 AM English, 3:00 PM Vietnamese"),
+    ("主日崇拜 10:00am (國語)", "主日崇拜 10:00 am"),
+    ("Domingo 12:30 p.m. en Español", "Domingo 12:30 pm"),
+    ("우리교회의 주일 예배시간은 주일 오전 11시 입니다.", "주일 예배 11:00 AM"),
+    ("彌撒時間﹕ 第二,第四及第五個主日下午一時半", "主日 1:30 pm"),
+    ("Saturday 5:00 PM Vigil; Sunday 8:00 AM, 10:00 AM", "Sunday 10:00 AM"),        # day carries over
+])
+def test_service_excerpt_with_same_days_and_times_supports(excerpt, verbatim):
+    assert excerpt_supports_service(excerpt, verbatim)
+
+
+def test_a_day_named_after_the_times_does_not_capture_them():
+    page = "Mass Schedule: Saturday 5:00 PM Vigil; Sunday 8:00 AM, 10:00 AM and 12:00 PM (Spanish). Confessions Saturday 4:00 PM."
+    assert excerpt_supports_service(page, "Sunday 8:00 AM, 10:00 AM and 12:00 PM (Spanish)")
+    assert not excerpt_supports_service(page, "Saturday 10:00 AM")
+
+
+def test_activity_comes_from_the_nearest_keyword_not_the_whole_clause():
+    verbatim = "主日崇拜（粵語）：每週日上午 9:00；兒童主日學：每週日上午 9:00；英文崇拜：每月兩次主日上午 10:45–12:00"
+    excerpt = " 主日崇拜（粵語）：每週日上午 9:00 兒童主日學：每週日上午 9:00 英文崇拜：每月兩次主日上午 10:45–12:00"
+    assert excerpt_supports_service(excerpt, verbatim)
+    assert excerpt_supports_service("9:40am 成人主日學 11:00am 國語主日崇拜", "11:00am 國語主日崇拜")
+    assert not excerpt_supports_service("Sunday 10 AM Bible study 11 AM worship", "Sunday worship 10 AM")

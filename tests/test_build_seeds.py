@@ -172,3 +172,49 @@ def test_address_not_stated_by_its_excerpt_is_not_published():
     r = bs.sanitize({"street_address": "107 San Pedro Rd",
                      "address_excerpt": "107 San Pedro Road Colma, CA 94014", "checked_at": ""})
     assert r["street_address"] == "107 San Pedro Rd" and r["address_unsupported"] == "false"
+
+
+def test_service_times_not_matching_their_excerpt_are_withheld():
+    r = bs.sanitize({"service_times_verbatim": "Sunday worship 10 AM",
+                     "service_excerpt": "Saturday Bible study 10 AM; Sunday worship 11 AM", "checked_at": ""})
+    assert r["service_times_verbatim"] == "" and r["service_times_unsupported"] == "true"
+
+
+def test_boolean_worship_location_values_are_normalized():
+    assert bs.sanitize({"address_is_worship_location": "True", "checked_at": ""})["address_is_worship_location"] == "yes"
+    assert bs.sanitize({"address_is_worship_location": "False", "checked_at": ""})["address_is_worship_location"] == "no"
+
+
+# --- Carry-over of a recent 'verified' through a transient fetch failure ---------------
+
+HIST = {("1", "address", "fpA"): "2026-10-20T16:00:00Z"}
+
+
+@pytest.mark.parametrize("verdict,checked_at,key,expected", [
+    ("fetch_failed", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("verified", "2026-10-20T16:00:00Z", True)),
+    ("fetch_failed", "2026-12-01T10:00:00Z", ("1", "address", "fpA"), ("fetch_failed", "2026-12-01T10:00:00Z", False)),  # too old
+    ("fetch_failed", "2026-10-21T10:00:00Z", ("1", "address", "fpB"), ("fetch_failed", "2026-10-21T10:00:00Z", False)),  # fact changed
+    ("not_found", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("not_found", "2026-10-21T10:00:00Z", False)),        # page says otherwise
+    ("robots_blocked", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("robots_blocked", "2026-10-21T10:00:00Z", False)),
+])
+def test_carry_over(verdict, checked_at, key, expected):
+    assert bs.carry_over(verdict, checked_at, key, HIST) == expected
+
+
+def test_carry_over_end_to_end(tmp_path, monkeypatch):
+    rows = _checks_after(tmp_path, monkeypatch, BASE, BASE)  # writes a verified check
+    ret = tmp_path / "returns"
+    fp = bs.fact_fingerprint(BASE, "address")
+    hist = ret / "recheck" / "history"
+    hist.mkdir(parents=True)
+    _write(hist / "results_current.csv", ["row_key", "group", "verdict", "fact_fingerprint", "checked_at"],
+           [{"row_key": "1", "group": "address", "verdict": "verified", "fact_fingerprint": fp,
+             "checked_at": "2026-10-20T00:00:00Z"}])
+    _write(ret / "recheck" / "results_current.csv",
+           ["row_key", "group", "verdict", "http_status", "match_mode", "checked_at", "fact_fingerprint"],
+           [{"row_key": "1", "group": "address", "verdict": "fetch_failed", "http_status": "503", "match_mode": "",
+             "checked_at": "2026-10-22T00:00:00Z", "fact_fingerprint": fp}])
+    files, fps = bs.build_results({"1": "A_calibration"})
+    bs.build_source_checks(files, {}, fps)
+    out = list(csv.DictReader((tmp_path / "seeds" / "source_checks.csv").open(encoding="utf-8")))[0]
+    assert (out["verdict"], out["carried_over"], out["checked_at"]) == ("verified", "true", "2026-10-20T00:00:00Z")

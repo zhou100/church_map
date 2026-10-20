@@ -64,6 +64,7 @@ analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/ret
 - The original file is kept as `<stem>.muse.csv`.
 - Every change is logged in `returns/repairs/`.
 - Facts that aren't on their page are left alone.
+- Service times are repaired only when the recorded schedule itself is on the page. Seeds publish times only if the excerpt states the same times on the same days, for the same kind of gathering and language (`excerpt_supports_service`).
 - Repairs accumulate across runs. Re-check between runs.
 - `--resource-blocked`: if the cited page blocks our checker (403, robots.txt), look for the same fact on the church's own site (homepage plus up to 3 contact/schedule links) and cite that page instead.
 
@@ -85,7 +86,8 @@ analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/ret
 | `mart_language_supply` | language × city × origin | Where a service in a given language exists, and how much of it can be shown |
 | `mart_quality_audit` | field (+ all) | Owner's blind audit vs Muse |
 
-`visit_ready` = in scope, active per Muse, an address from the church's own site or
+`visit_ready` = in scope, active per Muse, **an address stated to be where they meet**
+(`address_is_worship_location = yes`; an office or unknown address stays contact-only), from the church's own site or
 its denomination **whose excerpt our re-check found on the cited page**, or (D-3) from
 its fresh Facebook Page; valid coordinates; pin not off; and a verified website,
 fresh Page or displayable phone.
@@ -103,7 +105,7 @@ How it matches:
 - The excerpt is tried whole, then fragment by fragment. All fragments must be found.
 - Punctuation, table borders, line breaks, zero-width characters, and digit/letter spacing are ignored. Numbers and Latin words must match whole: 94022 ≠ 94024, "23 Main" is not in "123 Main".
 - Short fragments ("9 am") must sit within 300 characters of the previous fragment.
-- Spaceless matching (PDF text) is used only when every number in the fragment is on the page.
+- Spaceless matching keeps the gap between numbers. Number boundaries are checked at the same occurrence, so "23 Main" never matches inside "123 Main".
 - A word cut by the 200-character excerpt cap may match as a prefix; a cut number may not.
 
 Each verdict carries a **fact fingerprint** (`analytics/scripts/fact_fingerprint.py`): value + source URL + excerpt. `build_seeds.py` only accepts a verdict whose fingerprint matches the row it publishes. A later correction is `stale` until it is re-checked.
@@ -117,6 +119,8 @@ Each verdict carries a **fact fingerprint** (`analytics/scripts/fact_fingerprint
 | `fetch_failed` / `robots_blocked` / `unsupported` / `unsafe_url` | could not check |
 | `skipped_facebook` | Page facts follow D-3; we never fetch Facebook |
 | `stale` | the fact, its URL or excerpt changed since the check; re-run the check |
+
+A `fetch_failed` (timeout, 5xx) doesn't undo a `verified` from the last 30 days for the same fact fingerprint. The seed keeps it with `carried_over = true` and the original check time, using `returns/recheck/history/`.
 
 Only `verified` lets a website or denomination fact through. Everything else needs
 another source or another pass.

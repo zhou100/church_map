@@ -160,6 +160,147 @@ def excerpt_supports_street(excerpt: str, street: str) -> bool:
     return False
 
 
+# ---- Service times: the excerpt must state the same times on the same days ----
+SVC_TIME_RE = re.compile(r"(?<!\d)(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|[ap](?![a-z]))", re.I)
+DAY_WORDS = {
+    "sun": ("sunday", "sundays", "sun", "主日", "週日", "周日", "星期日", "禮拜日", "礼拜日", "주일", "일요일", "domingo", "domingos"),
+    "sat": ("saturday", "saturdays", "sat", "週六", "周六", "星期六", "토요일", "sábado", "sabado", "sábados"),
+    "fri": ("friday", "fridays", "週五", "周五", "星期五", "금요일", "viernes"),
+    "wed": ("wednesday", "wednesdays", "週三", "周三", "星期三", "수요일", "miércoles", "miercoles"),
+}
+
+
+CJK_NUM = {"一": 1, "二": 2, "兩": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+           "十": 10, "十一": 11, "十二": 12}
+CJK_TIME_RE = re.compile(r"(上午|下午|早上|晚上|中午|午前|午後|오전|오후)?\s*(\d{1,2}|十[一二]?|[一二兩两三四五六七八九])"
+                         r"\s*(?:[:：](\d{2})|[點点時时시])\s*(?:(\d{1,2})\s*[分분]|(半))?")
+PM_WORDS = ("下午", "晚上", "午後", "오후")
+ACTIVITY_WORDS = {
+    "worship": ("worship", "service", "services", "mass", "masses", "liturgy", "eucharist", "celebration", "vigil",
+                "崇拜", "聚會", "聚会", "彌撒", "弥撒", "禮拜", "礼拜", "예배", "misa", "culto", "servicio"),
+    "study": ("bible study", "sunday school", "fellowship", "prayer", "youth", "class", "classes", "choir",
+              "small group", "growth group", "主日學", "主日学", "團契", "团契", "查經", "查经", "禱告", "祷告",
+              "성경공부", "escuela dominical", "estudio bíblico"),
+}
+LANGUAGE_WORDS = {
+    "english": ("english", "英文", "英語", "英语", "영어", "inglés"), "spanish": ("spanish", "español", "espanol"),
+    "mandarin": ("mandarin", "國語", "国语", "普通話", "普通话", "華語", "华语"), "cantonese": ("cantonese", "粵語", "粤语", "廣東話"),
+    "korean": ("korean", "한국어", "韓語"), "vietnamese": ("vietnamese", "tiếng việt"), "taiwanese": ("taiwanese", "台語", "台语"),
+}
+
+
+def _has_word(t: str, w: str) -> bool:
+    return bool(re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", t)) if w.isascii() else w in t
+
+
+def _times_in(chunk: str) -> list[tuple[int, str]]:
+    """(position, HH:MM) for each time in the chunk."""
+    out = []
+    for m in SVC_TIME_RE.finditer(chunk):
+        h, mm, ap = m.groups()
+        hour = int(h)
+        if 1 <= hour <= 12:
+            out.append((m.start(), f"{hour % 12 + (12 if ap.lower().startswith('p') else 0):02d}:{int(mm or 0):02d}"))
+    for m in CJK_TIME_RE.finditer(chunk):
+        ap, h, m1, m2, half = m.groups()
+        hour = int(h) if h.isdigit() else CJK_NUM.get(h, 0)
+        if not ap or not 1 <= hour <= 12:
+            continue  # without 上午/下午/오전/오후 the half of day is unknown
+        minute = int(m1 or m2 or (30 if half else 0))
+        out.append((m.start(), f"{hour % 12 + (12 if ap in PM_WORDS else 0):02d}:{minute:02d}"))
+    return out
+
+
+def _day_positions(chunk: str) -> list[tuple[int, str]]:
+    found = []
+    for day, words in DAY_WORDS.items():
+        for w in words:
+            pat = rf"(?<![a-z]){re.escape(w)}(?![a-z])" if w.isascii() else re.escape(w)
+            found += [(m.start(), day) for m in re.finditer(pat, chunk)]
+    return sorted(found)
+
+
+def _class_positions(chunk: str, table: dict) -> list[tuple[int, int, str]]:
+    """(start, end, class) of every keyword; "sunday school" wins over its "sunday"."""
+    found = []
+    for cls, words in table.items():
+        for w in words:
+            pat = rf"(?<![a-z]){re.escape(w)}(?![a-z])" if w.isascii() else re.escape(w)
+            found += [(m.start(), m.end(), cls) for m in re.finditer(pat, chunk)]
+    return found
+
+
+def _class_for_time(found: list[tuple[int, int, str]], times: list[int], i: int, labels_after: bool) -> str | None:
+    """Class of the keyword belonging to the i-th time in a clause. Schedules are written
+    either label-first ("主日崇拜：上午 9:00", "Sunday worship 10 AM") or time-first
+    ("9:40am 成人主日學 11:00am 國語主日崇拜"); the clause's first element decides."""
+    pos = times[i]
+    nxt = times[i + 1] if i + 1 < len(times) else 10**9
+    prv = times[i - 1] if i else -1
+    if labels_after:
+        cands = [f for f in found if pos < f[0] < nxt]
+        return min(cands)[2] if cands else None
+    cands = [f for f in found if prv < f[0] < pos]
+    return max(cands)[2] if cands else None
+
+
+def service_slots(text: str) -> set[tuple]:
+    """(day, activity, language, HH:MM) for every time in the text. A time takes the
+    nearest day named before it (carrying over from earlier clauses), and the activity
+    and language keywords that belong to it within its clause (split on ; , | / sentence
+    ends, lines), label-first or time-first as the clause is written."""
+    slots, day = set(), None
+    for chunk in re.split(r"[;,|/\n；，、。]+|\.\s", (text or "").lower()):
+        days = _day_positions(chunk)
+        acts, langs = _class_positions(chunk, ACTIVITY_WORDS), _class_positions(chunk, LANGUAGE_WORDS)
+        found_times = sorted(_times_in(chunk))
+        positions = [p for p, _ in found_times]
+        labels = acts + langs
+        labels_after = bool(positions) and (not labels or positions[0] < min(f[0] for f in labels))
+        for i, (pos, t) in enumerate(found_times):
+            before = [d for p, d in days if p < pos]
+            slots.add((before[-1] if before else day, _class_for_time(acts, positions, i, labels_after),
+                       _class_for_time(langs, positions, i, labels_after), t))
+        if days:
+            day = days[-1][1]
+    return slots
+
+
+def service_times_of(text: str) -> set[str]:
+    return {s[3] for s in service_slots(text)}
+
+
+def service_days_of(text: str) -> set[str]:
+    return {s[0] for s in service_slots(text) if s[0]}
+
+
+def _slot_supported(want: tuple, have: set[tuple]) -> bool:
+    day, act, lang, t = want
+    for d, a, l, tt in have:
+        if tt != t:
+            continue
+        if day and d != day:          # a day the record states must be stated, and the same
+            continue
+        if act and a and a != act:    # worship vs Bible study, if both say
+            continue
+        if lang and l and l != lang:  # language, if both say
+            continue
+        return True
+    return False
+
+
+def excerpt_supports_service(excerpt: str, verbatim: str) -> bool:
+    """Each time in the recorded schedule must appear in the excerpt on the same day, for
+    the same kind of gathering and in the same language where either text says so.
+    "Sunday worship 10 AM" is not supported by "Saturday Bible study 10 AM; Sunday
+    worship 11 AM". A schedule with no parseable time is not judged here."""
+    want = service_slots(verbatim)
+    if not want:
+        return True
+    have = service_slots(excerpt)
+    return all(_slot_supported(w, have) for w in want)
+
+
 FACT_GROUPS = {
     # group -> predicate: is the group "filled" on this row? (kids exists from v3)
     "status": lambda r: r["status"] not in ("", "unresolved"),
@@ -299,6 +440,9 @@ def check_fact_groups(w: str, r: dict) -> None:
         err(w, "phone_excerpt does not contain the phone's last 4 digits")
     if r.get("service_times_verbatim") and r.get("service_excerpt") and not TIME_RE.search(r["service_excerpt"]):
         err(w, "service_excerpt has no time token")
+    elif r.get("service_times_verbatim") and r.get("service_excerpt") and \
+            not excerpt_supports_service(r["service_excerpt"], r["service_times_verbatim"]):
+        err(w, "service_excerpt does not state the same times on the same days as service_times_verbatim")
     phone_ctx = NEGATED_PERSONAL_RE.sub("", r.get("notes", "") + " " + r.get("phone_excerpt", ""))
     if r.get("phone") and PERSONAL_PHONE_RE.search(phone_ctx):
         err(w, "phone looks like a personal number (D-2): leave blank, note 'personal number withheld'")
@@ -399,6 +543,9 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
         if r["match_confidence"] and r["match_confidence"] not in ENUMS["match_confidence"]:
             err(w, f"match_confidence={r['match_confidence']!r} not allowed")
         check_multi(w, "url_evidence", r["url_evidence"], "url_evidence")
+        if r.get("address_is_worship_location") and \
+                r["address_is_worship_location"] not in ENUMS["address_is_worship_location"]:
+            err(w, f"address_is_worship_location={r['address_is_worship_location']!r} not allowed (yes/no/unknown)")
         if r["status"] == "active" and not r["status_source_url"]:
             err(w, "status=active without status_source_url")
         if not r["street_address"]:

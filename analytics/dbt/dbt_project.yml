@@ -130,4 +130,4 @@ seeds:
       +column_types: {church_id: bigint}
     source_checks:
       +column_types: {subject_type: text, subject_id: text, fact_group: text, verdict: text,
-                      http_status: text, match_mode: text, checked_at: timestamptz}
+                      http_status: text, match_mode: text, checked_at: timestamptz, carried_over: boolean}

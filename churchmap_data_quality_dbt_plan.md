@@ -1051,6 +1051,56 @@ The geocoding input was regenerated without C-054 and D-059.
 
 **C-054 and D-059 stay withheld** until their street name is confirmed. In both cases the church's own site uses a different street name from the recorded value.
 
+### Status 2026-10-20: review of e9980b51, three P2 issues fixed (branch `fix/review-p2-visit-ready`)
+
+PR #41 was merged at e9980b51, so these fixes go on a new branch from `main`.
+
+1. **Spaceless matching let a number match inside a longer one.** "23 Main Street" verified against a page saying "123 Main Street" when a separate "23" ("Established 23 years ago") was elsewhere: the number check looked anywhere on the page.
+   - Now `squash()` removes spaces but keeps the gap between two numbers, and the number boundary is checked at the same occurrence (`_digit_bounded_at`).
+   - The decoy case is tested.
+2. **Service-time repair matched hours only.** "Sunday worship 10 AM" could be "repaired" with "Saturday Bible study 10 AM; Sunday worship 11 AM". Now:
+   - `find_service` repairs only when the recorded schedule itself is on the page (word for word up to punctuation and spacing); otherwise the fact stays for review.
+   - A shared `excerpt_supports_service` pairs every time with its day (the nearest day named before it), activity (worship vs study/fellowship/class) and language (same clause), including 上午/下午/오전/오후 times.
+   - The validator errors on a mismatch; `build_seeds` withholds those times (`service_times_unsupported`), whatever the source.
+3. **An office address could be visit-ready.** Readiness ignored `address_is_worship_location`.
+   - `visit_ready` (directory) and `profile_ready` (new congregations) now require `yes`.
+   - `no` and `unknown` stay contact addresses.
+   - Two dbt unit tests use fixed inputs. Each was checked to fail without the fix.
+**Measured on the real data** (re-verification re-run on every return):
+
+| Measure | Before the fixes | After |
+|---|---:|---:|
+| Service times shown, directory churches | 142 | **125** |
+| Service times shown, new congregations | 166 | **128** |
+| Visit-ready, pilot | 34 | 33 |
+| Visit-ready, C | 26 | 24 |
+| Visit-ready, D | 40 | 40 |
+| Profile-ready new congregations | 101 | 95 |
+
+- **Issue 1:** 3 facts lost `verified` because of the stricter number boundaries (A-05 status, 77726 status, CN-032 phone). Three more (C-042) were transient fetch failures on the re-run.
+- **Issue 2:** 100 schedules are now withheld.
+  - Most of them (about 70%) are schedules Muse recorded in full (Saturday vigil, daily Masses, and so on) while quoting only part of the page, e.g. just the Sunday line.
+  - The rest disagree on day, activity, or language.
+  - A first version of the pairing rule also withheld correct rows: one clause mixing worship and Sunday-school labels, and time-first layouts such as "9:40am 成人主日學". Attribution is now label-first or time-first per clause, and those cases are tested.
+- **Issue 3:** a handful of `unknown` / `no` rows are no longer ready.
+
+**Follow-ups proposed, not done:**
+- (a) Where the full schedule isn't supported but the verified excerpt itself names its day for every time, show the excerpt text as the schedule (it is the page's own wording).
+- (b) **Done.** `recheck_sources.py` appends every verdict (no excerpts) to `returns/recheck/history/<stem>.csv`. When the latest check only failed to fetch (`fetch_failed`: a timeout or 5xx), `build_seeds` keeps a `verified` from the history if:
+  - it has the same fact fingerprint;
+  - it is at most 30 days old.
+
+  The carried verdict keeps the original verification time and `carried_over = true`. `not_found`, robots blocks, and parse failures never carry over. The history was seeded from the previous two runs, and C-042 (3 facts) carried over.
+
+**D-013 ZIP sourced in-house.** The geocoder had two Waller St segments and no ZIP to choose between them.
+- The church's own contact page states "22 Waller St, San Francisco, CA 94102", so the ZIP, source, and excerpt were corrected through `--manual` and logged.
+- The address re-verified, and `geocode_input.csv` was regenerated: 196 rows, D-013 now carrying 94102.
+
+4. **Found along the way: enum violation.** Muse wrote `True`/`False` in `address_is_worship_location` for 5 discoveries, and the validator didn't check that enum for v3 candidates.
+   - The validator now errors on it.
+   - Seeds map `True`→`yes`, `False`→`no`.
+   - `accepted_values` tests were added.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:
