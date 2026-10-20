@@ -1,6 +1,7 @@
--- Grain: one Muse verdict per manifest church (latest pass wins upstream).
+-- Grain: one current Muse verdict per manifest church (later passes override earlier ones).
 select
     church_id,
+    batch                                                    as muse_batch,
     entity_type,
     status                                                   as muse_status,
     nullif(current_name, '')                                 as current_name,
@@ -23,10 +24,14 @@ select
     nullif(service_languages, '')                            as service_languages,
     nullif(service_source_url, '')                           as service_source_url,
     nullif(service_source_type, '')                          as service_source_type,
+    nullif(kids_program_verbatim, '')                        as kids_program,
+    nullif(kids_source_url, '')                              as kids_source_url,
+    nullif(kids_source_type, '')                             as kids_source_type,
     match_confidence,
     duplicate_of_church_id,
     personal_phone_withheld,
     checked_at,
     checked_at_reliable,
-    last_pass
+    last_pass,
+    source_file
 from {{ ref('muse_results') }}

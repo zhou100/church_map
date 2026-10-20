@@ -27,43 +27,99 @@ seeds:
   churchmap_analytics:
     +schema: seeds
     +quote_columns: false
+    # Every seed column is text unless listed: the Muse files have many columns that are
+    # empty in a given batch, and agate would otherwise guess integer for them.
     muse_manifest:
-      +column_types: {church_id: bigint, latitude: double precision, longitude: double precision}
+      +column_types: {church_id: bigint, latitude: double precision, longitude: double precision,
+                      name: text, known_city: text, state: text, known_street: text, known_website: text,
+                      known_phone: text, osm_ref: text, denomination_hint: text, gaps: text, handling: text, batch: text}
     muse_results:
       +column_types:
         church_id: bigint
-        duplicate_of_church_id: bigint
-        fb_last_post_date: date
-        checked_at: timestamptz
-        minutes_spent: integer
-        personal_phone_withheld: boolean
-        checked_at_reliable: boolean
-        zip: text
-        phone: text
-        meets_in_building_of: text
-        facebook_page_url: text
-        fb_page_evidence: text
-        service_languages: text
+        batch: text
+        entity_type: text
+        status: text
         status_source_url: text
         status_source_type: text
-    muse_candidates:
-      +column_types:
-        host_church_id: bigint
-        duplicate_of_church_id: bigint
-        possible_match_church_id: bigint
-        fb_last_post_date: date
-        checked_at: timestamptz
-        checked_at_reliable: boolean
-        zip: text
-        phone: text
-        # Columns that can be entirely empty in a batch: agate would guess integer.
-        current_name_native: text
-        street_address: text
+        current_name: text
         official_url: text
+        url_evidence: text
         facebook_page_url: text
         fb_page_evidence: text
+        fb_last_post_date: date
+        street_address: text
+        city: text
+        state: text
+        zip: text
+        address_source_url: text
+        address_source_type: text
+        address_is_worship_location: text
+        meets_in_building_of: text
+        pin_check: text
+        phone: text
+        phone_source_url: text
+        phone_source_type: text
+        service_times_verbatim: text
         service_languages: text
+        service_source_url: text
+        service_source_type: text
+        kids_program_verbatim: text
+        kids_source_url: text
+        kids_source_type: text
+        match_confidence: text
+        duplicate_of_church_id: bigint
+        checked_at: timestamptz
+        personal_phone_withheld: boolean
+        checked_at_reliable: boolean
+        service_times_unsupported: boolean
+        last_pass: text
+        source_file: text
+    muse_candidates:
+      +column_types:
+        candidate_id: text
+        task: text
+        format: text
+        candidate_name: text
+        current_name_native: text
+        denomination_stated: text
+        city: text
+        state: text
+        zip: text
+        official_url: text
+        url_evidence: text
+        facebook_page_url: text
+        fb_page_evidence: text
+        fb_last_post_date: date
+        status: text
+        status_source_url: text
+        status_source_type: text
+        street_address: text
+        address_source_url: text
+        address_source_type: text
+        address_is_worship_location: text
+        host_church_id: bigint
         host_venue_name: text
+        phone: text
+        phone_source_url: text
+        phone_source_type: text
+        service_times_verbatim: text
+        service_languages: text
+        service_source_url: text
+        service_source_type: text
+        kids_program_verbatim: text
+        kids_source_url: text
+        kids_source_type: text
+        possible_match_church_id: bigint
+        possible_match_candidate_id: text
+        duplicate_of_church_id: bigint
+        match_confidence: text
+        found_via: text
+        checked_at: timestamptz
+        checked_at_reliable: boolean
+        personal_phone_withheld: boolean
+        service_times_unsupported: boolean
+        last_pass: text
+        source_file: text
     quality_reviews:
       +column_types: {church_id: bigint, reviewed_on: date, auditor_value: text, muse_value: text}
     dedup_candidates:
@@ -71,4 +127,5 @@ seeds:
     fact_holds:
       +column_types: {church_id: bigint}
     source_checks:
-      +column_types: {church_id: bigint, http_status: text, match_mode: text, checked_at: timestamptz}
+      +column_types: {subject_type: text, subject_id: text, fact_group: text, verdict: text,
+                      http_status: text, match_mode: text, checked_at: timestamptz}

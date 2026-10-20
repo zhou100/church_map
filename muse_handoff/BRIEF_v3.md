@@ -2,6 +2,12 @@
 
 **This file replaces `BRIEF_v2.md` and `BRIEF_FB_pass.md`.** It holds every rule in one place. Rules that are new in v3 are marked **[v3]**.
 
+> **v3.2 (2026-10-20, after round 4).** Four clarifications, marked **[v3.2]**:
+> - `candidate_ref`s are permanent: never renumber; a removed row leaves a gap (D11).
+> - The service excerpt must contain the service **times**; join two verbatim pieces with " … " if the languages are stated elsewhere.
+> - `checked_at` is exactly `YYYY-MM-DDTHH:MM:SSZ`, taken from a correct UTC clock at the moment of the check (D7).
+> - An "excerpt" is text copied from the page, never a description of the page (N9).
+>
 > **v3.1 (2026-10-20, after task CN).** Three clarifications, marked **[v3.1]**:
 > - Excerpts are never edited to pass our checks (N9).
 > - De-duplicate by address as well as name (D4).
@@ -88,8 +94,13 @@ Rules for this task:
 - **D5.** For a congregation meeting in another church's or a venue's building, set `meets_in_building_of` to the host `known_id`/`church_id`, or the host's name.
 - **D6.** When uncertain, leave the value blank and say why in `notes`.
 - **D7.** Write `checked_at` at the real time of each check. Never fill it in afterwards.
+  - **[v3.2]** Format: exactly `2026-10-21T18:05:09Z`, from a UTC clock. In round 4:
+    - 29 rows had malformed stamps such as `16:508Z`;
+    - 17 rows had times later than the moment the files reached us;
+    - all 23 rows of `new_candidates_E` shared one stamp.
 - **D8.** Time box: about 10 minutes per verification row. For discovery, stop at the per-city cap.
 - **D9.** Before reporting done, re-open each output file from disk. List each file's path, row count, and sha256 in the run log.
+- **[v3.2] D11.** A `candidate_ref` is permanent once delivered. If a row is merged or removed, leave its ref unused and say so in the run log. In round 4, CN-038 to CN-040 were renumbered after a merge, which breaks every reference to them.
 - **[v3] D10.** Use the **USPS city name** that matches the ZIP (e.g. "Los Altos" for a Loyola address in 94024). The ZIP must belong to that city.
 
 ## Do not (N)
@@ -103,6 +114,7 @@ Rules for this task:
 - **N5.** Infer anyone's religion, ethnicity, or language from names, photos, or neighbourhoods. Report languages only when the congregation states them.
 - **N6.** Invent or normalize facts beyond formatting. Copy service times and children's program text verbatim.
 - **N7.** Take screenshots.
+- **[v3.2]** Put a description of the page in an excerpt field. Text such as "homepage carries current service schedule…" or "Updated August 23, 2024 (latest own-site date)" belongs in `notes`. The excerpt is only text that appears on the page.
 - **[v3.1] N9.** Edit an excerpt to satisfy our validator. Excerpts are verbatim, always. If a verbatim excerpt fails a check (for example, a time written as 一時半), leave it, add "verbatim; validator flag" in `notes`, and we will fix the validator.
   - The only allowed changes are removing an email address or a personal name: replace it with `[removed]`.
   - In task CN, 4 excerpts were rewritten to add time tokens. That makes them unverifiable.
@@ -150,7 +162,7 @@ Definitions unchanged from v2:
 | `street_address`, `zip` + address companions | House number required |
 | `address_is_worship_location`, `meets_in_building_of` | As in results |
 | `phone` + companions | Office phone only (N1) |
-| `service_times_verbatim`, `service_languages` + service companions | Languages only as stated. **[v3.1]** Use English names joined by `;` with no spaces, e.g. `Mandarin;Cantonese;English` (`Chinese` only when the source doesn't say which). |
+| `service_times_verbatim`, `service_languages` + service companions | **[v3.2]** `service_excerpt` must contain the times. If the languages are stated in a different place on the same page, join both verbatim pieces with ` … ` (for example `Sunday Worship 10:00 AM … English · 中文 · 한국어`). Times without a time in the excerpt are not published. Languages only as stated. **[v3.1]** Use English names joined by `;` with no spaces, e.g. `Mandarin;Cantonese;English` (`Chinese` only when the source doesn't say which). |
 | `kids_program_verbatim` + kids companions | As in results |
 | `possible_match_id`, `match_note` | `known_id` from the known list if it may be the same congregation, and why |
 | `found_via` | `fb_page_search`, `fb_group_lead`, `web_search`, `denomination_directory`, `host_church_site` |

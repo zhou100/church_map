@@ -18,6 +18,8 @@ select
                        and not address_source_verified)                 as address_failed_recheck,
     count(*) filter (where phone_displayable)                           as phone_displayable,
     count(*) filter (where service_displayable)                         as service_displayable,
+    count(*) filter (where muse_has_kids)                               as kids_found,
+    count(*) filter (where kids_displayable)                            as kids_displayable,
     count(*) filter (where fb_page_linkable)                            as fb_page_linkable,
     count(*) filter (where address_displayable and address_source_type = 'fb_page')
       + count(*) filter (where phone_displayable and phone_source_type = 'fb_page')

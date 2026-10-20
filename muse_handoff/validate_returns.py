@@ -120,8 +120,10 @@ NEGATED_PERSONAL_RE = re.compile(r"\bnot (identified as |labell?ed as |a )?perso
 PERSONAL_PHONE_RE = re.compile(r"\b(cell|mobile|personal|rector's|pastor's|priest's|father's)\b", re.I)
 # Accepts CJK numerals too ("下午一時半"): a verbatim excerpt must never need rewriting
 # to satisfy this check (CN round: Muse edited 4 excerpts to add Arabic time tokens).
-TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点|時|时)|noon|\d{1,2}:\d{2}"
-                     r"|[一二三四五六七八九十]{1,3}\s*(時|时|點|点)", re.I)
+TIME_RE = re.compile(r"\d{1,2}(:\d{2})?\s*(a\.?m\.?|p\.?m\.?|am|pm|點|点|時|时|시)|noon|\d{1,2}:\d{2}"
+                     r"|[一二三四五六七八九十]{1,3}\s*(時|时|點|点)"
+                     r"|\b\d{1,2}(:\d{2})?\s?[ap]\b", re.I)  # Korean 오전 8시; "10A" shorthand
+STRICT_TS_RE = re.compile(r"^\d{4}-\d{2}-\d{2}T\d{2}:\d{2}(:\d{2})?Z$")
 
 problems: list[tuple[str, str, str]] = []
 
@@ -206,6 +208,8 @@ def check_common(where: str, r: dict, received_at: datetime | None) -> None:
         err(where, f"state={r['state']!r}")
     check_zip_city(where, r)
     ts = parse_ts(r.get("checked_at", ""))
+    if r.get("checked_at") and not STRICT_TS_RE.match(r["checked_at"]):
+        err(where, f"checked_at {r['checked_at']!r} is not YYYY-MM-DDTHH:MM[:SS]Z")
     if ts is None:
         err(where, "checked_at missing or not ISO 8601")
     elif received_at and ts > received_at:

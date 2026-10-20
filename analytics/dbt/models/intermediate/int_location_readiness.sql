@@ -1,6 +1,7 @@
 -- Grain: one church (one location per church until campus modeling, plan §11).
 -- Combines directory flags, Muse verification, scope (D-1), personal-phone
--- removal (D-2, applied in seeds) and Facebook display rules (D-3).
+-- removal (D-2, applied in seeds), Facebook display rules (D-3) and the
+-- source re-check (macro displayable).
 with c as (
     select * from {{ ref('stg_churches') }}
 ),
@@ -18,12 +19,13 @@ holds as (
     group by 1
 ),
 checks as (
-    -- Re-verification (recheck_sources.py): was the cited excerpt found on the page?
-    select church_id,
-           bool_or(fact_group = 'address' and verdict = 'verified') as address_source_verified,
-           bool_or(fact_group = 'phone'   and verdict = 'verified') as phone_source_verified,
-           bool_or(fact_group = 'service' and verdict = 'verified') as service_source_verified
-    from {{ ref('source_checks') }}
+    select subject_id::bigint as church_id,
+           bool_or(fact_group = 'address' and is_verified) as address_source_verified,
+           bool_or(fact_group = 'phone'   and is_verified) as phone_source_verified,
+           bool_or(fact_group = 'service' and is_verified) as service_source_verified,
+           bool_or(fact_group = 'kids'    and is_verified) as kids_source_verified
+    from {{ ref('stg_source_checks') }}
+    where subject_type = 'church'
     group by 1
 ),
 asof as (
@@ -33,7 +35,9 @@ joined as (
     select
         c.church_id,
         c.source,
-        m.church_id is not null                                       as in_muse_pilot,
+        m.church_id is not null                                       as in_muse,
+        m.muse_batch,
+        coalesce(m.muse_batch in ('A_calibration', 'B_main'), false)  as in_muse_pilot,
         s.scope_status,
         s.scope_status in ('in_scope', 'in_scope_labeled')            as is_in_scope,
         c.street_text is not null                                     as has_street_text,
@@ -53,11 +57,14 @@ joined as (
         m.phone_source_type,
         m.service_times is not null                                   as muse_has_service,
         m.service_source_type,
+        m.kids_program is not null                                    as muse_has_kids,
+        m.kids_source_type,
         coalesce(h.hold_address, false)                               as hold_address,
         coalesce(h.hold_service, false)                               as hold_service,
         coalesce(k.address_source_verified, false)                    as address_source_verified,
         coalesce(k.phone_source_verified, false)                      as phone_source_verified,
         coalesce(k.service_source_verified, false)                    as service_source_verified,
+        coalesce(k.kids_source_verified, false)                       as kids_source_verified,
         m.official_url is not null
             and coalesce(m.url_evidence, 'name_only') <> 'name_only'  as website_verified,
         m.facebook_page_url is not null and m.fb_page_evidence is not null as fb_page_linkable
@@ -72,22 +79,10 @@ joined as (
 rules as (
     select
         *,
-        -- A fact may be shown when it comes from the church's own site or
-        -- denomination AND our re-check found the excerpt on that page, or (D-3)
-        -- from its own Page if the row is active and the Page posted within 12
-        -- months (Facebook is never fetched by us). "other" sources need review.
-        muse_has_address and not hold_address and (
-            (address_source_type in ('own_site', 'denomination') and address_source_verified)
-            or (address_source_type = 'fb_page' and verified_active and fb_page_fresh)
-        )                                                             as address_displayable,
-        muse_has_phone and (
-            (phone_source_type in ('own_site', 'denomination') and phone_source_verified)
-            or (phone_source_type = 'fb_page' and verified_active and fb_page_fresh)
-        )                                                             as phone_displayable,
-        muse_has_service and not hold_service and (
-            (service_source_type in ('own_site', 'denomination') and service_source_verified)
-            or (service_source_type = 'fb_page' and verified_active and fb_page_fresh)
-        )                                                             as service_displayable
+        {{ displayable('muse_has_address', 'address_source_type', 'address_source_verified', 'verified_active', 'fb_page_fresh', 'hold_address') }} as address_displayable,
+        {{ displayable('muse_has_phone',   'phone_source_type',   'phone_source_verified',   'verified_active', 'fb_page_fresh') }}                 as phone_displayable,
+        {{ displayable('muse_has_service', 'service_source_type', 'service_source_verified', 'verified_active', 'fb_page_fresh', 'hold_service') }} as service_displayable,
+        {{ displayable('muse_has_kids',    'kids_source_type',    'kids_source_verified',    'verified_active', 'fb_page_fresh') }}                 as kids_displayable
     from joined
 )
 select

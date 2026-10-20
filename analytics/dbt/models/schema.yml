@@ -33,21 +33,53 @@ models:
       - name: service_source_type
         tests:
           - accepted_values: {values: [own_site, fb_page, denomination, other]}
+      - name: kids_source_type
+        tests:
+          - accepted_values: {values: [own_site, fb_page, denomination, other]}
+      - name: muse_batch
+        tests:
+          - not_null
+          - accepted_values: {values: [A_calibration, B_main, C_main, D_main, F_main]}
       - name: last_pass
         tests:
-          - accepted_values: {values: [A, A_redo, A_fbcheck, B, FB1]}
+          - accepted_values: {values: [A, A_redo, A_fbcheck, B, FB1, E, C, D, F]}
 
   - name: stg_muse_candidates
-    description: One congregation reported missing from the manifest.
+    description: One congregation found outside the directory; v2 (A, B) and v3 tasks unified.
     columns:
       - name: candidate_id
         tests: [unique, not_null]
+      - name: task
+        tests:
+          - accepted_values: {values: [A, B, CN, C, D, E, F, L]}
+      - name: format
+        tests:
+          - accepted_values: {values: [v2, v3]}
+      - name: muse_status
+        tests:
+          - accepted_values: {values: [active, unresolved]}
       - name: found_via
         tests:
           - accepted_values: {values: [fb_page_search, fb_group_lead, web_search, denomination_directory, host_church_site]}
       - name: host_church_id
         tests:
           - relationships: {to: ref('stg_churches'), field: church_id}
+      - name: possible_match_church_id
+        tests:
+          - relationships: {to: ref('stg_churches'), field: church_id}
+
+  - name: stg_source_checks
+    description: Re-verification verdict per subject and fact group.
+    columns:
+      - name: subject_type
+        tests:
+          - accepted_values: {values: [church, candidate]}
+
+  - name: int_candidate_readiness
+    description: One row per candidate congregation; same display rules as churches.
+    columns:
+      - name: candidate_id
+        tests: [unique, not_null]
 
   - name: int_scope
     description: Decision D-1 scope per church.
@@ -89,6 +121,12 @@ models:
       - name: candidate_id
         tests: [unique, not_null]
 
+  - name: mart_language_supply
+    description: Stated service language x city x origin; congregations, active, shown facts, ready.
+    tests:
+      - dbt_utils_free_unique_combination:
+          combination: "language || '|' || coalesce(city, '') || '|' || origin"
+
   - name: mart_quality_audit
     description: Owner's blind audit vs Muse, by field, with an 'all' rollup row.
     columns:
@@ -106,19 +144,22 @@ seeds:
         tests: [unique, not_null]
       - name: verdict
         tests:
-          - accepted_values: {values: [agree, disagree, definition_disagreement]}
+          - accepted_values: {values: [agree, disagree, definition_disagreement, needs_review]}
   - name: denomination_scope
     columns:
       - name: denomination_key
         tests: [unique, not_null]
   - name: source_checks
     columns:
+      - name: subject_type
+        tests:
+          - accepted_values: {values: [church, candidate]}
       - name: fact_group
         tests:
           - accepted_values: {values: [status, address, phone, service, kids]}
       - name: verdict
         tests:
-          - accepted_values: {values: [verified, partial, not_found, not_an_excerpt, fetch_failed, robots_blocked, unsupported, unsafe_url, skipped_facebook]}
+          - accepted_values: {values: [verified, partial, not_found, not_an_excerpt, fetch_failed, robots_blocked, unsupported, unsafe_url, skipped_facebook, stale]}
   - name: fact_holds
     columns:
       - name: field

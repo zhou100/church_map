@@ -848,6 +848,36 @@ Task E (round 4) re-sources several of these.
 
 **Next:** re-run the check on every Muse return as part of intake. For `not_found` on JavaScript sites, a rendered (headless-browser) second pass is possible later. Rows that still fail go back to Muse for another source.
 
+### Status 2026-10-20: v3 ingestion and PR #41 review fixes
+
+**dbt reads the v3 returns.** `build_seeds.py` now merges:
+- results from every pass (pilot → E → C, D, F), with the kids group;
+- candidates in v2 (A, B) and v3 (CN, C, D, E, F, L), where task E's rebuilt rows replace A and B.
+
+New models and marts:
+- `int_candidate_readiness`, using the same display rule as churches (macro `displayable`);
+- `mart_language_supply` (stated language × city);
+- per-manifest coverage scopes.
+
+`analytics/scripts/muse_intake.sh` runs validate → re-check → seeds → dbt in one command. The v3 results path was tested with synthetic C and E returns. dbt: 86/86 pass.
+
+**Review of PR #41: four issues, all fixed with tests.** Python tests total 214 passed / 56 skipped, including 35 new tests.
+
+1. **Short fragments were dropped, so "9 am" verified against "11 am" and 94022 against 94024.** Fix:
+   - no fragment is discarded;
+   - numbers and Latin words match whole;
+   - short fragments must sit near their neighbour;
+   - spaceless matching requires every number to be present whole;
+   - while fixing this, adjacent HTML blocks were found glued together in extracted text ("worship9 am"); text extraction now separates them.
+2. **Verdicts weren't bound to the fact they checked.** Each verdict now carries a fingerprint (value + URL + excerpt); mismatches and pre-fingerprint verdicts are `stale`.
+3. **Audit grading counted 9 AM vs 9 PM, 10 vs 10:30, and 123 Main vs 123 Oak as agreement.** Times are now compared as 24-hour sets with AM/PM; addresses by number + normalized street + ZIP; anything that can't be compared is `needs_review`. Re-graded, the audit still stands at 28 agree / 2 definition disagreements.
+4. **A redirected robots.txt was treated as allow-all.** It now follows RFC 9309 (redirects followed and safety-checked; 4xx allows; 5xx, network errors, unsafe hops, or loops disallow).
+
+**Effect on real data after the re-check re-run:**
+- Pilot: 132 of 209 facts verified (134 before the fixes).
+- CN: 69 of 127 (70 before).
+- Pilot visit-ready: unchanged at 33.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:
