@@ -56,7 +56,7 @@ RECEIVED_AT = {
     "results_B.csv": "2026-10-19T18:13:07Z", "new_candidates_B.csv": "2026-10-19T18:13:07Z",
     "results_FB.csv": "2026-10-19T19:53:34Z", "new_candidates_CN.csv": "2026-10-20T17:31:34Z",
     "results_E.csv": "2026-10-20T17:31:34Z", "new_candidates_E.csv": "2026-10-20T17:31:34Z",
-    "results_D.csv": "2026-10-20T17:31:34Z", "new_candidates_D.csv": "2026-10-20T17:31:34Z",
+    "results_D.csv": "2026-10-20T20:20:41Z", "new_candidates_D.csv": "2026-10-20T20:20:41Z",  # fill pass
     "results_C.csv": "2026-10-20T19:56:50Z", "new_candidates_C.csv": "2026-10-20T19:56:50Z",
 }
 

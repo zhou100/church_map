@@ -51,6 +51,22 @@ The intake script runs four steps:
 - **Candidates:** v2 rows from A and B are unified with v3 rows from CN, C, D, E, F, and L. Task E's full rows replace the A/B rows they rebuild.
 - **Re-check verdicts:** each row takes the verdicts from the file it came from. A returned file without a re-check is reported, and its web facts stay hidden.
 
+## Repairing excerpts in-house
+
+When a fact is on its cited page but the agent's excerpt isn't (paraphrased, stitched, truncated), `repair_excerpts.py` swaps in a verbatim passage of that page:
+
+```bash
+analytics/.venv/bin/python analytics/scripts/repair_excerpts.py muse_handoff/returns/results_C.csv \
+    --manual muse_handoff/returns/repairs/manual_results_C.csv   # optional hand-written corrections
+analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/returns/results_C.csv
+```
+
+- The original file is kept as `<stem>.muse.csv`.
+- Every change is logged in `returns/repairs/`.
+- Facts that aren't on their page are left alone.
+- Repairs accumulate across runs. Re-check between runs.
+- `--resource-blocked`: if the cited page blocks our checker (403, robots.txt), look for the same fact on the church's own site (homepage plus up to 3 contact/schedule links) and cite that page instead.
+
 ## Models and grains
 
 | Model | Grain | Purpose |

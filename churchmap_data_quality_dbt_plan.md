@@ -921,6 +921,83 @@ All validate structurally. Intake ran through `muse_intake.sh` for C, and throug
 - **Fixed** and covered by a regression test.
 - The real re-grade gives **28 agree / 2 definition disagreements**.
 
+### Status 2026-10-20: task C corrected in-house (owner decision: no Muse re-run for C)
+
+`analytics/scripts/repair_excerpts.py` (6 offline tests) repairs facts that failed re-verification when the fact is actually on the cited page.
+
+- **How it repairs:** it replaces the agent's excerpt with a verbatim passage of that page that contains the fact:
+  - addresses: house number + street;
+  - phones: all 10 digits;
+  - service times: every time, within 200 characters.
+
+  E-mail addresses are cut out of the passage.
+- **What it never touches:** facts that are not on their cited page, and status and kids facts. Those stay unverified.
+- **`--manual`:** applies hand-written, logged corrections. They apply only if the old value still matches.
+- **Records kept:**
+  - the agent's original file as `<stem>.muse.csv`;
+  - every change in `returns/repairs/<stem>.csv`;
+  - a `[ChurchMap <date>: …]` note on each changed row.
+
+Applied to C:
+
+| | Results C | Candidates C |
+|---|---:|---:|
+| Excerpts repaired | 15 | 6 |
+| Manual corrections | 76632 city Daly City → Colma (the church states Colma; our ZIP table had lacked it); 2 language separators | 2 language separators |
+
+After re-verification:
+
+| Measure | Before | After |
+|---|---:|---:|
+| Results C, facts verified | 118 | 133 |
+| Candidates C, facts verified | 153 | 156 |
+| C visit-ready | 22 | **26** |
+| C verified addresses | 30 | 35 |
+| New C congregations with a complete profile | 40 | 41 |
+
+The validator shows 0 errors. dbt: 86/86.
+
+Task D is being re-run by Muse; the same repair step applies when it returns.
+
+### Status 2026-10-20: task D re-run ingested; blocked sources re-sourced in-house
+
+**What the D fill pass added:**
+- 83 unresolved rows re-checked: 4 → active, 1 → closed. 74 have no web presence at all, so the OSM records are likely dead.
+- 45 discoveries in the cities that had hit the rate limit (D-104…D-148).
+- No facts were lost and all earlier refs were kept.
+
+**Intake.** Validator: 19 errors, all handled automatically by the seeds:
+
+| Errors | Kind | How the seeds handle it |
+|---:|---|---|
+| 4 | service excerpts with no times | times withheld |
+| 15 | malformed or bulk timestamps | marked unreliable |
+
+**Excerpt repair:** 17 + 18 excerpts repaired.
+
+**New: `repair_excerpts.py --resource-blocked`** (offline test included). When the cited page blocks our checker, it looks for the same fact on the church's own website: the homepage plus up to 3 contact/schedule links, fetched with the polite, robots-aware fetcher. If the fact is found there, that page becomes the cited source (`own_site`) with a verbatim passage. The fact value never changes, and a missing fact leaves the row as it was.
+- The main target is www.dsj.org (Diocese of San Jose, 403 to our checker); 30 D discoveries cited it.
+- 40 facts were re-sourced (D 5 + 30, C 1 + 4).
+
+Repairs now accumulate across runs (the tool works on the current file), with the agent's original kept in `<stem>.muse.csv`.
+
+**Totals after D:**
+
+| Measure | Value |
+|---|---:|
+| Visit-ready, pilot | 34 |
+| Visit-ready, C | 26 |
+| Visit-ready, D | **39** |
+| New congregations | 260 (143 active) |
+| New congregations with a verified address | 158 |
+| New congregations with a complete profile (need geocoding for a pin) | **102** |
+
+dbt: 86/86.
+
+**Owner calls still open:**
+- D-107 Disciple Church vs CN-014 Gospel Chinese Christian Church: same address and time slot.
+- D-035 Holy Virgin Cathedral vs known 76280.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:
