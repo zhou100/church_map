@@ -878,6 +878,49 @@ New models and marts:
 - CN: 69 of 127 (70 before).
 - Pilot visit-ready: unchanged at 33.
 
+### Status 2026-10-20: round 4 (E, D) and task C ingested
+
+**Returns:**
+
+| Return | Received | Contents |
+|---|---|---|
+| E | 17:31Z | 49 directory rows + 23 rebuilt discoveries |
+| D | 17:31Z | 294 verifications + 103 discoveries; 200 unresolved after Muse's browser hit HTTP 429 |
+| Updated CN | 17:31Z | 39 rows; the three duplicates resolved, but refs renumbered |
+| C | 19:56Z | 85 verifications + 71 discoveries |
+
+All validate structurally. Intake ran through `muse_intake.sh` for C, and through the same steps for round 4.
+
+**Coverage after all returns so far:**
+
+| Area | Visit-ready |
+|---|---:|
+| Peninsula pilot | 34 |
+| C | 22 |
+| D | 35 |
+
+**New congregations:** 218 (C 68, D 99, CN 29, E 22). 120 are active, 112 have a verified address, and **79 have a complete profile but still need geocoding**.
+
+**Stated non-English languages:** Spanish 50, Mandarin 27, Cantonese 26, unspecified "Chinese" 13, Vietnamese 13, Korean 8, Tagalog 5, and others.
+
+**Process issues found and handled in code:**
+
+- **Check timestamps:**
+  - 29 malformed (`16:508Z`);
+  - 17 later than receipt (D);
+  - bulk stamps: E candidates share one stamp, and 100 C rows share 23:39:05Z.
+
+  Seeds now mark malformed, post-receipt, and bulk (>10 rows) stamps unreliable.
+- **Service excerpts:** 5 rows' service excerpts proved the language but contained no times. Seeds now withhold times that their excerpt doesn't contain. Brief v3.2 requires times in the excerpt.
+- **D9 manifests:** C's run-log hashes predate the Facebook merge (the delivered files differ).
+- **Renumbered refs:** CN refs were renumbered after a merge. Brief v3.2 D11 makes refs permanent.
+- **Blocked source:** www.dsj.org (Diocese of San Jose) returns 403 to our checker, so 24 San Jose parishes sourced only from it can't be verified. They need parish-site sources.
+- **ZIP table:** it lacked Colma for 94014, which pushed Colma addresses to Daly City. Fixed.
+
+**Our own bug, corrected.** The review fix for audit grading (commit `fb12226`) deleted a constant that `build_reviews` uses. Seed rebuilds crashed at that step, and because the error output was discarded, the stale `quality_reviews` seed was read instead. The earlier statement "re-graded audit unchanged at 28/2" was therefore not actually verified at the time.
+- **Fixed** and covered by a regression test.
+- The real re-grade gives **28 agree / 2 definition disagreements**.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:

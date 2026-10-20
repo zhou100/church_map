@@ -43,7 +43,7 @@ ENUMS = {
 # ZIPs -> USPS city names for San Mateo County and the South Bay (a ZIP may serve several).
 ZIP_CITIES = {
     "94002": {"Belmont"}, "94005": {"Brisbane"}, "94010": {"Burlingame", "Hillsborough"},
-    "94014": {"Daly City"}, "94015": {"Daly City"}, "94019": {"Half Moon Bay"},
+    "94014": {"Daly City", "Colma"}, "94015": {"Daly City", "Broadmoor"}, "94019": {"Half Moon Bay"},
     "94025": {"Menlo Park", "Atherton"}, "94027": {"Atherton"}, "94030": {"Millbrae"},
     "94044": {"Pacifica"}, "94061": {"Redwood City"}, "94062": {"Redwood City", "Woodside"},
     "94063": {"Redwood City"}, "94065": {"Redwood City"}, "94066": {"San Bruno"},

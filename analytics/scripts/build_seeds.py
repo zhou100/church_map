@@ -57,6 +57,7 @@ RECEIVED_AT = {
     "results_FB.csv": "2026-10-19T19:53:34Z", "new_candidates_CN.csv": "2026-10-20T17:31:34Z",
     "results_E.csv": "2026-10-20T17:31:34Z", "new_candidates_E.csv": "2026-10-20T17:31:34Z",
     "results_D.csv": "2026-10-20T17:31:34Z", "new_candidates_D.csv": "2026-10-20T17:31:34Z",
+    "results_C.csv": "2026-10-20T19:56:50Z", "new_candidates_C.csv": "2026-10-20T19:56:50Z",
 }
 
 MANIFESTS = [  # (file, batch for rows whose manifest has no batch column)
@@ -144,7 +145,18 @@ def normalize_languages(value: str) -> str:
     return ";".join(out)
 
 
-def sanitize(r: dict, fname: str = "") -> dict:
+BULK_STAMP_ROWS = 10  # more rows than this sharing one checked_at = stamped at write time, not per check
+
+
+def bulk_stamps(rows: list[dict]) -> set[str]:
+    counts: dict[str, int] = {}
+    for r in rows:
+        if r.get("checked_at"):
+            counts[r["checked_at"]] = counts.get(r["checked_at"], 0) + 1
+    return {ts for ts, n in counts.items() if n > BULK_STAMP_ROWS}
+
+
+def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
     """D-2 personal phones, unreliable timestamps, unsupported times, language format."""
     ctx = NEGATED_PERSONAL_RE.sub("", r.get("notes", "") + " " + r.get("phone_excerpt", ""))
     personal = bool(r.get("phone")) and bool(PERSONAL_PHONE_RE.search(ctx))
@@ -154,7 +166,8 @@ def sanitize(r: dict, fname: str = "") -> dict:
     else:
         r["personal_phone_withheld"] = "false"
     ts, received = r.get("checked_at", ""), RECEIVED_AT.get(fname, "")
-    reliable = (ts not in UNRELIABLE_STAMPS and (not ts or STRICT_TS_RE.match(ts) is not None)
+    reliable = (ts not in UNRELIABLE_STAMPS and ts not in bulk
+                and (not ts or STRICT_TS_RE.match(ts) is not None)
                 and not (received and ts > received))
     r["checked_at_reliable"] = "true" if reliable else "false"
     if not reliable:
@@ -212,10 +225,11 @@ def build_results(batch_of: dict[str, str]) -> tuple[dict[str, str], dict[tuple[
         rows = read(fname)
         if rows is None:
             continue
+        bulk = frozenset(bulk_stamps(rows))
         for raw in rows:
             for g, fp in raw_fingerprints(raw, GROUPS).items():
                 fps[(raw["church_id"], g)] = fp
-            r = sanitize(dict(raw), fname)
+            r = sanitize(dict(raw), fname, bulk)
             r["last_pass"] = label or pilot_passes.get(r["church_id"], "A")
             r["source_file"] = fname
             r["batch"] = batch_of.get(r["church_id"], "")
@@ -243,6 +257,7 @@ def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
         rows = read(fname)
         if rows is None:
             continue
+        bulk = frozenset(bulk_stamps(rows))
         for i, r in enumerate(rows, 1):
             if "candidate_ref" in r:  # v3
                 cid = r["candidate_ref"]
@@ -255,7 +270,7 @@ def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
                     fps.pop((cid, g), None)
                 fps[(cid, "address")] = fact_fingerprint(r, "candidate")  # v2 source backs the address
                 r = candidate_from_v2(r, cid, task)
-            r = sanitize(r, fname)
+            r = sanitize(r, fname, bulk)
             host = r.get("meets_in_building_of", "")
             r["host_church_id"] = host if host.isdigit() else ""
             r["host_venue_name"] = "" if host.isdigit() else host
@@ -390,6 +405,11 @@ def grade_phone(auditor: str, muse: str) -> str:
     if len(a) < 10 or len(m) < 10:
         return "needs_review"
     return "agree" if a == m else "disagree"
+
+
+# Owner verdicts the mechanical comparison cannot make on its own (76692: the old
+# congregation closed and was replanted as Bridge City Church; both answers are true).
+DEFINITION_DISAGREEMENTS = {("76692", "status"), ("76692", "service_times")}
 
 
 def build_reviews() -> None:

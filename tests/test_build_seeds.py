@@ -131,3 +131,33 @@ def test_korean_time_in_excerpt_supports_the_times():
 def test_checked_at_reliability(stamp, reliable):
     r = bs.sanitize({"checked_at": stamp}, "results_D.csv")
     assert r["checked_at_reliable"] == reliable
+
+
+def test_stamp_shared_by_many_rows_is_unreliable():
+    rows = [{"checked_at": "2026-10-19T23:39:05Z"}] * 11 + [{"checked_at": "2026-10-19T21:30:00Z"}]
+    bulk = frozenset(bs.bulk_stamps(rows))
+    assert bs.sanitize(dict(rows[0]), "", bulk)["checked_at_reliable"] == "false"
+    assert bs.sanitize(dict(rows[-1]), "", bulk)["checked_at_reliable"] == "true"
+
+
+def test_build_reviews_runs_and_grades(tmp_path, monkeypatch):
+    """Regression: build_reviews referenced a constant that had been deleted; nothing ran it."""
+    ret, seeds = tmp_path / "returns", tmp_path / "seeds"
+    ret.mkdir()
+    seeds.mkdir()
+    monkeypatch.setattr(bs, "RET", ret)
+    monkeypatch.setattr(bs, "SEEDS", seeds)
+    _write(ret / "audit_key.csv", ["review_id", "church_id", "field", "muse_value"], [
+        {"review_id": "R1", "church_id": "1", "field": "service_times", "muse_value": "Sunday 9 PM"},
+        {"review_id": "R2", "church_id": "76692", "field": "status", "muse_value": "active"},
+        {"review_id": "R3", "church_id": "1", "field": "street_address", "muse_value": "100 Main St, San Mateo 94401"},
+    ])
+    _write(ret / "audit_worksheet.csv", ["church_id", "stratum", "field", "your_answer", "evidence_url"], [
+        {"church_id": "1", "stratum": "s", "field": "service_times", "your_answer": "Sun 9 AM", "evidence_url": ""},
+        {"church_id": "76692", "stratum": "s", "field": "status", "your_answer": "closed", "evidence_url": ""},
+        {"church_id": "1", "stratum": "s", "field": "street_address", "your_answer": "100 Main Street", "evidence_url": ""},
+    ])
+    bs.build_reviews()
+    got = {r["review_id"]: r["verdict"] for r in csv.DictReader((seeds / "quality_reviews.csv").open(encoding="utf-8"))}
+    assert got == {"1-service_times": "disagree", "76692-status": "definition_disagreement",
+                   "1-street_address": "agree"}
