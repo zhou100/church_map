@@ -27,7 +27,7 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
 ENUMS = {
-    "task": {"C", "CN", "D", "E"},
+    "task": {"C", "CN", "D", "E", "F", "L"},
     "candidate_status": {"active", "unresolved"},
     "entity_type": {"congregation", "religious_house", "non_christian", "business", "other", "unknown"},
     "status": {"active", "closed", "moved", "merged", "unresolved"},
@@ -69,6 +69,31 @@ ZIP_CITIES = {
     **{str(z): {"San Francisco"} for z in list(range(94102, 94135)) + [94158]},
     "94536": {"Fremont"}, "94537": {"Fremont"}, "94538": {"Fremont"}, "94539": {"Fremont"},
     "94555": {"Fremont"}, "94560": {"Newark"}, "94587": {"Union City"}, "94586": {"Sunol"},
+    # East Bay (batch F). Multi-city sets where one ZIP serves several USPS names.
+    **{str(z): {"Oakland"} for z in range(94601, 94622)},
+    "94610": {"Oakland", "Piedmont"}, "94611": {"Oakland", "Piedmont"}, "94618": {"Oakland", "Piedmont"},
+    "94608": {"Oakland", "Emeryville"}, "94705": {"Berkeley", "Oakland"},
+    **{str(z): {"Berkeley"} for z in (94702, 94703, 94704, 94709, 94710, 94720)},
+    "94707": {"Berkeley", "Kensington", "Albany"}, "94708": {"Berkeley", "Kensington"},
+    "94706": {"Albany", "Kensington", "Berkeley"},
+    "94501": {"Alameda"}, "94502": {"Alameda"},
+    "94577": {"San Leandro"}, "94578": {"San Leandro", "Ashland", "Cherryland"}, "94579": {"San Leandro"},
+    "94580": {"San Lorenzo", "Ashland", "Cherryland", "Hayward"},
+    "94541": {"Hayward", "Cherryland", "Ashland"}, "94542": {"Hayward"}, "94544": {"Hayward"}, "94545": {"Hayward"},
+    "94546": {"Castro Valley"}, "94552": {"Castro Valley"},
+    "94568": {"Dublin"}, "94566": {"Pleasanton"}, "94588": {"Pleasanton"},
+    "94550": {"Livermore"}, "94551": {"Livermore"},
+    "94582": {"San Ramon"}, "94583": {"San Ramon"}, "94506": {"Danville"}, "94526": {"Danville", "Diablo"},
+    "94595": {"Walnut Creek"}, "94596": {"Walnut Creek"}, "94597": {"Walnut Creek"}, "94598": {"Walnut Creek"},
+    "94518": {"Concord"}, "94519": {"Concord"}, "94520": {"Concord"}, "94521": {"Concord"},
+    "94523": {"Pleasant Hill"}, "94553": {"Martinez"}, "94549": {"Lafayette"}, "94563": {"Orinda"},
+    "94556": {"Moraga"}, "94517": {"Clayton"},
+    "94801": {"Richmond", "North Richmond"}, "94804": {"Richmond"}, "94805": {"Richmond"},
+    "94803": {"Richmond", "El Sobrante", "San Pablo", "Pinole"}, "94806": {"San Pablo", "Richmond", "Rollingwood"},
+    "94530": {"El Cerrito", "Richmond", "East Richmond Heights"},
+    "94564": {"Pinole"}, "94547": {"Hercules", "Rodeo"}, "94572": {"Rodeo"}, "94525": {"Crockett"},
+    "94565": {"Pittsburg", "Bay Point"}, "94509": {"Antioch"}, "94531": {"Antioch"},
+    "94513": {"Brentwood"}, "94561": {"Oakley"}, "94548": {"Knightsen"}, "94510": {"Benicia"},
 }
 
 FACT_GROUPS = {
