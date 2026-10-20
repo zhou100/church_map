@@ -70,3 +70,5 @@ seeds:
       +column_types: {keep_id: bigint, drop_id: bigint, score: double precision}
     fact_holds:
       +column_types: {church_id: bigint}
+    source_checks:
+      +column_types: {church_id: bigint, http_status: text, match_mode: text, checked_at: timestamptz}

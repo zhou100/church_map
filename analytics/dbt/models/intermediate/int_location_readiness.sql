@@ -17,6 +17,15 @@ holds as (
     from {{ ref('fact_holds') }}
     group by 1
 ),
+checks as (
+    -- Re-verification (recheck_sources.py): was the cited excerpt found on the page?
+    select church_id,
+           bool_or(fact_group = 'address' and verdict = 'verified') as address_source_verified,
+           bool_or(fact_group = 'phone'   and verdict = 'verified') as phone_source_verified,
+           bool_or(fact_group = 'service' and verdict = 'verified') as service_source_verified
+    from {{ ref('source_checks') }}
+    group by 1
+),
 asof as (
     select '{{ var("as_of_date") }}'::date as as_of_date
 ),
@@ -46,6 +55,9 @@ joined as (
         m.service_source_type,
         coalesce(h.hold_address, false)                               as hold_address,
         coalesce(h.hold_service, false)                               as hold_service,
+        coalesce(k.address_source_verified, false)                    as address_source_verified,
+        coalesce(k.phone_source_verified, false)                      as phone_source_verified,
+        coalesce(k.service_source_verified, false)                    as service_source_verified,
         m.official_url is not null
             and coalesce(m.url_evidence, 'name_only') <> 'name_only'  as website_verified,
         m.facebook_page_url is not null and m.fb_page_evidence is not null as fb_page_linkable
@@ -54,24 +66,26 @@ joined as (
     left join {{ ref('int_coordinate_clusters') }} cl on cl.church_id = c.church_id
     left join m on m.church_id = c.church_id
     left join holds h on h.church_id = c.church_id
+    left join checks k on k.church_id = c.church_id
     cross join asof a
 ),
 rules as (
     select
         *,
-        -- D-3: a fact may be shown when it comes from the church's own site or
-        -- denomination, or from its own Page if the row is active and the Page
-        -- posted within 12 months. Third-party/"other" sources need review.
+        -- A fact may be shown when it comes from the church's own site or
+        -- denomination AND our re-check found the excerpt on that page, or (D-3)
+        -- from its own Page if the row is active and the Page posted within 12
+        -- months (Facebook is never fetched by us). "other" sources need review.
         muse_has_address and not hold_address and (
-            address_source_type in ('own_site', 'denomination')
+            (address_source_type in ('own_site', 'denomination') and address_source_verified)
             or (address_source_type = 'fb_page' and verified_active and fb_page_fresh)
         )                                                             as address_displayable,
         muse_has_phone and (
-            phone_source_type in ('own_site', 'denomination')
+            (phone_source_type in ('own_site', 'denomination') and phone_source_verified)
             or (phone_source_type = 'fb_page' and verified_active and fb_page_fresh)
         )                                                             as phone_displayable,
         muse_has_service and not hold_service and (
-            service_source_type in ('own_site', 'denomination')
+            (service_source_type in ('own_site', 'denomination') and service_source_verified)
             or (service_source_type = 'fb_page' and verified_active and fb_page_fresh)
         )                                                             as service_displayable
     from joined

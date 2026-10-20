@@ -24,7 +24,11 @@ createdb -h localhost -p 5433 -U analytics churchmap_analytics
 analytics/.venv/bin/python analytics/scripts/load_snapshot.py
 python3 analytics/scripts/build_seeds.py
 
-# 3. Build models and run all tests
+# 3. Re-verify cited excerpts against their pages (network; polite, robots-aware, never Facebook)
+analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/returns/results_current.csv
+python3 analytics/scripts/build_seeds.py   # picks up returns/recheck/results_current.csv as source_checks
+
+# 4. Build models and run all tests
 DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build --project-dir analytics/dbt
 ```
 
@@ -43,9 +47,30 @@ DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build --project-dir analy
 | `mart_new_congregations` | candidate | Congregations the directory lacks |
 | `mart_quality_audit` | field (+ all) | Owner's blind audit vs Muse |
 
-`visit_ready` = in scope, active per Muse, an address from the church's own site,
-its denomination or (D-3) its fresh Facebook Page, valid coordinates, pin not off,
-and a verified website, fresh Page or displayable phone.
+`visit_ready` = in scope, active per Muse, an address from the church's own site or
+its denomination **whose excerpt our re-check found on the cited page**, or (D-3) from
+its fresh Facebook Page; valid coordinates; pin not off; and a verified website,
+fresh Page or displayable phone.
+
+## Source re-verification
+
+`analytics/scripts/recheck_sources.py` replaces further human audit. For every
+non-Facebook fact it fetches the cited URL (ChurchMapBot user agent, robots.txt,
+2 s per host, public addresses only, redirects re-checked, PDFs supported) and
+looks for the excerpt: whole, then fragment by fragment, with whitespace,
+punctuation and zero-width characters normalized.
+
+| Verdict | Meaning |
+|---|---|
+| `verified` | the excerpt (or every fragment) is on the page |
+| `partial` | some fragments found, not all |
+| `not_found` | page fetched, excerpt absent (page changed, JS-rendered, or not verbatim) |
+| `not_an_excerpt` | the "excerpt" describes the page instead of quoting it |
+| `fetch_failed` / `robots_blocked` / `unsupported` / `unsafe_url` | could not check |
+| `skipped_facebook` | Page facts follow D-3; we never fetch Facebook |
+
+Only `verified` lets a website or denomination fact through. Everything else needs
+another source or another pass.
 
 ## Rules enforced by tests
 
@@ -53,6 +78,7 @@ and a verified website, fresh Page or displayable phone.
 - Exactly one Muse verdict per manifest church; every Muse fact has a source.
 - D-1: hidden records are never visit-ready. D-2: personal phones are never kept.
 - D-3: Facebook-only facts appear only for active rows with a Page post in the last 12 months, never when on hold.
+- A shown website or denomination fact was re-verified on its cited page.
 - No join inflates church counts.
 
 `as_of_date` (dbt var) pins the D-3 freshness date for reproducible builds.
