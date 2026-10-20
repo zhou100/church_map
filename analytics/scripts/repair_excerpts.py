@@ -44,6 +44,7 @@ EXCERPT_CAP = 200
 REPAIRABLE = ("not_found", "partial", "not_an_excerpt")
 TIME_RE = re.compile(r"\b(\d{1,2})(?::(\d{2}))?\s*([ap])\.?\s?m\b\.?", re.I)
 EMAIL_RE = re.compile(r"[\w.+-]+@[\w-]+\.[\w.]+")
+PERSON_CUE_RE = re.compile(r"\b(Contact|Pastor|Rev\.?|Reverend|Father|Fr\.|Deacon|Elder|Bishop|Msgr\.?)\b")
 
 
 def collapse(text: str) -> str:
@@ -76,6 +77,15 @@ def window(text: str, start: int, end: int) -> str | None:
             b = min(b, m.start())
         else:
             return None  # the fact itself sits inside an e-mail address
+    # Keep people out too (rule N1): a clergy/contact cue near the fact usually comes
+    # with a name ("Contact Sam Shin | Senior Pastor"). Cut the passage before the cue
+    # and the capitalized words leading into it; drop leading context that has one.
+    for m in PERSON_CUE_RE.finditer(text, a, b):
+        if m.start() >= end:
+            lead = re.search(r"(?:\b[A-Z][\w.'-]*[\s|,]+){0,3}$", text[end:m.start()])
+            b = min(b, end + (lead.start() if lead else m.start() - end))
+        elif m.end() <= start:
+            a = start
     snippet = text[a:b].strip()
     return snippet if snippet and len(snippet) <= EXCERPT_CAP else None
 
@@ -89,7 +99,7 @@ def find_address(text: str, street: str) -> str | None:
         return None
     pat = re.compile(rf"(?<!\d){re.escape(number)}\W+{re.escape(first)}\b", re.I)
     hit = pat.search(text)
-    return window(text, hit.start(), hit.end() + 40) if hit else None
+    return window(text, hit.start(), hit.end()) if hit else None  # window adds the context
 
 
 def find_phone(text: str, phone: str) -> str | None:

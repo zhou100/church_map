@@ -994,9 +994,17 @@ Repairs now accumulate across runs (the tool works on the current file), with th
 
 dbt: 86/86.
 
-**Owner calls still open:**
-- D-107 Disciple Church vs CN-014 Gospel Chinese Christian Church: same address and time slot.
-- D-035 Holy Virgin Cathedral vs known 76280.
+**Owner calls:**
+- **D-107 vs CN-014 — decided: two congregations sharing one building at 137 Dempsey Road, Milpitas.** The owner confirmed both addresses are 137.
+  - D-107 is no longer linked to CN-014 as a possible duplicate.
+  - Its address had been cited from Gospel Chinese's own site, so it was re-sourced to Disciple Church's own locations page, which states the same 137.
+  - Lesson: re-verification proves an excerpt is on the cited page, not that the page belongs to the congregation. A fact cited from another congregation's site needs the same scrutiny as a possible duplicate.
+- D-035 Holy Virgin Cathedral vs known 76280: still open.
+
+**`repair_excerpts.py` now keeps people out of repaired passages:**
+- It cuts at clergy/contact cues (Pastor, Rev., Father, Contact, …).
+- The fact span is the hit itself, with context added around it.
+- D-075 and D-104 were re-extracted (a priest's name, and a second "Cell" number).
 
 ## 9. Views
 

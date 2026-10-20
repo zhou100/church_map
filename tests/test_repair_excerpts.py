@@ -77,3 +77,12 @@ def test_blocked_source_is_resourced_to_the_churchs_own_site(monkeypatch):
     # The phone isn't on the church's site: left exactly as it was.
     assert r["phone_source_url"] == "https://www.dsj.org/parishes/"
     assert [x["action"] for x in log] == ["resourced", "not_resourced"]
+
+
+def test_names_near_the_fact_are_cut_out():
+    page = rx.collapse("Children's Ministry | 8:00pm 137 Dempsey Road Milpitas, Ca 95035 Contact Sam Shin | Senior Pastor")
+    ex = rx.find_address(page, "137 Dempsey Rd")
+    assert ex and "137 Dempsey Road" in ex and "Shin" not in ex and "Pastor" not in ex
+    page = rx.collapse("Pastor John Smith welcomes you. 461 Orange Avenue Los Altos, CA 94022")
+    ex = rx.find_address(page, "461 Orange Avenue")
+    assert ex and "Smith" not in ex and ex.startswith("461 Orange Avenue")
