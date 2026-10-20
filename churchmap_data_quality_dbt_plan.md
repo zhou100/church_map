@@ -999,12 +999,57 @@ dbt: 86/86.
   - D-107 is no longer linked to CN-014 as a possible duplicate.
   - Its address had been cited from Gospel Chinese's own site, so it was re-sourced to Disciple Church's own locations page, which states the same 137.
   - Lesson: re-verification proves an excerpt is on the cited page, not that the page belongs to the congregation. A fact cited from another congregation's site needs the same scrutiny as a possible duplicate.
-- D-035 Holy Virgin Cathedral vs known 76280: still open.
+- **D-035 vs 76280 — decided: two congregations.**
+
+  | Record | Name | Address | Source |
+  |---|---|---|---|
+  | D-035 | Holy Virgin Cathedral (Joy of All Who Sorrow) | 6210 Geary Blvd, SF 94121 | the cathedral's own FAQ page ("Our location: …") |
+  | 76280 | Old Holy Virgin Cathedral | 864 Fulton St, SF 94117 | the Western American Diocese parish page (S3) |
+
+  - D-035 had no address before.
+  - For 76280, Muse's ZIP 94115 had no source and was corrected to 94117.
+  - Both changes are logged in `returns/repairs/manual_*_D.csv`.
 
 **`repair_excerpts.py` now keeps people out of repaired passages:**
 - It cuts at clergy/contact cues (Pastor, Rev., Father, Contact, …).
 - The fact span is the hit itself, with context added around it.
 - D-075 and D-104 were re-extracted (a priest's name, and a second "Cell" number).
+
+### Status 2026-10-20: full-street address matching (review finding on PR #41)
+
+**Finding.** `repair_excerpts.find_address` matched only the house number and the first street word, and the validator checked only the house number. So a passage stating "107 San Mateo Avenue" could stand as evidence for "107 San Pedro Road". Re-verification can't catch this, because it proves only that the passage is on the page.
+
+**Fix:**
+- **One shared normalizer** in `validate_returns.py`: `street_key` / `excerpt_supports_street`.
+  - It compares the house number + every street word.
+  - Suffix and direction spellings are normalized; ordinals (39th = 39) and Saint/St./Mount/Fort are handled.
+  - A unit after the suffix is ignored; an omitted suffix is accepted only when no other suffix stands in its place.
+- **Applied in three places:**
+  - the validator (error);
+  - `repair_excerpts` (it only proposes a passage stating the full address);
+  - `build_seeds`: a hard gate. An address whose excerpt doesn't state it is withheld (`address_unsupported`), whatever its source or repair history.
+- **Repair log is now append-only** (`run_id`, `logged_at`). Earlier logs were overwritten per run. They are kept as `*.legacy.csv`, and a complete record of every change against Muse's originals is in `repairs/<stem>.history_reconstructed.csv`.
+- **Tests:** counterexample tests (same number + same first word, other suffix, other direction, number inside a number, 38th vs 39th) and positive spelling variants.
+
+**Audit of everything delivered** (501 addresses):
+
+| Rows | Cause | Effect |
+|---|---|---|
+| C-054 (1860 Grant **Ave** vs page "Grant **Road**"), D-059 (5284 Monterey **Rd** vs page "Monterey **Highway**") | Introduced by our `--resource-blocked` step: exactly this bug | Had counted as verified; now withheld |
+| D-015, D-112 | Normalizer false negatives (ordinal, Saint/St.) | Fixed |
+| Two v2 A rows | — | Superseded by task E |
+
+Totals after the fix:
+
+| Measure | Value |
+|---|---:|
+| D visit-ready | 40 |
+| New congregations with a verified address | 158 |
+| New congregations profile-ready | 101 |
+
+The geocoding input was regenerated without C-054 and D-059.
+
+**C-054 and D-059 stay withheld** until their street name is confirmed. In both cases the church's own site uses a different street name from the recorded value.
 
 ## 9. Views
 

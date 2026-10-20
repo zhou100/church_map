@@ -96,6 +96,70 @@ ZIP_CITIES = {
     "94513": {"Brentwood"}, "94561": {"Oakley"}, "94548": {"Knightsen"}, "94510": {"Benicia"},
 }
 
+# ---- Street addresses: one normalizer for the validator, repair tool and seeds ----
+# "107 San Mateo Avenue" must never count as evidence for "107 San Pedro Road":
+# compare the house number and every word of the street name, with suffixes and
+# directions normalized; a unit/suite after the suffix is ignored.
+STREET_SUFFIX = {"street": "st", "st": "st", "avenue": "ave", "ave": "ave", "av": "ave", "boulevard": "blvd",
+                 "blvd": "blvd", "drive": "dr", "dr": "dr", "road": "rd", "rd": "rd", "lane": "ln", "ln": "ln",
+                 "court": "ct", "ct": "ct", "way": "way", "place": "pl", "pl": "pl", "circle": "cir", "cir": "cir",
+                 "highway": "hwy", "hwy": "hwy", "real": "real", "parkway": "pkwy", "pkwy": "pkwy",
+                 "terrace": "ter", "ter": "ter", "plaza": "plz", "plz": "plz", "square": "sq", "sq": "sq",
+                 "alley": "aly", "aly": "aly", "expressway": "expy", "expy": "expy", "center": "ctr", "ctr": "ctr"}
+STREET_DIRECTION = {"north": "n", "n": "n", "south": "s", "s": "s", "east": "e", "e": "e", "west": "w", "w": "w"}
+UNIT_WORDS = {"ste", "suite", "unit", "apt", "room", "rm", "fl", "floor", "bldg", "building", "#"}
+
+
+NAME_ABBREV = {"saint": "st", "mount": "mt", "fort": "ft"}  # "St. Lawrence" = "Saint Lawrence"
+
+
+def street_tokens(text: str) -> list[str]:
+    t = (text or "").lower().replace(".", "")
+    toks = re.findall(r"#|[^\W_]+", t)
+    out = []
+    for x in toks:
+        x = re.sub(r"^(\d+)(st|nd|rd|th)$", r"\1", x)  # "39th" = "39"
+        out.append(NAME_ABBREV.get(x, STREET_DIRECTION.get(x, STREET_SUFFIX.get(x, x))))
+    return out
+
+
+def street_key(street: str) -> tuple[str, tuple[str, ...]] | None:
+    """(house number, normalized street-name tokens up to and including the suffix)."""
+    toks = street_tokens(street)
+    if not toks or not toks[0].isdigit() or len(toks) < 2:
+        return None
+    name = []
+    for tok in toks[1:]:
+        if tok in UNIT_WORDS:
+            break
+        name.append(tok)
+        if tok in STREET_SUFFIX.values() and len(name) > 1:
+            break
+    return (toks[0], tuple(name)) if name else None
+
+
+def excerpt_supports_street(excerpt: str, street: str) -> bool:
+    """True if the excerpt states this exact street address (number + full street name).
+    A suffix may be left out in the excerpt ("107 San Pedro, Colma") as long as no
+    other suffix stands in its place."""
+    key = street_key(street)
+    if not key:
+        return False
+    number, name = key
+    toks = street_tokens(excerpt)
+    seqs = [[number, *name]]
+    if len(name) > 1 and name[-1] in STREET_SUFFIX.values():
+        seqs.append([number, *name[:-1]])
+    for seq in seqs:
+        n = len(seq)
+        for i in range(len(toks) - n + 1):
+            if toks[i:i + n] == seq:
+                nxt = toks[i + n] if i + n < len(toks) else ""
+                if len(seq) == len(name) + 1 or nxt not in STREET_SUFFIX.values():
+                    return True
+    return False
+
+
 FACT_GROUPS = {
     # group -> predicate: is the group "filled" on this row? (kids exists from v3)
     "status": lambda r: r["status"] not in ("", "unresolved"),
@@ -229,9 +293,8 @@ def check_fact_groups(w: str, r: dict) -> None:
                 and r[f"{g}_source_type"] == "denomination":
             warn(w, f"{g}_source_url is a bare homepage; cannot locate the cited listing")
     ex = r.get("address_excerpt", "")
-    house = re.match(r"\s*(\d+)", r.get("street_address") or "")
-    if house and ex and house.group(1) not in ex:
-        err(w, "address_excerpt does not contain the house number")
+    if r.get("street_address") and ex and not excerpt_supports_street(ex, r["street_address"]):
+        err(w, "address_excerpt does not state this full street address (number + street name)")
     if r.get("phone") and r.get("phone_excerpt") and digits(r["phone"])[-4:] not in digits(r["phone_excerpt"]):
         err(w, "phone_excerpt does not contain the phone's last 4 digits")
     if r.get("service_times_verbatim") and r.get("service_excerpt") and not TIME_RE.search(r["service_excerpt"]):
@@ -283,9 +346,8 @@ def check_results(batch: str, path: Path, received_at: datetime | None, redo: bo
                 warn(w, f"{g}_source_url is a bare homepage; cannot locate the cited listing")
 
         ex = r["address_excerpt"]
-        house = re.match(r"\s*(\d+)", r["street_address"] or "")
-        if house and ex and house.group(1) not in ex:
-            err(w, "address_excerpt does not contain the house number")
+        if r["street_address"] and ex and not excerpt_supports_street(ex, r["street_address"]):
+            err(w, "address_excerpt does not state this full street address (number + street name)")
         if r["zip"] and ex and r["zip"] not in ex:
             warn(w, f"address_excerpt does not contain zip {r['zip']}")
         if r["phone"] and r["phone_excerpt"] and digits(r["phone"])[-4:] not in digits(r["phone_excerpt"]):
@@ -359,9 +421,8 @@ def check_candidates(path: Path, received_at: datetime | None) -> list[dict]:
             err(w, f"source_type={r['source_type']!r} not allowed")
         if r["found_via"] not in ENUMS["found_via"]:
             err(w, f"found_via={r['found_via']!r} not allowed")
-        house = re.match(r"\s*(\d+)", r["street_address"] or "")
-        if house and house.group(1) not in r["excerpt"]:
-            warn(w, "street_address not supported by the excerpt")
+        if r["street_address"] and not excerpt_supports_street(r["excerpt"], r["street_address"]):
+            warn(w, "street_address not supported by the excerpt (number + full street name)")
         if not r["street_address"]:
             warn(w, "no street address (cannot be pinned)")
         if r["source_type"] == "other":

@@ -72,6 +72,7 @@ seeds:
         personal_phone_withheld: boolean
         checked_at_reliable: boolean
         service_times_unsupported: boolean
+        address_unsupported: boolean
         last_pass: text
         source_file: text
     muse_candidates:
@@ -118,6 +119,7 @@ seeds:
         checked_at_reliable: boolean
         personal_phone_withheld: boolean
         service_times_unsupported: boolean
+        address_unsupported: boolean
         last_pass: text
         source_file: text
     quality_reviews:

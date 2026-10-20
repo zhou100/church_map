@@ -41,6 +41,7 @@ sys.path.insert(0, str(HANDOFF))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fact_fingerprint import FACT_FIELDS, fact_fingerprint  # noqa: E402
 from validate_returns import NEGATED_PERSONAL_RE, PERSONAL_PHONE_RE, STRICT_TS_RE  # noqa: E402
+from validate_returns import excerpt_supports_street  # noqa: E402
 from validate_returns import TIME_RE as EXCERPT_TIME_RE  # noqa: E402  (grading has its own TIME_RE)
 
 RET = HANDOFF / "returns"  # replaced by --returns
@@ -82,7 +83,7 @@ RESULT_COLS = [
     "service_languages", "service_source_url", "service_source_type", "kids_program_verbatim",
     "kids_source_url", "kids_source_type", "match_confidence", "duplicate_of_church_id",
     "checked_at", "personal_phone_withheld", "checked_at_reliable", "service_times_unsupported",
-    "last_pass", "source_file",
+    "address_unsupported", "last_pass", "source_file",
 ]
 
 # Candidate files in override order; task E rebuilds A/B rows under the same ref.
@@ -99,7 +100,7 @@ CAND_COLS = [
     "service_languages", "service_source_url", "service_source_type", "kids_program_verbatim",
     "kids_source_url", "kids_source_type", "possible_match_church_id", "possible_match_candidate_id",
     "duplicate_of_church_id", "match_confidence", "found_via", "checked_at", "checked_at_reliable",
-    "personal_phone_withheld", "service_times_unsupported", "last_pass", "source_file",
+    "personal_phone_withheld", "service_times_unsupported", "address_unsupported", "last_pass", "source_file",
 ]
 
 # Duplicates we established that Muse did not mark (plan §6: B outcome, CN outcome).
@@ -179,6 +180,15 @@ def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
         r["service_times_unsupported"] = "true"
     else:
         r["service_times_unsupported"] = "false"
+    # An address is published only if its excerpt states that exact street address
+    # (house number + every street word). "107 San Mateo Avenue" is not evidence for
+    # "107 San Pedro Road", even when the passage is really on the cited page.
+    addr_ex = r.get("address_excerpt") if "address_excerpt" in r else r.get("excerpt", "")
+    if r.get("street_address") and not excerpt_supports_street(addr_ex or "", r["street_address"]):
+        r["street_address"] = ""
+        r["address_unsupported"] = "true"
+    else:
+        r["address_unsupported"] = "false"
     r["service_languages"] = normalize_languages(r.get("service_languages", ""))
     return r
 

@@ -86,3 +86,26 @@ def test_names_near_the_fact_are_cut_out():
     page = rx.collapse("Pastor John Smith welcomes you. 461 Orange Avenue Los Altos, CA 94022")
     ex = rx.find_address(page, "461 Orange Avenue")
     assert ex and "Smith" not in ex and ex.startswith("461 Orange Avenue")
+
+
+def test_same_number_and_first_word_on_another_street_is_not_repaired():
+    page = rx.collapse("Our sister parish is at 107 San Mateo Avenue, San Bruno. Mass times are below.")
+    assert rx.find_address(page, "107 San Pedro Road") is None
+    page = rx.collapse("Office: 107 San Pedro Road, Colma, CA 94014")
+    assert "107 San Pedro Road" in rx.find_address(page, "107 San Pedro Rd")
+
+
+def test_repair_log_keeps_history(tmp_path):
+    log = tmp_path / "repairs" / "x.csv"
+    rx.append_log(log, [{"row_key": "1", "group": "address", "action": "repaired"}])
+    rx.append_log(log, [{"row_key": "2", "group": "phone", "action": "repaired"}])
+    import csv
+    rows = list(csv.DictReader(log.open(encoding="utf-8")))
+    assert [r["row_key"] for r in rows] == ["1", "2"] and all(r["run_id"] and r["logged_at"] for r in rows)
+
+
+def test_repair_finds_ordinal_and_saint_spellings_but_not_other_streets():
+    page = rx.collapse("Address : 1971 Saint Lawrence Dr. Santa Clara, 95051. Also 1555 39 Avenue San Francisco")
+    assert "1971 Saint Lawrence Dr" in rx.find_address(page, "1971 St. Lawrence Dr.")
+    assert "1555 39 Avenue" in rx.find_address(page, "1555 39th Avenue")
+    assert rx.find_address(rx.collapse("1860 Grant Road Los Altos"), "1860 Grant Ave") is None

@@ -1,12 +1,17 @@
 # ChurchMap × Muse — round 5: tasks F and L
 
-**All rules come from `BRIEF_v3.md` (v3.1).** The most important ones:
+**All rules come from `BRIEF_v3.md` (v3.2).** The most important ones:
 - **N9:** excerpts are verbatim, never edited to pass a check.
 - **D4:** match duplicates by address as well as name, including against your own outputs.
 - **D7:** write `checked_at` at the real time of each check.
-- **D9:** re-open your files from disk and give a manifest.
+- **D9:** re-open your files from disk and give a manifest. The manifest must list the **final** files; re-hash after any merge or fill pass.
+- **[v3.2]** `candidate_ref`s are permanent (D11). Service excerpts contain the times. `checked_at` is `YYYY-MM-DDTHH:MM:SSZ` from a UTC clock, per row, at the time of the check; no shared or after-the-fact stamps.
+- **Pace yourself.** Round 4 hit HTTP 429 halfway and left 200 rows unresolved.
+  - Keep to about one request every few seconds per site, and fewer parallel workers.
+  - If you are rate-limited, stop, deliver what is finished as a part with its own manifest, and resume later. Don't mark rows unresolved just because the limit hit; list them as "not yet checked" in the run log.
+- **A fact must come from the congregation's own sources** (S1/S2) or its denomination (S3). Never take an address or phone from **another congregation's** website, even one that shares the building. In round 4, D-107's address was cited from its host church's site.
 
-**Start round 5 only after round 4 (E and D) is delivered.** De-duplicate against `known_congregations_v5.csv` **and** your own C, CN, D, and E outputs.
+**De-duplicate against `known_congregations_v6.csv`.** It replaces v5 and already includes every directory row and every discovery from A through E (C, CN, D, and E included), with current names, addresses, and status.
 
 Work order: **F verification** → **L** → **F discovery**. Deliver each part when it is done. Each part needs its own D9 manifest.
 
@@ -28,7 +33,7 @@ Work order: **F verification** → **L** → **F discovery**. Deliver each part 
 | Tri-Valley and central Contra Costa | Livermore 7, Concord 7, San Ramon 5, Dublin 3, Pleasanton 3, Danville 2, Walnut Creek 2 … |
 | Other | Benicia 13, and single rows |
 
-**Discovery.** Find congregations missing from the known list and from your outputs. Report every language the church states.
+**Discovery.** Find congregations missing from `known_congregations_v6.csv`. Report every language the church states.
 
 | City | Cap |
 |---|---:|
@@ -83,7 +88,7 @@ Task CN covered Chinese-language congregations. **L covers the other languages.*
 | Any other non-English language (e.g. Japanese, Indonesian, Portuguese, Russian, Arabic, Amharic, Hindi, Malayalam, Telugu, Tongan, Samoan) | 40 total |
 
 Rules for this task:
-- A congregation already known, or in your C/D/E outputs, is reported **only if you add stated languages, service times, or a children's program**. Set `possible_match_id` (D4).
+- A congregation already in `known_congregations_v6.csv` is reported **only if you add stated languages, service times, or a children's program**. Set `possible_match_id` to its `known_id` (D4).
 - The language must be **stated by the congregation** (N5). A name like "Korean …" is a search clue, not proof.
 - Use `task = L`, `candidate_ref` `L-001`….
 
@@ -95,9 +100,9 @@ Rules for this task:
 
 | File | Notes |
 |---|---|
-| `BRIEF_v3.md` | v3.1 |
+| `BRIEF_v3.md` | v3.2 |
 | `muse_handoff/batch_F_manifest.csv` | 404 rows, sha256 `7de32c6fac00b1b680851d0b2a65f20b0d1fd515f3105c145aa12fc1e06db57b` |
-| `muse_handoff/outbox/known_congregations_v5.csv` | 932 known: directory records for all areas so far (including the East Bay) plus discoveries from A, B, and CN. **It does not include your C, D, or E outputs; check those yourself.** |
+| `muse_handoff/outbox/known_congregations_v6.csv` | 1,150 known, sha256 `31e0a8c2af04f5801f276009113110d4a3bcf96b723936b846ba4154098c1f84`: 869 directory records (all areas, East Bay included, with your verified names/addresses/status where you checked them) and 281 discoveries (A/B as rebuilt in E, CN, C, D) |
 | `results_TEMPLATE_v3.csv`, `new_candidates_TEMPLATE_v3.csv` | Unchanged |
 
 ## How we will check it

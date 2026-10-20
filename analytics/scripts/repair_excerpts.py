@@ -17,9 +17,12 @@ reason) first, e.g. a city the agent changed because our ZIP table was incomplet
 
 Reads returns/recheck/<stem>.csv for the failing facts, keeps the agent's file as
 <stem>.muse.csv (first run only), rewrites <stem>.csv with the repairs (runs
-accumulate; re-check between runs), and logs
-every change to returns/repairs/<stem>.csv. Re-run recheck_sources.py afterwards:
-the repaired excerpts must verify like any other.
+accumulate; re-check between runs), and appends every change, with a run_id, to
+returns/repairs/<stem>.csv (history is never overwritten). Re-run
+recheck_sources.py afterwards: the repaired excerpts must verify like any other.
+
+A repaired excerpt is not a publish decision: it only proves the page states the
+fact. Addresses must state the full street (house number + every street word).
 
 Fetching uses recheck_sources.Fetcher (robots.txt, public hosts, 2 s per host, no
 Facebook).
@@ -38,7 +41,10 @@ from pathlib import Path
 import httpx
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
+sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "muse_handoff"))
 import recheck_sources as rs  # noqa: E402
+from validate_returns import (NAME_ABBREV, STREET_DIRECTION, STREET_SUFFIX,  # noqa: E402
+                              excerpt_supports_street, street_key)
 
 EXCERPT_CAP = 200
 REPAIRABLE = ("not_found", "partial", "not_an_excerpt")
@@ -90,16 +96,30 @@ def window(text: str, start: int, end: int) -> str | None:
     return snippet if snippet and len(snippet) <= EXCERPT_CAP else None
 
 
+def _token_pattern(tok: str) -> str:
+    """Every spelling that normalizes to this token: 'rd' -> (road|rd), 'w' -> (west|w)."""
+    forms = {k for k, v in {**STREET_SUFFIX, **STREET_DIRECTION, **NAME_ABBREV}.items() if v == tok} | {tok}
+    alts = "|".join(re.escape(f) for f in sorted(forms, key=len, reverse=True))
+    if tok.isdigit():
+        return rf"{re.escape(tok)}(?:st|nd|rd|th)?"  # "39" matches "39th"
+    return "(?:" + alts + r")\.?"
+
+
 def find_address(text: str, street: str) -> str | None:
-    m = re.match(r"\s*(\d+)\s+([A-Za-z0-9.]+)\s*([A-Za-z]+)?", street or "")
-    if not m:
+    """A passage stating this exact address: the house number followed by every word
+    of the street name (suffix and direction in any spelling). "107 San Mateo Avenue"
+    is not evidence for "107 San Pedro Road"."""
+    key = street_key(street)
+    if not key:
         return None
-    number, first = m.group(1), m.group(2).rstrip(".")
-    if len(re.sub(r"\W", "", first)) < 2:
-        return None
-    pat = re.compile(rf"(?<!\d){re.escape(number)}\W+{re.escape(first)}\b", re.I)
+    number, name = key
+    pat = re.compile(rf"(?<!\d){re.escape(number)}\W+" + r"\W+".join(_token_pattern(t) for t in name) + r"(?![\w])",
+                     re.I)
     hit = pat.search(text)
-    return window(text, hit.start(), hit.end()) if hit else None  # window adds the context
+    if not hit:
+        return None
+    passage = window(text, hit.start(), hit.end())  # window adds the context
+    return passage if passage and excerpt_supports_street(passage, street) else None
 
 
 def find_phone(text: str, phone: str) -> str | None:
@@ -234,6 +254,28 @@ def apply_manual(rows: list[dict], key_col: str, manual: Path | None, log: list[
                     "old_excerpt": c["old_value"], "new_excerpt": c["new_value"]})
 
 
+LOG_FIELDS = ["run_id", "logged_at", "row_key", "group", "action", "reason", "old_excerpt", "new_excerpt"]
+RUN_ID = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+
+
+def append_log(log_path: Path, log: list[dict]) -> None:
+    """Append-only history: every run adds its rows under its own run_id; nothing is
+    overwritten. An older log without run_id columns is kept as <name>.legacy.csv."""
+    log_path.parent.mkdir(exist_ok=True)
+    if log_path.exists():
+        with log_path.open(encoding="utf-8") as f:
+            header = next(csv.reader(f), [])
+        if header and header[:2] != LOG_FIELDS[:2]:
+            log_path.rename(log_path.with_suffix(".legacy.csv"))
+    new = not log_path.exists()
+    now = datetime.now(timezone.utc).strftime("%Y-%m-%dT%H:%M:%SZ")
+    with log_path.open("a", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=LOG_FIELDS, extrasaction="ignore")
+        if new:
+            w.writeheader()
+        w.writerows({**row, "run_id": RUN_ID, "logged_at": now} for row in log)
+
+
 async def repair(path: Path, manual: Path | None = None, resource: bool = False) -> None:
     ret = path.parent
     report = ret / "recheck" / f"{path.stem}.csv"
@@ -282,11 +324,7 @@ async def repair(path: Path, manual: Path | None = None, resource: bool = False)
         w = csv.DictWriter(f, fieldnames=cols)
         w.writeheader()
         w.writerows(rows)
-    (ret / "repairs").mkdir(exist_ok=True)
-    with (ret / "repairs" / f"{path.stem}.csv").open("w", newline="", encoding="utf-8") as f:
-        w = csv.DictWriter(f, fieldnames=["row_key", "group", "action", "reason", "old_excerpt", "new_excerpt"])
-        w.writeheader()
-        w.writerows(log)
+    append_log(ret / "repairs" / f"{path.stem}.csv", log)
     done = sum(1 for x in log if x["action"] == "repaired")
     manual_done = sum(1 for x in log if x["action"] == "manual")
     resourced = sum(1 for x in log if x["action"] == "resourced")

@@ -77,3 +77,6 @@ analytics/dbt/seeds/quality_reviews.csv
 analytics/dbt/seeds/source_checks.csv
 # Files sent to Muse that contain Muse-derived data (current names, addresses)
 muse_handoff/outbox/
+
+# Exports built from Muse-derived data (addresses etc.); regenerate from dbt
+analytics/exports/

@@ -163,3 +163,12 @@ def test_build_reviews_runs_and_grades(tmp_path, monkeypatch):
     got = {r["review_id"]: r["verdict"] for r in csv.DictReader((seeds / "quality_reviews.csv").open(encoding="utf-8"))}
     assert got == {"1-service_times": "disagree", "76692-status": "definition_disagreement",
                    "1-street_address": "agree"}
+
+
+def test_address_not_stated_by_its_excerpt_is_not_published():
+    r = bs.sanitize({"street_address": "107 San Pedro Road",
+                     "address_excerpt": "Parish office: 107 San Mateo Avenue, San Bruno", "checked_at": ""})
+    assert r["street_address"] == "" and r["address_unsupported"] == "true"
+    r = bs.sanitize({"street_address": "107 San Pedro Rd",
+                     "address_excerpt": "107 San Pedro Road Colma, CA 94014", "checked_at": ""})
+    assert r["street_address"] == "107 San Pedro Rd" and r["address_unsupported"] == "false"
