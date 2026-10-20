@@ -441,6 +441,54 @@ Scored against Yujun's independent audit of the 19 batch-A rows (section 3). Yuj
 
 **Follow-up before ingesting v3 returns:** extend `analytics/scripts/build_seeds.py` and the dbt staging models for the kids group and v3 candidates.
 
+### Task CN outcome (received 2026-10-20, about 16:29Z)
+
+`new_candidates_CN.csv`: 40 rows (26 active, 14 unresolved). The sha256 `e064d74e…` matches Muse's report, and the validator shows **0 errors**.
+
+| Item | Count |
+|---|---:|
+| Rows with Chinese-language services stated by the church | 31 (Mandarin, Cantonese, Taiwanese, or "Chinese") |
+| Rows without a stated language (name-only leads, mostly unresolved) | 9 |
+| Rows with a children's program | 17 |
+| Rows with a street address | 27 |
+| Enrichments of known congregations | 8 |
+
+**Problems found:**
+
+1. **Excerpts edited to pass our checks (CN-011, CN-015, CN-025, CN-026).** The run log admits "service excerpts given machine-readable time tokens"; CN-026's excerpt is plainly paraphrased. That makes those excerpts unverifiable. The cause is our validator, which didn't accept CJK times such as 一時半.
+   - **Fixed:** the validator now accepts CJK times.
+   - **Brief v3.1 N9:** excerpts are never edited to pass a check.
+   - The planned automated source re-verification will catch any that slip through.
+2. **Missed duplicates:**
+   - CN-025 Canaan Taiwanese is known as 78022 (same Fortran Court address). 78022 is also in the batch D manifest.
+   - CN-021 Southbay Community Baptist and CN-037 South Bay Chinese Baptist share 448 Francis Dr.
+   - CN-035 Cumberland Presbyterian (Daly City) is likely known as 76332 (Cumberland Presbyterian Chinese Church, San Francisco).
+   - **Brief v3.1 D4:** match on address, and within Muse's own output.
+3. **Process again:**
+   - The coordinator delivered fragments, and 15 of 41 rows were lost with a wiped /tmp. A fill pass then completed 14 (one was dropped as out of area: Torrance). Muse reported this honestly.
+   - Language separators were inconsistent; v3.1 fixes the format, and seeds will normalize existing rows.
+4. **CN-002 (76663, Community Baptist San Mateo) is `unresolved` here** because the site is undated, while batch A said `active`. This follows the 12-month rule strictly. Task E re-checks 76663.
+
+The seed builder and dbt don't read v3 candidates yet. They will be extended when task C arrives, so CN and C are ingested together.
+
+### Round 4: tasks E and D (prepared 2026-10-19, while C and CN run)
+
+The rules are unchanged (BRIEF_v3). The task sheet is `muse_handoff/TASKS_round4.md`.
+
+**Task E (72 rows): finish the pilot.**
+- **Directory rows (49):** the in-scope active pilot churches. Every row gets a children's program and service languages. The 10 that aren't visit-ready also need a verified address, contact, or current service times.
+- **Discoveries (23):** the A and B discoveries are rebuilt as full v3 rows with per-fact sources.
+- **Inputs** (in `outbox/`, gitignored): `enrich_E_input.csv`, `enrich_E_current_rows.csv` (start-from rows; no going backwards), `enrich_E_candidates_known.csv`.
+
+**Task D (294 + discovery).**
+- **Verification:** `muse_handoff/batch_D_manifest.csv` (sha256 `57e16fbf…`): San Francisco 106, San Jose area 69, Fremont 37, Milpitas 21, Santa Clara 21, Campbell 18, Union City 9, Newark 7, Los Gatos / Monte Sereno 6. Handling: 244 full, 45 scope check only, 5 labeled.
+- **Discovery caps:** San Francisco 60, San Jose 80, Fremont 30, others 25 each. Muse reports any stated language, not only Chinese.
+- **De-duplication:** `outbox/known_congregations_v4.csv` (488 known), plus Muse's own C and CN outputs.
+
+**Validator:** now has San Francisco and Fremont-area ZIPs and the task values D and E.
+
+**Recommendation:** send round 4 after the C returns pass `validate_returns.py`, so any systematic v3 problem is fixed before a run four times as large.
+
 ### Regenerating the manifest
 
 Built read-only from `holyhub.db` (`Churches` table), selecting `latitude BETWEEN 37.45 AND 37.65 AND longitude BETWEEN -122.50 AND -122.18`, ordered by batch, city, name. `gaps` is derived as follows:
