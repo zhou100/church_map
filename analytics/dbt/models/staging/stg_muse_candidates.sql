@@ -1,0 +1,43 @@
+-- Grain: one congregation Muse found outside the directory (v2 A/B and v3 tasks unified).
+select
+    candidate_id,
+    task,
+    format,
+    candidate_name,
+    nullif(current_name_native, '')                          as current_name_native,
+    nullif(denomination_stated, '')                          as denomination_stated,
+    nullif(city, '')                                         as city,
+    nullif(zip, '')                                          as zip,
+    nullif(official_url, '')                                 as official_url,
+    nullif(url_evidence, '')                                 as url_evidence,
+    nullif(facebook_page_url, '')                            as facebook_page_url,
+    nullif(fb_page_evidence, '')                             as fb_page_evidence,
+    fb_last_post_date,
+    nullif(status, '')                                       as muse_status,
+    nullif(street_address, '')                               as street_address,
+    nullif(address_source_type, '')                          as address_source_type,
+    nullif(address_is_worship_location, '')                  as address_is_worship_location,
+    host_church_id,
+    nullif(host_venue_name, '')                              as host_venue_name,
+    nullif(phone, '')                                        as phone,
+    nullif(phone_source_type, '')                            as phone_source_type,
+    nullif(service_times_verbatim, '')                       as service_times,
+    nullif(service_languages, '')                            as service_languages,
+    nullif(service_source_type, '')                          as service_source_type,
+    nullif(kids_program_verbatim, '')                        as kids_program,
+    nullif(kids_source_type, '')                             as kids_source_type,
+    possible_match_church_id,
+    nullif(possible_match_candidate_id, '')                  as possible_match_candidate_id,
+    duplicate_of_church_id,
+    nullif(match_confidence, '')                             as match_confidence,
+    found_via,
+    personal_phone_withheld,
+    checked_at,
+    checked_at_reliable,
+    last_pass,
+    source_file,
+    -- New = not a duplicate and not an enrichment of something already known.
+    duplicate_of_church_id is null
+        and possible_match_church_id is null
+        and nullif(possible_match_candidate_id, '') is null          as is_new_congregation
+from {{ ref('muse_candidates') }}

@@ -1,0 +1,14 @@
+# Local analytics sidecar. No secrets: defaults point at the local cluster
+# started per analytics/README.md; override with env vars for another target.
+churchmap_analytics:
+  target: local
+  outputs:
+    local:
+      type: postgres
+      host: "{{ env_var('ANALYTICS_PGHOST', 'localhost') }}"
+      port: "{{ env_var('ANALYTICS_PGPORT', '5433') | int }}"
+      user: "{{ env_var('ANALYTICS_PGUSER', 'analytics') }}"
+      password: "{{ env_var('ANALYTICS_PGPASSWORD', '') }}"
+      dbname: "{{ env_var('ANALYTICS_PGDATABASE', 'churchmap_analytics') }}"
+      schema: analytics
+      threads: 4

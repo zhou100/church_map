@@ -1,0 +1,8 @@
+# Analytics sidecar only; not installed into the backend image.
+dbt-core==1.8.8
+dbt-postgres==1.8.2
+psycopg[binary]>=3.2
+# Source re-verification (analytics/scripts/recheck_sources.py)
+httpx==0.28.1
+lxml==6.1.0
+pypdf==5.1.0

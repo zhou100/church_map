@@ -62,3 +62,21 @@ htmlcov/
 
 # Raw Muse returns contain Facebook/website excerpts; keep local
 muse_handoff/returns/
+
+# Analytics sidecar (local Postgres cluster and dbt build output)
+analytics/.pgdata/
+analytics/dbt/target/
+analytics/dbt/logs/
+analytics/dbt/dbt_packages/
+analytics/dbt/.user.yml
+# Muse-derived seeds: regenerate with analytics/scripts/build_seeds.py. Kept out of
+# the public repo until Muse output-reuse terms and Facebook display (D-3) are settled.
+analytics/dbt/seeds/muse_results.csv
+analytics/dbt/seeds/muse_candidates.csv
+analytics/dbt/seeds/quality_reviews.csv
+analytics/dbt/seeds/source_checks.csv
+# Files sent to Muse that contain Muse-derived data (current names, addresses)
+muse_handoff/outbox/
+
+# Exports built from Muse-derived data (addresses etc.); regenerate from dbt
+analytics/exports/
