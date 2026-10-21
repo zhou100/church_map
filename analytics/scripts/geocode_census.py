@@ -168,17 +168,34 @@ def classify(row, raw, timestamp):
         problems.append("Missing street-segment TIGER line ID or side; centroid/unknown precision rejected")
     if not (-15 <= lat <= 72 and (-180 <= lon <= -64 or 144 <= lon <= 180) and (lat, lon) != (0, 0)):
         problems.append("Outside repository US envelope")
-    if not (36.8 <= lat <= 38.1 and -123.0 <= lon <= -121.4):
-        problems.append("Outside Bay Area envelope")
-    if county_for(row["city"]) is None:
-        problems.append(f"No county rule for input city {row['city']!r}; requires review")
-    elif raw[8] != "06" or raw[9] != county_for(row["city"]):
-        problems.append(f"County check requires review: Census state/county {raw[8]}/{raw[9]}, city expects 06/{county_for(row['city'])}")
+    if not (32.4 <= lat <= 42.1 and -124.5 <= lon <= -114.1):
+        problems.append("Outside California envelope")
+    county = county_for(row["city"])
+    if county is not None:
+        if raw[8] != "06" or raw[9] != county:
+            problems.append(f"County check requires review: Census state/county {raw[8]}/{raw[9]}, city expects 06/{county}")
+        locality = f"Census county 06/{raw[9]} verified"
+    else:
+        # No county table for this city: the matched address must sit in the input's
+        # own ZIP, or with no input ZIP in the input's own city (and in California).
+        # A same-numbered street elsewhere fails this.
+        parts = [p.strip() for p in raw[4].split(",")]
+        matched_city, matched_zip = (parts[-3], parts[-1]) if len(parts) >= 4 else ("", "")
+        if raw[8] != "06":
+            problems.append(f"Census state {raw[8]} is not California")
+        if row["zip"]:
+            if matched_zip != row["zip"].strip()[:5]:
+                problems.append(f"No county rule for input city {row['city']!r}; Census ZIP {matched_zip} differs from input ZIP {row['zip']}")
+            locality = f"Census ZIP {matched_zip} equals input ZIP; Census county 06/{raw[9]}"
+        else:
+            if " ".join(matched_city.upper().split()) != " ".join(row["city"].upper().split()):
+                problems.append(f"No county rule for input city {row['city']!r}, no input ZIP, and Census city {matched_city!r} differs")
+            locality = f"no input ZIP; Census city {matched_city} equals input city; Census county 06/{raw[9]}"
     if problems:
         out.update(status="needs_review", notes="; ".join(problems))
     else:
         out.update(status="ok", latitude=f"{lat:.6f}", longitude=f"{lon:.6f}",
-                   notes=f"Street-segment interpolation; input house number/street agree; Census county 06/{raw[9]} verified.")
+                   notes=f"Street-segment interpolation; input house number/street agree; {locality}.")
         if row["current_lat"] and row["current_lon"]:
             out["distance_from_current_pin_m"] = f"{distance_m(float(row['current_lat']), float(row['current_lon']), lat, lon):.1f}"
     return out

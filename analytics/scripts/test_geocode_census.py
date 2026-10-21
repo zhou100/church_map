@@ -48,10 +48,40 @@ class CensusSafetyTests(unittest.TestCase):
         out = classify(source(), response(county="081"), "now")
         self.assertEqual(out["status"], "needs_review")
 
-    def test_unknown_city_fails_closed(self):
+    def test_unknown_city_without_zip_or_city_proof_fails_closed(self):
         row = source()
         row["city"] = "Unknown City"
+        row["zip"] = ""
         self.assertEqual(classify(row, response(), "now")["status"], "needs_review")
+        row["zip"] = "95036"
+        self.assertEqual(classify(row, response(), "now")["status"], "needs_review")
+
+    def test_unknown_county_city_without_zip_accepted_on_same_city(self):
+        row = source()
+        row["city"] = "Petaluma"
+        row["zip"] = ""
+        out = classify(row, response(address="137 DEMPSEY RD, PETALUMA, CA, 94954", county="097"), "now")
+        self.assertEqual(out["status"], "ok")
+        self.assertIn("Census city PETALUMA equals input city", out["notes"])
+
+    def test_unknown_city_needs_california(self):
+        row = source()
+        row["city"] = "Unknown City"
+        bad = response()
+        bad[8] = "32"
+        self.assertEqual(classify(row, bad, "now")["status"], "needs_review")
+
+    def test_unknown_city_accepted_on_matching_zip(self):
+        row = source()
+        row["city"] = "Unknown City"
+        out = classify(row, response(), "now")
+        self.assertEqual(out["status"], "ok")
+        self.assertIn("Census ZIP 95035 equals input ZIP", out["notes"])
+
+    def test_outside_california_is_withheld(self):
+        bad = response()
+        bad[5] = "-104.990000,39.740000"
+        self.assertEqual(classify(source(), bad, "now")["status"], "needs_review")
 
     def test_missing_segment_evidence_is_withheld(self):
         for kwargs in ({"line": ""}, {"side": ""}):

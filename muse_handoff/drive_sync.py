@@ -13,7 +13,7 @@ returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
         --leads muse_handoff/outbox/irs_leads_bay_sample100.csv      # from analytics/scripts/irs_leads.py
     python3 muse_handoff/drive_sync.py new-service-fixes --title "Re-quote 20 schedules" --ids 76632,C-063
     python3 muse_handoff/drive_sync.py publish WP-0001
-    python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build]
+    python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build] [--no-geocode]
 
 pull copies each newly delivered package into muse_handoff/returns/ as
 <kind>_WP0001.csv (build_seeds.py picks those up), records when it arrived in
@@ -641,6 +641,20 @@ def rebuild() -> str:
     return "" if p.returncode == 0 else "dbt build failed"
 
 
+def geocode() -> str:
+    """Census-geocode addresses that have no pin yet; rebuild if any result changed.
+    Returns "" on success (or nothing to do), else what failed."""
+    output = ROOT / "analytics/exports/geocode_output.csv"
+    before = output.read_bytes() if output.exists() else b""
+    p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"),
+                        str(ROOT / "analytics/scripts/geocode_incremental.py"), "--fetch"])
+    if p.returncode != 0:
+        return "geocode_incremental.py failed"
+    if output.read_bytes() == before:
+        return ""
+    return rebuild()
+
+
 def cmd_pull(args) -> int:
     if not DRIVE.exists():
         raise SystemExit(f"Drive folder {DRIVE} not mounted")
@@ -667,6 +681,11 @@ def cmd_pull(args) -> int:
                 status[wp].update(state="ingested", ingested_at=now_utc(), build_error="")
         save_status(status)
         print(f"rebuild {'FAILED: ' + failed if failed else 'ok'} for {', '.join(pending)}")
+        rc = 1 if failed else 0
+    # Every pull, not only after a delivery: rows a failed Census call left behind are retried.
+    if not args.no_build and not args.no_geocode and rc == 0:
+        failed = geocode()
+        print(f"geocode {'FAILED: ' + failed if failed else 'ok'}")
         rc = 1 if failed else 0
     queued = sum(r["state"] in ("queued", "needs_fix") for r in status.values())
     print(f"{queued} package(s) waiting for Muse")
@@ -705,6 +724,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("pull", help="ingest delivered packages")
     p.add_argument("--no-recheck", action="store_true")
     p.add_argument("--no-build", action="store_true")
+    p.add_argument("--no-geocode", action="store_true", help="skip the Census step for addresses without a pin")
     p.add_argument("--again", nargs="*", default=[], metavar="WP-xxxx",
                    help="process these packages' current DONE.md again (after a rule change)")
     p.set_defaults(fn=cmd_pull)

@@ -61,6 +61,7 @@ What `pull` does:
 - A package that fails validation is not ingested. It goes back to Muse as `feedback/WP-xxxx.md`, with the state set to `needs_fix`.
 - Ingested files land in `muse_handoff/returns/` as `<kind>_WP0001.csv`, with their receive times in `received.csv`. `build_seeds.py` picks them up after the lettered rounds.
 - Excerpt repair (`repair_excerpts.py`) stays a manual step.
+- After the rebuild, every pull geocodes the addresses that have no pin yet (`geocode_incremental.py --fetch`) and rebuilds again if any result changed. Skip it with `--no-geocode`.
 
 `pull` runs every hour from the Windows scheduled task `ChurchMapMusePull`, through [`muse_handoff/drive_pull_hourly.sh`](../muse_handoff/drive_pull_hourly.sh). The script does three things:
 - re-mounts F: if WSL lost the mount;
@@ -68,6 +69,25 @@ What `pull` does:
 - appends its output to `muse_handoff/returns/drive_pull.log`.
 
 Remove the task with `schtasks.exe /Delete /TN ChurchMapMusePull /F`.
+
+## Geocoding
+
+```bash
+analytics/.venv/bin/python analytics/scripts/geocode_incremental.py           # how many addresses are pending
+analytics/.venv/bin/python analytics/scripts/geocode_incremental.py --fetch   # submit them to the Census geocoder
+```
+
+- The input is the plan's appendix query, run against the sidecar and saved as `exports/geocode_input_<sha8>.csv`.
+- Results live in `exports/geocode_ledger.csv`, keyed by `geo_id` plus the exact street, city, state and ZIP. A result is reused only for the address it was made from. A corrected address goes back to Census.
+- Only pending rows are submitted, in one batch. The raw response and its metadata go to `exports/geocode_history/census_<time>_*`.
+- `geocode_reconciliation.json` binds `geocode_output.csv` to its input; `build_seeds.py` uses no pin without that binding.
+- **Acceptance (`classify` in `geocode_census.py`):**
+  - House number and street must match. A ZIP or city centroid fails.
+  - The pin must fall inside California.
+  - For San Francisco, Santa Clara, San Mateo and the listed Alameda cities, Census must return the expected county.
+  - Elsewhere, the matched ZIP must equal the input ZIP, or, without an input ZIP, the matched city must equal the input city.
+- After a rule change, `--reclassify census_<time>_raw.csv` re-applies the rules to a saved batch without resubmitting it.
+- `reconcile_geocodes_census.py` and `review_geocodes_census.py` describe the first 196-row run and are kept as history. Don't re-run them: they overwrite `geocode_output.csv`.
 
 `build_seeds.py` merges every pass it finds, so files that haven't arrived yet are simply skipped. The merge order:
 

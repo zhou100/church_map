@@ -255,7 +255,7 @@ def test_a_failed_build_is_retried_until_it_succeeds(queue, monkeypatch):
     drive, ret, wp = queue
     monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
     _deliver(wp)
-    args = type("A", (), dict(again=[], no_recheck=True, no_build=False))
+    args = type("A", (), dict(again=[], no_recheck=True, no_build=False, no_geocode=True))
     monkeypatch.setattr(ds, "sync_reference", lambda: None)
     monkeypatch.setattr(ds, "rebuild", lambda: "dbt build failed")
     assert ds.cmd_pull(args) == 1
@@ -267,6 +267,36 @@ def test_a_failed_build_is_retried_until_it_succeeds(queue, monkeypatch):
     assert ds.cmd_pull(args) == 0
     row = ds.load_status()["WP-0001"]
     assert calls and row["state"] == "ingested" and row["build_error"] == ""
+
+
+def test_a_failed_geocode_keeps_the_ingest_and_is_retried_on_every_pull(queue, monkeypatch):
+    drive, ret, wp = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    _deliver(wp)
+    args = type("A", (), dict(again=[], no_recheck=True, no_build=False, no_geocode=False))
+    monkeypatch.setattr(ds, "sync_reference", lambda: None)
+    monkeypatch.setattr(ds, "rebuild", lambda: "")
+    monkeypatch.setattr(ds, "geocode", lambda: "geocode_incremental.py failed")
+    assert ds.cmd_pull(args) == 1
+    assert ds.load_status()["WP-0001"]["state"] == "ingested"
+    # Nothing new delivered: the next pull still runs the Census step.
+    calls = []
+    monkeypatch.setattr(ds, "geocode", lambda: calls.append(1) or "")
+    assert ds.cmd_pull(args) == 0 and calls
+
+
+def test_geocode_rebuilds_only_when_the_output_changed(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "ROOT", tmp_path)
+    out = tmp_path / "analytics/exports/geocode_output.csv"
+    out.parent.mkdir(parents=True)
+    out.write_text("geo_id\n")
+    rebuilt = []
+    monkeypatch.setattr(ds, "rebuild", lambda: rebuilt.append(1) or "")
+    ok = type("P", (), dict(returncode=0))()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)
+    assert ds.geocode() == "" and not rebuilt
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: (out.write_text("geo_id\nchurch:1\n"), ok)[1])
+    assert ds.geocode() == "" and rebuilt
 
 
 def test_a_failed_recheck_leaves_the_delivery_to_be_retried(queue, monkeypatch):

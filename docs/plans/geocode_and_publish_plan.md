@@ -107,7 +107,18 @@ Also produce a short `geocode_run_log.md`: counts by status and `match_type`, an
 - **Directory churches:** `proposed_latitude` / `proposed_longitude` on `dim_church` for 37 churches, 15 of them more than 150 m from today's pin. `visit_ready` is unchanged until B2 decides how a proposed pin replaces the directory one.
 - **dbt tests:** new congregations not already in the directory; one geocode per subject; usable pins inside the US envelope; no two usable pins at one point unless Census matched the same address; `map_ready` only with a current pin. A unit test covers the address binding.
 
-**Next for A:** geocode the 107 new rows. `reconcile_geocodes_census.py` is pinned to the 196-row snapshot, so this needs an incremental runner that submits only rows without a result for their current address.
+~~**Next for A:** geocode the 107 new rows. `reconcile_geocodes_census.py` is pinned to the 196-row snapshot, so this needs an incremental runner that submits only rows without a result for their current address.~~
+
+### Status 2026-10-21 (later): incremental geocoding, run by the hourly pull
+
+- **`geocode_incremental.py`:** a ledger keyed by `geo_id` plus the exact address. Only rows without a result for their current address go to Census. See `analytics/README.md` § Geocoding.
+- **Acceptance outside the four Bay Area counties:** the matched ZIP must equal the input ZIP, or, without an input ZIP, the matched city must equal the input city. The Bay Area box became a California box. The county table still decides for the cities it lists.
+- **`drive_sync.py pull`** geocodes after every rebuild, so delivered packages get pins within the hour.
+- **Result:** 596 rows: 526 `ok`, 52 `failed`, 18 `needs_review`. **191 of 225** profile-ready new congregations are map-ready.
+- **Open:**
+  - 12 direction-only rows (e.g. input "W Eaton Ave", Census "EATON AVE") wait for the range check in `review_geocodes_census.py`, which isn't automated yet.
+  - 4 rows have an input ZIP that differs from Census's.
+  - 2 rows are Census ties.
 
 ---
 
