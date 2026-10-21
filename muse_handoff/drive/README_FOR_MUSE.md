@@ -65,4 +65,5 @@ If our checks fail, `status.csv` shows `needs_fix` and `feedback/WP-xxxx.md` lis
 | `started` | we saw your `STARTED.md` |
 | `delivered` | we saw your `DONE.md` and are checking it |
 | `needs_fix` | see `feedback/WP-xxxx.md` |
+| `pending_build`, `build_failed` | accepted; we are loading it on our side, nothing for you to do |
 | `ingested` | accepted; nothing more to do |

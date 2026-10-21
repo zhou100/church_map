@@ -304,6 +304,10 @@ def apply_overlays(raw: dict, subject_type: str, sid: str, overlays: tuple[dict,
     o = w_rows.get((subject_type, sid))
     if o:
         ans = (o.get("address_is_worship_location") or "").strip().lower()
+        if o.get("worship_street_address") and ans == "no":
+            # "no" answers for the recorded address; the worship address W gives in its
+            # place is, by the task's definition, where they meet.
+            ans = "yes"
         if ans in ("yes", "no", "unknown"):
             raw["address_is_worship_location"] = ans
         if o.get("worship_street_address"):

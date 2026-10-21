@@ -133,3 +133,80 @@ def test_language_after_the_time_is_not_dropped_when_the_activity_precedes_it():
     assert excerpt_supports_service(page, "Sunday Spanish Mass 10 AM")
     assert excerpt_supports_service(page, "Sunday English Mass 11 AM")
     assert excerpt_supports_service("Sunday 10 AM Mass in Spanish", "Sunday Spanish Mass 10 AM")
+
+
+# Review of 69293de: a language the record states must be stated by the excerpt; a
+# missing language in the excerpt is not a wildcard.
+def test_record_language_must_be_stated_for_that_time():
+    page = "Sunday Mass 10 AM; Sunday Mass 11 AM (Spanish)"
+    assert not excerpt_supports_service(page, "Sunday English Mass 10 AM")
+    assert excerpt_supports_service(page, "Sunday Mass 10 AM")             # no language claimed
+    assert excerpt_supports_service(page, "Sunday Spanish Mass 11 AM")
+
+
+def test_bare_times_continue_the_labelled_list_before_them():
+    page = "Spanish Masses: Sunday 8:00 AM, 10:00 AM, 12:00 PM"
+    assert excerpt_supports_service(page, "Sunday 12:00 PM Spanish Mass")
+    assert not excerpt_supports_service(page, "Sunday 12:00 PM English Mass")
+    # A fragment with its own labels doesn't inherit.
+    assert not excerpt_supports_service("Sunday Mass 10 AM (Spanish); Sunday Mass 11 AM (English)",
+                                        "Sunday Spanish Mass 11 AM")
+
+
+@pytest.mark.parametrize("page,record,ok", [
+    # One unlabelled time at the start doesn't flip a label-first clause ...
+    ("English Worship Sunday 9:00am Weekly Services Sunday 10:00am Cantonese Sunday Worship 11:20am "
+     "Mandarin Sunday Worship 10:00am", "Cantonese Sunday Worship 11:20am; Mandarin Sunday Worship 10:00am", True),
+    # ... but a true tie is ambiguous, and an ambiguous layout withholds rather than guesses.
+    ("Weekly Services Sunday 10:00am – 11:10am Cantonese Sunday Worship 11:20am – 12:40pm "
+     "Mandarin Sunday Worship 10:00am – 11:10am", "Cantonese Sunday Worship 11:20am; Mandarin Sunday Worship 10:00am", False),
+    ("Sunday Service 9:30 AM … Sunday School 11:00 AM … Cantonese worship 11:00 AM",
+     "Cantonese worship 11:00 AM", True),
+    # Label-first lists continue their label within the clause ...
+    ("Sunday Mass: Spanish: 8:00 a.m.- 1:00 p.m. – 7:00 p.m. English: 9:30 a.m.",
+     "Sunday: 8:00 AM Spanish, 1:00PM Spanish, 7:00PM Spanish, 9:30 AM English", True),
+    # ... and across separators as a heading.
+    ("ENGLISH / Sundays / 11:15 AM /// SPANISH / Sundays / 9:00 AM", "ENGLISH — Sundays 11:15 AM; SPANISH — Sundays 9:00 AM", True),
+    # A trailing label belongs only to its own time.
+    ("Sunday: 12:00 PM, 4:00 PM (Vietnamese), and 7:00 PM", "Sunday 7:00 PM Vietnamese Mass", False),
+    ("Sunday 8:00am & 9:45am (English) … 11:30am (Japanese)", "Sunday 8:00am & 9:45am (English); 11:30am (Japanese)", True),
+    # A language the page doesn't state is not supported.
+    ("Mass Times Saturday 5:15PM Sunday 10:00AM", "Sunday: 10 am (English)", False),
+    ("Sunday Mass 10 AM (Spanish); Sunday Mass 11 AM (English)", "Sunday English Mass 10 AM", False),
+])
+def test_service_labels_in_mixed_layouts(page, record, ok):
+    assert excerpt_supports_service(page, record) is ok
+
+
+@pytest.mark.parametrize("page,record,ok", [
+    # Time-first clause: each label belongs to the time before it, never spread to the rest.
+    ("08:00 AM English Mass 09:30 AM Sung Mass 11:30 AM Latin Sung Mass", "08:00 AM English Mass", True),
+    ("08:00 AM English Mass 09:30 AM Sung Mass 11:30 AM Latin Sung Mass", "Mass 8:00 AM (English)", False),
+    ("08:00 AM English Mass 09:30 AM Sung Mass 11:30 AM Latin Sung Mass", "11:30 AM English Mass", False),
+    # Either reading fits; an ambiguous label backs neither time (unless quoted word for word).
+    ("Saturday 4pm English (Vigil) Sunday 8am", "Saturday 4pm (Vigil) English", False),
+    ("Saturday 4pm English (Vigil) Sunday 8am", "Sunday 8am English Mass", False),
+])
+def test_time_first_labels_stay_with_their_own_time(page, record, ok):
+    assert excerpt_supports_service(page, record) is ok
+
+
+def test_a_range_end_is_not_a_service_of_its_own():
+    page = "Cantonese Sunday Worship 11:20am – 12:40pm; Mandarin Sunday Worship 10:00am – 11:10am"
+    assert excerpt_supports_service(page, "Cantonese Sunday Worship: 11:20am – 12:40pm")
+    assert not excerpt_supports_service(page, "Mandarin Sunday Worship 11:10am")
+    # Times hours apart joined by dashes are a list, not a range.
+    assert excerpt_supports_service("Sunday Mass: Spanish: 8:00 a.m.- 1:00 p.m. – 7:00 p.m.", "Sunday 7:00 PM Spanish")
+
+
+def test_a_schedule_quoted_word_for_word_is_supported_even_where_layout_is_ambiguous():
+    page = "Mass Schedules Saturday 4pm English (Vigil) Sunday 8am, 10am - Spanish"
+    assert excerpt_supports_service(page, "Saturday 4pm English (Vigil) Sunday 8am")
+    assert not excerpt_supports_service(page, "Sunday 8am English")
+
+
+def test_a_labelled_fragment_does_not_inherit_the_previous_label():
+    page = "Sunday Spanish Mass: 10:30 AM; Catechesis: 9:30 AM"
+    assert not excerpt_supports_service(page, "Sunday 9:30 AM Spanish")
+    assert excerpt_supports_service("Saturday 5:00 PM (Vigil English) … Sunday 8:00 AM (Portuguese)",
+                                    "Saturday 5:00 PM English Vigil")

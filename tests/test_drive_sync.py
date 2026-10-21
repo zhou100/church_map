@@ -87,7 +87,7 @@ def test_failed_validation_goes_back_as_feedback_and_is_not_ingested(queue, monk
     assert ds.pull_package(wp, status, recheck=False).endswith("(no new DONE.md)")
     monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
     _deliver(wp, body="candidate_ref,task\nWP0001-001,WP0001\nWP0001-002,WP0001\n")
-    assert ds.pull_package(wp, status, recheck=False) == "ingested"
+    assert ds.pull_package(wp, status, recheck=False) == "pending_build"
     assert not (drive / "feedback" / "WP-0001.md").exists()
 
 
@@ -96,7 +96,7 @@ def test_ingested_package_lands_where_build_seeds_finds_it(queue, monkeypatch):
     monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
     _deliver(wp)
     status = ds.load_status()
-    assert ds.pull_package(wp, status, recheck=False) == "ingested"
+    assert ds.pull_package(wp, status, recheck=False) == "pending_build"
     ds.save_status(status)
     assert (ret / "new_candidates_WP0001.csv").exists() and (ret / "run_log_WP0001.md").exists()
     assert (drive / "status.csv").read_text() == (ds.OUTBOX / "status.csv").read_text()
@@ -226,10 +226,54 @@ def test_late_stamps_do_not_block_a_delivery(queue, monkeypatch):
                                                           "the file was received (19:19Z)\n"))
     _deliver(wp)
     status = ds.load_status()
-    assert ds.pull_package(wp, status, recheck=False) == "ingested"
+    assert ds.pull_package(wp, status, recheck=False) == "pending_build"
     assert "marked unreliable" in status["WP-0001"]["note"]
     monkeypatch.setattr(ds, "validate", lambda *a: (False, "ERROR X-1 checked_at late is after the file was "
                                                           "received\nERROR X-2 missing required city\n"))
     _deliver(wp, body="candidate_ref,task\nWP0001-001,WP0001\nWP0001-002,WP0001\n")
     assert ds.pull_package(wp, status, recheck=False) == "needs_fix"
     assert "missing required city" in (drive / "feedback" / "WP-0001.md").read_text()
+
+
+# --- Review of 69293de --------------------------------------------------------------
+
+def test_results_are_validated_against_the_manifest_in_the_dashed_package_folder(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    (tmp_path / "WP-0001").mkdir()
+    (tmp_path / "WP-0001" / "manifest.csv").write_text("church_id\n1\n")
+    seen = {}
+
+    def run(cmd, **kw):
+        seen["cmd"] = cmd
+        return type("P", (), dict(returncode=0, stdout="", stderr=""))()
+    monkeypatch.setattr(ds.subprocess, "run", run)
+    ok, out = ds.validate("results", tmp_path / "r.csv", "2026-10-21T00:00:00Z", "WP-0001")
+    assert ok and str(tmp_path / "WP-0001" / "manifest.csv") in seen["cmd"]
+
+
+def test_a_failed_build_is_retried_until_it_succeeds(queue, monkeypatch):
+    drive, ret, wp = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    _deliver(wp)
+    args = type("A", (), dict(again=[], no_recheck=True, no_build=False))
+    monkeypatch.setattr(ds, "sync_reference", lambda: None)
+    monkeypatch.setattr(ds, "rebuild", lambda: "dbt build failed")
+    assert ds.cmd_pull(args) == 1
+    row = ds.load_status()["WP-0001"]
+    assert row["state"] == "build_failed" and "dbt build failed" in row["build_error"]
+    # DONE.md is unchanged, yet the next pull rebuilds and only then marks it ingested.
+    calls = []
+    monkeypatch.setattr(ds, "rebuild", lambda: calls.append(1) or "")
+    assert ds.cmd_pull(args) == 0
+    row = ds.load_status()["WP-0001"]
+    assert calls and row["state"] == "ingested" and row["build_error"] == ""
+
+
+def test_a_failed_recheck_leaves_the_delivery_to_be_retried(queue, monkeypatch):
+    drive, ret, wp = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    _deliver(wp)
+    monkeypatch.setattr(ds.subprocess, "run", lambda *a, **k: type("P", (), dict(returncode=1))())
+    status = ds.load_status()
+    assert ds.pull_package(wp, status, recheck=True).startswith("waiting: source re-check failed")
+    assert status["WP-0001"].get("done_sha256", "") == ""

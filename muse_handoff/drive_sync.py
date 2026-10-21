@@ -45,7 +45,7 @@ OUTBOX = HANDOFF / "outbox"
 RET = HANDOFF / "returns"
 STATUS = OUTBOX / "status.csv"  # master copy; mirrored read-only to the Drive root
 STATUS_COLS = ["wp_id", "title", "state", "published_at", "started_at", "delivered_at", "ingested_at",
-               "done_sha256", "note"]
+               "done_sha256", "note", "build_error"]
 RECEIVED_COLS = ["file", "wp_id", "received_at", "done_sha256"]
 LATE_STAMP = "is after the file was received"
 
@@ -399,6 +399,7 @@ def parse_done(text: str) -> tuple[dict[str, str], bool]:
 
 
 def validate(kind: str, path: Path, received: str, wp_id: str) -> tuple[bool, str]:
+    """wp_id is the package folder name (WP-0001), which is where its manifest lives."""
     validator = HANDOFF / "validate_returns.py"
     if kind == "new_candidates":
         argv = ["ALL", "-", str(path)]
@@ -466,7 +467,7 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         kind = OUTPUT_KINDS[name]
         local = stage / f"{kind}_{tag}.csv"
         shutil.copyfile(wp_dir / name, local)
-        ok, out = validate(kind, local, received, tag)
+        ok, out = validate(kind, local, received, wp_id)
         errors = [ln for ln in out.splitlines() if ln.startswith("ERROR")]
         # A stamp later than the delivery is not a real check time. build_seeds marks it
         # unreliable and blanks it, and the recheck verifies the excerpt itself, so it
@@ -494,23 +495,28 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     record_received([dict(file=p.name, wp_id=wp_id, received_at=received, done_sha256=done_sha) for p in staged])
     shutil.rmtree(stage, ignore_errors=True)
     if recheck:
-        subprocess.run([str(ROOT / "analytics/.venv/bin/python"), str(ROOT / "analytics/scripts/recheck_sources.py"),
-                        *[str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]],
-                       check=True)
+        p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"), str(ROOT / "analytics/scripts/recheck_sources.py"),
+                            *[str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]])
+        if p.returncode != 0:  # DONE.md not recorded as handled, so the next pull retries
+            return "waiting: source re-check failed; will retry"
     if partial:
         notes.append("partial delivery; queue the rest")
-    row.update(state="ingested", ingested_at=now_utc(), done_sha256=done_sha, note="; ".join(notes))
+    # Accepted, but "ingested" only once seeds and dbt have been rebuilt with it (cmd_pull).
+    row.update(state="pending_build", done_sha256=done_sha, note="; ".join(notes))
     fb = DRIVE / "feedback" / f"{wp_id}.md"
     if fb.exists():
         fb.unlink()  # ours to remove: the problems it listed are fixed
     return row["state"]
 
 
-def rebuild() -> None:
-    subprocess.run([sys.executable, str(ROOT / "analytics/scripts/build_seeds.py")], check=True)
+def rebuild() -> str:
+    """Rebuild seeds and dbt. Returns "" on success, else what failed."""
+    if subprocess.run([sys.executable, str(ROOT / "analytics/scripts/build_seeds.py")]).returncode != 0:
+        return "build_seeds.py failed"
     env = {**os.environ, "DBT_PROFILES_DIR": str(ROOT / "analytics/dbt")}
-    subprocess.run([str(ROOT / "analytics/.venv/bin/dbt"), "build", "--project-dir", str(ROOT / "analytics/dbt"),
-                    "--full-refresh", "--quiet"], check=True, env=env)
+    p = subprocess.run([str(ROOT / "analytics/.venv/bin/dbt"), "build", "--project-dir", str(ROOT / "analytics/dbt"),
+                        "--full-refresh", "--quiet"], env=env)
+    return "" if p.returncode == 0 else "dbt build failed"
 
 
 def cmd_pull(args) -> int:
@@ -521,22 +527,30 @@ def cmd_pull(args) -> int:
     for wp in args.again:  # forget the handled DONE.md so the same delivery is processed again
         if wp in status:
             status[wp]["done_sha256"] = ""
-    ingested = []
     for wp_dir in sorted((DRIVE / "returns").glob("WP-*")):
         if not (wp_dir.is_dir() and WP_RE.match(wp_dir.name)):
             continue
-        what = pull_package(wp_dir, status, recheck=not args.no_recheck)
-        print(f"{wp_dir.name}: {what}")
-        if what == "ingested":
-            ingested.append(wp_dir.name)
+        print(f"{wp_dir.name}: {pull_package(wp_dir, status, recheck=not args.no_recheck)}")
     save_status(status)
-    if ingested and not args.no_build:
-        rebuild()
+    # Every accepted package not yet built in, including ones whose build failed before:
+    # their DONE.md is already handled, so this is the only place they get retried.
+    pending = sorted(wp for wp, r in status.items() if r["state"] in ("pending_build", "build_failed"))
+    rc = 0
+    if pending and not args.no_build:
+        failed = rebuild()
+        for wp in pending:
+            if failed:
+                status[wp].update(state="build_failed", build_error=f"{failed} at {now_utc()}; retried on the next pull")
+            else:
+                status[wp].update(state="ingested", ingested_at=now_utc(), build_error="")
+        save_status(status)
+        print(f"rebuild {'FAILED: ' + failed if failed else 'ok'} for {', '.join(pending)}")
+        rc = 1 if failed else 0
     queued = sum(r["state"] in ("queued", "needs_fix") for r in status.values())
-    print(f"ingested {len(ingested)}; {queued} package(s) waiting for Muse")
+    print(f"{queued} package(s) waiting for Muse")
     if queued == 0:
         print("queue is empty: make the next package with new-discovery, then publish it")
-    return 0
+    return rc
 
 
 def main(argv: list[str] | None = None) -> int:

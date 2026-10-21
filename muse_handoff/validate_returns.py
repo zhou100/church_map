@@ -229,6 +229,7 @@ LANGUAGE_WORDS = {
     "english": ("english", "英文", "英語", "英语", "영어", "inglés"), "spanish": ("spanish", "español", "espanol"),
     "mandarin": ("mandarin", "國語", "国语", "普通話", "普通话", "華語", "华语"), "cantonese": ("cantonese", "粵語", "粤语", "廣東話"),
     "korean": ("korean", "한국어", "韓語"), "vietnamese": ("vietnamese", "tiếng việt"), "taiwanese": ("taiwanese", "台語", "台语"),
+    "japanese": ("japanese", "日本語"), "tagalog": ("tagalog", "filipino"),
 }
 
 
@@ -236,14 +237,39 @@ def _has_word(t: str, w: str) -> bool:
     return bool(re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", t)) if w.isascii() else w in t
 
 
+RANGE_LINK_RE = re.compile(r"\s*(?:[-–—~]|to|until)\s*$")
+BARE_START_RE = re.compile(r"(?<![\d:.])(\d{1,2})(?:[:.](\d{2}))?\s*(?:[-–—~]|to)\s*$")
+
+
+def _minutes(hhmm: str) -> int:
+    return int(hhmm[:2]) * 60 + int(hhmm[3:])
+
+
 def _times_in(chunk: str) -> list[tuple[int, str]]:
-    """(position, HH:MM) for each time in the chunk."""
+    """(position, HH:MM) for each service start in the chunk. In a range ("10:00am –
+    11:10am", "9:30–10:45am") the end is not a service of its own: a range is a dash
+    between times 15 minutes to 3 hours apart. Times further apart ("8:00 a.m.- 1:00
+    p.m. – 7:00 p.m.") stay a list."""
     out = []
     for m in SVC_TIME_RE.finditer(chunk):
         h, mm, ap = m.groups()
         hour = int(h)
-        if 1 <= hour <= 12:
-            out.append((m.start(), f"{hour % 12 + (12 if ap.lower().startswith('p') else 0):02d}:{int(mm or 0):02d}"))
+        if not 1 <= hour <= 12:
+            continue
+        pm = ap.lower().startswith("p")
+        t = f"{hour % 12 + (12 if pm else 0):02d}:{int(mm or 0):02d}"
+        bare = BARE_START_RE.search(chunk[:m.start()])
+        if bare and 1 <= int(bare.group(1)) <= 12:  # "9:30–10:45am": the start takes the end's half of day
+            h0, m0 = int(bare.group(1)), int(bare.group(2) or 0)
+            same = h0 % 12 * 60 + m0 <= hour % 12 * 60 + int(mm or 0)
+            start = f"{h0 % 12 + (12 if pm == same else 0):02d}:{m0:02d}"
+            if 15 <= _minutes(t) - _minutes(start) <= 180:
+                out.append((bare.start(), start))
+                continue
+        if out and RANGE_LINK_RE.fullmatch(chunk[out[-1][2]:m.start()] if len(out[-1]) > 2 else "x") \
+                and 15 <= _minutes(t) - _minutes(out[-1][1]) <= 180:
+            continue
+        out.append((m.start(), t, m.end()))
     for m in CJK_TIME_RE.finditer(chunk):
         ap, h, m1, m2, half = m.groups()
         hour = int(h) if h.isdigit() else CJK_NUM.get(h, 0)
@@ -251,7 +277,7 @@ def _times_in(chunk: str) -> list[tuple[int, str]]:
             continue  # without 上午/下午/오전/오후 the half of day is unknown
         minute = int(m1 or m2 or (30 if half else 0))
         out.append((m.start(), f"{hour % 12 + (12 if ap in PM_WORDS else 0):02d}:{minute:02d}"))
-    return out
+    return [(x[0], x[1]) for x in out]
 
 
 def _day_positions(chunk: str) -> list[tuple[int, str]]:
@@ -273,42 +299,103 @@ def _class_positions(chunk: str, table: dict) -> list[tuple[int, int, str]]:
     return found
 
 
-def _class_for_time(found: list[tuple[int, int, str]], times: list[int], i: int, labels_after: bool) -> str | None:
-    """Class of the keyword belonging to the i-th time in a clause. Schedules are written
-    either label-first ("主日崇拜：上午 9:00", "Sunday worship 10 AM") or time-first
-    ("9:40am 成人主日學 11:00am 國語主日崇拜"); the clause's first element decides."""
-    pos = times[i]
-    nxt = times[i + 1] if i + 1 < len(times) else 10**9
-    prv = times[i - 1] if i else -1
-    if labels_after:
-        cands = [f for f in found if pos < f[0] < nxt]
-        return min(cands)[2] if cands else None
-    cands = [f for f in found if prv < f[0] < pos]
-    return max(cands)[2] if cands else None
+def _label_votes(found: list[tuple[int, int, str]], times: list[int]) -> tuple[int, int]:
+    """(times with a label just before them, times with a label just after them)."""
+    bounds = [-1, *times, 10**9]
+    starts = [f[0] for f in found]
+    before = sum(any(bounds[i] < x < bounds[i + 1] for x in starts) for i in range(len(times)))
+    after = sum(any(bounds[i + 1] < x < bounds[i + 2] for x in starts) for i in range(len(times)))
+    return before, after
 
 
-def service_slots(text: str) -> set[tuple]:
-    """(day, activity, language, HH:MM) for every time in the text. A time takes the
-    nearest day named before it (carrying over from earlier clauses), and the activity
+def _labels_after(found: list[tuple[int, int, str]], times: list[int], chunk: str) -> bool | None:
+    """Is this clause written time-first ("9:40am 成人主日學 11:00am 國語主日崇拜")
+    rather than label-first ("主日崇拜：上午 9:00")? Whichever reading gives more times
+    a label wins, so one unlabelled time at the start ("Weekly Services Sunday 10:00am …
+    Cantonese Sunday Worship 11:20am") doesn't flip the whole clause. Ties go, in order,
+    to: a label in parentheses annotating the time before it ("9:45am (English)"); a label
+    after the last time (time-first) or before the first (label-first). None = still
+    ambiguous ("Saturday 4pm English (Vigil) Sunday 8am")."""
+    if not found or not times:
+        return False
+    before, after = _label_votes(found, times)
+    if after != before:
+        return after > before
+    starts = [f[0] for f in found]
+    if any(re.search(r"\([^)]*$", chunk[max(b for b in [-1, *times] if b < x) + 1:x]) for x in starts):
+        return True  # inside parentheses opened after a time: "5:00 PM (Vigil English)"
+    trailing, leading = sum(x > times[-1] for x in starts), sum(x < times[0] for x in starts)
+    if trailing != leading:
+        return trailing > leading
+    return None
+
+
+def _classes_for_times(found: list[tuple[int, int, str]], times: list[int], labels_after: bool) -> list:
+    """The keyword class belonging to each time. Time-first, a label annotates only the
+    time it follows ("4:00 PM (Vietnamese)"). Label-first, a label annotates the times
+    after it; in a clause that opens with its label ("Spanish: 8:00 a.m. – 1:00 p.m."),
+    a time with no label of its own continues the one before it."""
+    heading = not labels_after and bool(found) and min(f[0] for f in found) < times[0]
+    out, prev = [], None
+    for i, pos in enumerate(times):
+        nxt = times[i + 1] if i + 1 < len(times) else 10**9
+        prv = times[i - 1] if i else -1
+        if labels_after:
+            cands = [f for f in found if pos < f[0] < nxt]
+            cls = min(cands)[2] if cands else None
+        else:
+            cands = [f for f in found if prv < f[0] < pos]
+            cls = max(cands)[2] if cands else (prev if heading else None)
+        out.append(cls)
+        prev = cls
+    return out
+
+
+BARE_WORDS = {"and", "or", "at", "y", "et", "to", "until"}  # all a fragment of bare times may say
+
+
+def service_slots(text: str, claims: bool = False) -> set[tuple]:
+    """(day, activity, language, HH:MM) for every service time in the text. A time takes
+    the nearest day named before it (carrying over from earlier clauses), and the activity
     and language keywords that belong to it within its clause (split on ; , | / sentence
-    ends, lines), label-first or time-first as the clause is written."""
-    slots, day = set(), None
+    ends, lines), label-first or time-first as the clause is written. Activity and
+    language are read separately: in "Sunday Mass 10 AM (Spanish)" the activity precedes
+    the time while the language follows it. A clause of bare times continues the
+    heading-style labels before it ("Spanish Masses: Sunday 8:00, 10:00, 12:00").
+
+    Where a clause could be read either way, evidence (an excerpt) keeps only a label both
+    readings agree on, and claims (claims=True, a recorded schedule) keep both readings,
+    so an ambiguous layout can withhold a time but never support a wrong one."""
+    slots, day, carried = set(), None, (None, None)
     for chunk in re.split(r"[;,|/\n；，、。]+|\.\s", (text or "").lower()):
         days = _day_positions(chunk)
         acts, langs = _class_positions(chunk, ACTIVITY_WORDS), _class_positions(chunk, LANGUAGE_WORDS)
         found_times = sorted(_times_in(chunk))
         positions = [p for p, _ in found_times]
-
-        def time_first(labels: list) -> bool:
-            # Decided separately for activity and for language: in "Sunday Mass 10 AM
-            # (Spanish)" the activity precedes the time while the language follows it.
-            return bool(positions) and (not labels or positions[0] < min(f[0] for f in labels))
-
-        acts_after, langs_after = time_first(acts), time_first(langs)
-        for i, (pos, t) in enumerate(found_times):
-            before = [d for p, d in days if p < pos]
-            slots.add((before[-1] if before else day, _class_for_time(acts, positions, i, acts_after),
-                       _class_for_time(langs, positions, i, langs_after), t))
+        if not positions:
+            if acts or langs:  # a heading ("ENGLISH", "Spanish Masses:") for the times that follow
+                carried = (max(acts)[2] if acts else None, max(langs)[2] if langs else None)
+        elif not (days or acts or langs) and not set(re.findall(r"[^\W\d_]+", SVC_TIME_RE.sub(" ", chunk))) - BARE_WORDS:
+            for _, t in found_times:
+                slots.add((day, *carried, t))
+        else:
+            per_time, carry = [], []
+            for found in (acts, langs):
+                after = _labels_after(found, positions, chunk)
+                if after is None:
+                    a, b = _classes_for_times(found, positions, True), _classes_for_times(found, positions, False)
+                    per_time.append([{x, y} if claims else {x if x == y else None} for x, y in zip(a, b)])
+                    carry.append(None)
+                else:
+                    cls = _classes_for_times(found, positions, after)
+                    per_time.append([{c} for c in cls])
+                    carry.append(None if after else cls[-1])  # only heading-style labels carry on
+            for i, (pos, t) in enumerate(found_times):
+                before = [d for p, d in days if p < pos]
+                for a in per_time[0][i]:
+                    for lang in per_time[1][i]:
+                        slots.add((before[-1] if before else day, a, lang, t))
+            carried = tuple(carry)
         if days:
             day = days[-1][1]
     return slots
@@ -331,7 +418,7 @@ def _slot_supported(want: tuple, have: set[tuple]) -> bool:
             continue
         if act and a and a != act:    # worship vs Bible study, if both say
             continue
-        if lang and l and l != lang:  # language, if both say
+        if lang and l != lang:        # a language the record states must be stated for this time
             continue
         return True
     return False
@@ -342,9 +429,14 @@ def excerpt_supports_service(excerpt: str, verbatim: str) -> bool:
     the same kind of gathering and in the same language where either text says so.
     "Sunday worship 10 AM" is not supported by "Saturday Bible study 10 AM; Sunday
     worship 11 AM". A schedule with no parseable time is not judged here."""
-    want = service_slots(verbatim)
+    want = service_slots(verbatim, claims=True)
     if not want:
         return True
+    squash = lambda x: re.sub(r"\s+", " ", (x or "").lower()).strip()
+    v, e = squash(verbatim), squash(excerpt)
+    i = e.find(v)
+    if v and i >= 0 and not (e[i - 1:i].isalnum() or e[i + len(v):i + len(v) + 1].isalnum()):
+        return True  # the excerpt states the recorded schedule word for word
     have = service_slots(excerpt)
     return all(_slot_supported(w, have) for w in want)
 

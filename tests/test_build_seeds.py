@@ -300,3 +300,17 @@ def test_corrected_street_replaces_the_address_and_takes_its_check_from_w(tmp_pa
     res, checks = _overlay_env(tmp_path, monkeypatch, base, w_row=w)
     assert res["street_address"] == "100 Main Street" and res["address_unsupported"] == "false"
     assert checks["address"] == "verified"
+
+
+def test_no_for_the_old_address_does_not_follow_the_worship_address_that_replaces_it(tmp_path, monkeypatch):
+    # Review of 69293de: W answers "no" (they don't meet at the recorded office) and gives
+    # the worship address; the replacement address is where they meet.
+    base = {**BASE, "street_address": "9 Office Park", "address_excerpt": "9 Office Park",
+            "address_is_worship_location": "unknown"}
+    w = {**W_ROW, "address_is_worship_location": "no", "worship_street_address": "100 Main Street",
+         "worship_city": "San Mateo", "worship_zip": "94401", "excerpt": "Worship with us Sundays at 100 Main Street"}
+    res, _ = _overlay_env(tmp_path, monkeypatch, base, w_row=w)
+    assert res["street_address"] == "100 Main Street" and res["address_is_worship_location"] == "yes"
+    # Without a replacement address, "no" stays on the recorded one.
+    res, _ = _overlay_env(tmp_path / "b", monkeypatch, base, w_row={**W_ROW, "address_is_worship_location": "no"})
+    assert res["address_is_worship_location"] == "no"
