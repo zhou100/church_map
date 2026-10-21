@@ -343,3 +343,38 @@ def test_worship_answer_without_its_question_is_not_used(tmp_path, monkeypatch):
     base = {**BASE, "address_is_worship_location": "unknown"}
     res, _ = _overlay_env(tmp_path, monkeypatch, base, w_row=W_ROW, w_asked=False)
     assert res["address_is_worship_location"] == "unknown"
+
+
+
+def test_a_later_pass_that_moves_the_address_takes_w_ownership_back(tmp_path, monkeypatch):
+    # Review of ac909e6: W corrected round 1's 100 Main Ave; a later pass records 200 Main
+    # Street and its own check says not_found. The old W "verified" must not follow.
+    ret, seeds, handoff = tmp_path / "returns", tmp_path / "seeds", tmp_path / "handoff"
+    (ret / "recheck").mkdir(parents=True)
+    (handoff / "outbox").mkdir(parents=True)
+    seeds.mkdir()
+    for name, val in (("RET", ret), ("SEEDS", seeds), ("HANDOFF", handoff), ("STALE_W", set()),
+                      ("RESULT_FILES", [("results_current.csv", None), ("results_E.csv", "E")])):
+        monkeypatch.setattr(bs, name, val)
+    rc = ["row_key", "group", "verdict", "http_status", "match_mode", "checked_at", "fact_fingerprint"]
+    old = {**BASE, "street_address": "100 Main Ave", "address_excerpt": "100 Main Ave"}
+    new = {**BASE, "street_address": "200 Main Street", "address_excerpt": "200 Main Street"}
+    w = {**W_ROW, "address_is_worship_location": "no", "worship_street_address": "100 Main Street",
+         "worship_city": "San Mateo", "worship_zip": "94401", "excerpt": "Worship at 100 Main Street, San Mateo"}
+    for fname, row, verdict in (("results_current.csv", old, "verified"), ("results_E.csv", new, "not_found")):
+        _write(ret / fname, list(row), [row])
+        _write(ret / "recheck" / fname, rc, [dict(row_key="1", group="address", verdict=verdict, http_status="200",
+               match_mode="exact", checked_at="2026-10-21T18:00:00Z", fact_fingerprint=bs.fact_fingerprint(row, "address"))])
+    _write(ret / "worship_location_W.csv", list(w), [w])
+    _write(ret / "recheck" / "worship_location_W.csv", rc, [dict(row_key="1", group="worship", verdict="verified",
+           http_status="200", match_mode="exact", checked_at="2026-10-21T18:00:00Z",
+           fact_fingerprint=bs.fact_fingerprint(w, "worship"))])
+    _write(handoff / "outbox" / "worship_location_W_input.csv", ["subject_type", "subject_id", "city", "street_address"],
+           [dict(subject_type="church", subject_id="1", city="San Mateo", street_address="100 Main Ave")])
+    overlays, used = bs.load_overlays(), {}
+    files, fps = bs.build_results({"1": "A_calibration"}, overlays, used)
+    bs.build_source_checks(files, {}, fps, used)
+    res = list(csv.DictReader((seeds / "muse_results.csv").open(encoding="utf-8")))[0]
+    checks = {r["fact_group"]: r["verdict"] for r in csv.DictReader((seeds / "source_checks.csv").open(encoding="utf-8"))}
+    assert res["street_address"] == "200 Main Street" and checks["address"] == "not_found"
+    assert used == {} and bs.STALE_W == {("church", "1")}

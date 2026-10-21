@@ -313,11 +313,20 @@ def load_overlays() -> tuple[dict, dict]:
     return s_rows, w_rows
 
 
+def release(used: dict, subject_type: str, sid: str) -> None:
+    """A newer record for this subject replaces the older one: whatever S/W owned for
+    the older record is decided again for the newer one."""
+    for group in ("service", "address"):
+        used.pop((subject_type, sid, group), None)
+
+
 def apply_overlays(raw: dict, subject_type: str, sid: str, overlays: tuple[dict, dict],
                    used: dict) -> dict:
-    """Merge S/W answers into a raw returned row; record which fact groups they now own."""
+    """Merge S/W answers into a raw returned row; record which fact groups they now own.
+    Called for every pass in order, so ownership always describes the latest record."""
     s_rows, w_rows = overlays
     raw = dict(raw)
+    release(used, subject_type, sid)
     o = s_rows.get((subject_type, sid))
     if o:
         for c in SERVICE_COLS:
@@ -406,6 +415,7 @@ def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None =
                 r = {**r, "candidate_id": cid, "task": r.get("task") or task, "format": "v3"}
             else:
                 cid = f"{task}-{i:02d}"
+                release(used, "candidate", cid)
                 for g in GROUPS:
                     fps.pop((cid, g), None)
                 fps[(cid, "address")] = fact_fingerprint(r, "candidate")  # v2 source backs the address

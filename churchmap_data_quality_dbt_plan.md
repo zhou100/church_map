@@ -1189,6 +1189,10 @@ Inputs are in `outbox/`, including `known_congregations_v7` (1,289 known). S and
 
 **Tests:** 371 passed; each review example is a test.
 
+### Status 2026-10-21: review of ac909e6, one issue fixed (PR #42)
+
+**S/W ownership follows the latest pass.** Passes share one record of which facts an S or W answer owns. When W corrected round 1's address and a later pass recorded a different address, the stale-W check dropped the answer but left its ownership in place. The new address then showed W's old `verified` instead of its own `not_found`. Each record now releases its subject's S/W ownership before its overlays are decided, so the last pass decides. **Effect on the real data:** none (seeds byte-identical). **Tests:** 374 passed.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:
