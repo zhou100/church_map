@@ -187,18 +187,30 @@ def test_boolean_worship_location_values_are_normalized():
 
 # --- Carry-over of a recent 'verified' through a transient fetch failure ---------------
 
-HIST = {("1", "address", "fpA"): "2026-10-20T16:00:00Z"}
+HIST = {("1", "address", "fpA"): [("2026-10-20T16:00:00Z", "verified")]}
 
 
-@pytest.mark.parametrize("verdict,checked_at,key,expected", [
-    ("fetch_failed", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("verified", "2026-10-20T16:00:00Z", True)),
-    ("fetch_failed", "2026-12-01T10:00:00Z", ("1", "address", "fpA"), ("fetch_failed", "2026-12-01T10:00:00Z", False)),  # too old
-    ("fetch_failed", "2026-10-21T10:00:00Z", ("1", "address", "fpB"), ("fetch_failed", "2026-10-21T10:00:00Z", False)),  # fact changed
-    ("not_found", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("not_found", "2026-10-21T10:00:00Z", False)),        # page says otherwise
-    ("robots_blocked", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("robots_blocked", "2026-10-21T10:00:00Z", False)),
+@pytest.mark.parametrize("verdict,status,checked_at,key,expected", [
+    ("fetch_failed", "503", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("verified", "2026-10-20T16:00:00Z", True)),
+    ("fetch_failed", "", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("verified", "2026-10-20T16:00:00Z", True)),   # timeout
+    ("fetch_failed", "503", "2026-12-01T10:00:00Z", ("1", "address", "fpA"), ("fetch_failed", "2026-12-01T10:00:00Z", False)),  # too old
+    ("fetch_failed", "503", "2026-10-21T10:00:00Z", ("1", "address", "fpB"), ("fetch_failed", "2026-10-21T10:00:00Z", False)),  # fact changed
+    ("fetch_failed", "403", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("fetch_failed", "2026-10-21T10:00:00Z", False)),  # not transient
+    ("source_gone", "404", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("source_gone", "2026-10-21T10:00:00Z", False)),   # page deleted
+    ("not_found", "200", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("not_found", "2026-10-21T10:00:00Z", False)),
+    ("robots_blocked", "", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), ("robots_blocked", "2026-10-21T10:00:00Z", False)),
 ])
-def test_carry_over(verdict, checked_at, key, expected):
-    assert bs.carry_over(verdict, checked_at, key, HIST) == expected
+def test_carry_over(verdict, status, checked_at, key, expected):
+    assert bs.carry_over(verdict, status, checked_at, key, HIST) == expected
+
+
+def test_a_later_negative_verdict_cancels_an_earlier_verification():
+    """Review of 91be6af: verified -> not_found -> fetch_failed must stay unverified."""
+    hist = {("1", "address", "fpA"): [("2026-10-20T10:00:00Z", "verified"), ("2026-10-20T12:00:00Z", "not_found"),
+                                      ("2026-10-20T14:00:00Z", "fetch_failed")]}
+    assert bs.carry_over("fetch_failed", "503", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), hist)[2] is False
+    hist[("1", "address", "fpA")].append(("2026-10-20T16:00:00Z", "verified"))  # verified again later
+    assert bs.carry_over("fetch_failed", "503", "2026-10-21T10:00:00Z", ("1", "address", "fpA"), hist)[2] is True
 
 
 def test_carry_over_end_to_end(tmp_path, monkeypatch):

@@ -305,42 +305,50 @@ def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
     return {r["candidate_id"]: r["source_file"] for r in out}, fps
 
 
-TRANSIENT = ("fetch_failed",)  # a timeout or 5xx; robots blocks and parse failures don't count
+TRANSIENT_HTTP = {"", "408", "425", "429", "500", "502", "503", "504"}  # "" = timeout / connection error
+DECISIVE = {"verified", "not_found", "partial", "not_an_excerpt", "source_gone"}  # verdicts that judge the fact
 CARRY_DAYS = 30
 
 
-def load_history(stem: str) -> dict[tuple[str, str, str], str]:
-    """Latest 'verified' time per (row_key, group, fact_fingerprint) from the re-check history."""
+def load_history(stem: str) -> dict[tuple[str, str, str], list[tuple[str, str]]]:
+    """Every (checked_at, verdict) per (row_key, group, fact_fingerprint) in the re-check history."""
     path = RET / "recheck" / "history" / f"{stem}.csv"
-    best: dict[tuple[str, str, str], str] = {}
+    hist: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
     if path.exists():
         with path.open(encoding="utf-8") as f:
             for r in csv.DictReader(f):
-                if r["verdict"] == "verified" and r.get("fact_fingerprint"):
-                    k = (r["row_key"], r["group"], r["fact_fingerprint"])
-                    best[k] = max(best.get(k, ""), r["checked_at"])
-    return best
+                if r.get("fact_fingerprint"):
+                    hist.setdefault((r["row_key"], r["group"], r["fact_fingerprint"]), []).append(
+                        (r["checked_at"], r["verdict"]))
+    return hist
 
 
-def carry_over(verdict: str, checked_at: str, key: tuple[str, str, str],
-               history: dict[tuple[str, str, str], str]) -> tuple[str, str, bool]:
-    """Keep a recent 'verified' through a transient fetch failure.
+def carry_over(verdict: str, http_status: str, checked_at: str, key: tuple[str, str, str],
+               history: dict[tuple[str, str, str], list[tuple[str, str]]]) -> tuple[str, str, bool]:
+    """Keep a recent 'verified' through a transient fetch failure, and only then.
 
-    Only when the latest check couldn't fetch the page (not when it fetched it and the
-    excerpt was missing), the fact is byte-for-byte the one verified (same fingerprint),
-    and that verification is at most CARRY_DAYS old. Returns (verdict, checked_at,
-    carried); checked_at is then the time of the verification actually relied on."""
-    if verdict not in TRANSIENT:
+    - The latest check couldn't fetch the page for a transient reason (timeout,
+      connection error, 408/425/429/5xx). A 404/410 is 'source_gone' and never carries.
+    - The fact is the one verified (same fingerprint).
+    - Among earlier checks of that fact, the latest one that actually judged it
+      (verified / not_found / partial / not_an_excerpt / source_gone) is 'verified':
+      verified -> not_found -> fetch_failed stays unverified.
+    - That verification is at most CARRY_DAYS old.
+    Returns (verdict, checked_at, carried); checked_at is then the verification relied on."""
+    if verdict != "fetch_failed" or str(http_status or "") not in TRANSIENT_HTTP or not checked_at:
         return verdict, checked_at, False
-    last = history.get(key)
-    if not last or not checked_at:
+    decisive = [(t, v) for t, v in history.get(key, []) if v in DECISIVE and t and t <= checked_at]
+    if not decisive:
+        return verdict, checked_at, False
+    last_t, last_v = max(decisive)
+    if last_v != "verified":
         return verdict, checked_at, False
     try:
-        age = datetime.fromisoformat(checked_at.replace("Z", "+00:00")) - datetime.fromisoformat(last.replace("Z", "+00:00"))
+        age = datetime.fromisoformat(checked_at.replace("Z", "+00:00")) - datetime.fromisoformat(last_t.replace("Z", "+00:00"))
     except ValueError:
         return verdict, checked_at, False
     if timedelta(0) <= age <= timedelta(days=CARRY_DAYS):
-        return "verified", last, True
+        return "verified", last_t, True
     return verdict, checked_at, False
 
 
@@ -380,7 +388,7 @@ def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str]
                         verdict, stale = "stale", stale + 1
                     else:
                         verdict, checked_at, carried = carry_over(
-                            verdict, checked_at, (r["row_key"], r["group"], current_fp), history)
+                            verdict, r.get("http_status", ""), checked_at, (r["row_key"], r["group"], current_fp), history)
                         carried_n += carried
                     rows.append({"subject_type": subject_type, "subject_id": key, "fact_group": group,
                                  "verdict": verdict, "http_status": r["http_status"],

@@ -115,9 +115,44 @@ NUMBER_WORDS = dict(enumerate("zero one two three four five six seven eight nine
                               "fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()))
 
 
+UNIT_NUMBER = {w: i for i, w in NUMBER_WORDS.items()}
+TENS_NUMBER = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
+               "ninety": 90}
+
+
+def _merge_number_words(toks: list[str]) -> list[str]:
+    """Read a run of number words as one number: "twenty one" / "twenty-one" -> "21",
+    "one hundred five" -> "105", "one" -> "1". A single word is never matched on its
+    own inside a longer phrase ("one" is not "twenty-one")."""
+    out, i = [], 0
+    while i < len(toks):
+        if toks[i] not in UNIT_NUMBER and toks[i] not in TENS_NUMBER:
+            out.append(toks[i])
+            i += 1
+            continue
+        total, cur, j = 0, 0, i
+        while j < len(toks):
+            w = toks[j]
+            if w in TENS_NUMBER and cur % 100 == 0:
+                cur += TENS_NUMBER[w]
+            elif w in UNIT_NUMBER and (cur % 10 == 0 or cur == 0) and not (cur % 100 >= 10 and cur % 100 < 20):
+                cur += UNIT_NUMBER[w]
+            elif w == "hundred" and 0 < cur < 10:
+                cur *= 100
+            elif w == "and" and cur >= 100:
+                pass
+            else:
+                break
+            j += 1
+        total += cur
+        out.append(str(total))
+        i = j
+    return out
+
+
 def street_tokens(text: str) -> list[str]:
     t = (text or "").lower().replace(".", "")
-    toks = re.findall(r"#|[^\W_]+", t)
+    toks = _merge_number_words(re.findall(r"#|[^\W_]+", t))
     out = []
     for x in toks:
         x = re.sub(r"^(\d+)(st|nd|rd|th)$", r"\1", x)  # "39th" = "39"
@@ -149,10 +184,9 @@ def excerpt_supports_street(excerpt: str, street: str) -> bool:
         return False
     number, name = key
     toks = street_tokens(excerpt)
-    numbers = [number] + ([NUMBER_WORDS[int(number)]] if number.isdigit() and int(number) in NUMBER_WORDS else [])
-    seqs = [[n, *name] for n in numbers]  # "One Notre Dame Avenue" = "1 Notre Dame Avenue"
+    seqs = [[number, *name]]  # number words were already read as whole numbers by street_tokens
     if len(name) > 1 and name[-1] in STREET_SUFFIX.values():
-        seqs += [[n, *name[:-1]] for n in numbers]
+        seqs.append([number, *name[:-1]])
     for seq in seqs:
         n = len(seq)
         for i in range(len(toks) - n + 1):
@@ -262,12 +296,17 @@ def service_slots(text: str) -> set[tuple]:
         acts, langs = _class_positions(chunk, ACTIVITY_WORDS), _class_positions(chunk, LANGUAGE_WORDS)
         found_times = sorted(_times_in(chunk))
         positions = [p for p, _ in found_times]
-        labels = acts + langs
-        labels_after = bool(positions) and (not labels or positions[0] < min(f[0] for f in labels))
+
+        def time_first(labels: list) -> bool:
+            # Decided separately for activity and for language: in "Sunday Mass 10 AM
+            # (Spanish)" the activity precedes the time while the language follows it.
+            return bool(positions) and (not labels or positions[0] < min(f[0] for f in labels))
+
+        acts_after, langs_after = time_first(acts), time_first(langs)
         for i, (pos, t) in enumerate(found_times):
             before = [d for p, d in days if p < pos]
-            slots.add((before[-1] if before else day, _class_for_time(acts, positions, i, labels_after),
-                       _class_for_time(langs, positions, i, labels_after), t))
+            slots.add((before[-1] if before else day, _class_for_time(acts, positions, i, acts_after),
+                       _class_for_time(langs, positions, i, langs_after), t))
         if days:
             day = days[-1][1]
     return slots

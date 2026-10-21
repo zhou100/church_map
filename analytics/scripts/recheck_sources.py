@@ -348,6 +348,9 @@ class Fetcher:
                 if r.is_redirect and r.headers.get("location"):
                     hop = urljoin(hop, r.headers["location"])
                     continue
+                if r.status_code in (404, 410):
+                    # The page is gone: a judgement on the source, never a transient failure.
+                    return {"verdict": "source_gone", "http_status": r.status_code, "final_url": hop}
                 if r.status_code != 200:
                     return {"verdict": "fetch_failed", "http_status": r.status_code, "final_url": hop}
                 if len(r.content) > MAX_BYTES:

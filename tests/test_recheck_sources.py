@@ -244,3 +244,23 @@ def test_squash_keeps_numbers_apart():
     assert rs.squash("Call 650-579-5528 1430 Palm Drive") == "call650 579 5528 1430palmdrive"
     page = _t("<p>Sun<span>day</span> Wor<b>ship</b> at 1430 Palm Drive</p>")
     assert rs.match("Sunday Worship", page)[0] == "verified"
+
+
+def test_deleted_page_is_source_gone_not_a_fetch_failure(monkeypatch):
+    import asyncio
+    import httpx
+    monkeypatch.setattr(rs, "is_public", lambda host: True)
+    monkeypatch.setattr(rs, "PER_HOST_DELAY_S", 0)
+
+    def handler(req):
+        if req.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(410 if req.url.path == "/gone" else 503)
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            f = rs.Fetcher(c)
+            return await f.fetch("https://church.example.org/gone"), await f.fetch("https://church.example.org/busy")
+
+    gone, busy = asyncio.run(go())
+    assert gone["verdict"] == "source_gone" and busy["verdict"] == "fetch_failed" and busy["http_status"] == 503

@@ -109,3 +109,27 @@ def test_every_weekday_ends_the_previous_days_scope():
     assert excerpt_supports_service("Domingo: 11am - 1pm (Servicio General)", "Domingo: 11am - 1pm (Servicio General)")
     assert not excerpt_supports_service("Domingo: 7pm", "Jueves: 7pm")
     assert excerpt_supports_service("Dom 11:00 AM (General)", "Domingo 11:00 AM")
+
+
+# --- Review of 91be6af, issue 1: a number word is read as part of its whole phrase ----
+
+@pytest.mark.parametrize("excerpt,street,ok", [
+    ("Twenty-One Main Street, Oakland", "1 Main Street", False),
+    ("Twenty One Main Street", "1 Main Street", False),
+    ("Twenty-One Main Street, Oakland", "21 Main Street", True),
+    ("One Hundred Five Elm Street", "105 Elm St", True),
+    ("One Hundred Five Elm Street", "5 Elm St", False),
+    ("One Notre Dame Avenue, San Jose", "1 Notre Dame Avenue", True),
+])
+def test_number_word_phrases(excerpt, street, ok):
+    assert excerpt_supports_street(excerpt, street) is ok
+
+
+# --- Review of 91be6af, issue 2: activity and language are attributed separately -------
+
+def test_language_after_the_time_is_not_dropped_when_the_activity_precedes_it():
+    page = "Sunday Mass 10 AM (Spanish); Sunday Mass 11 AM (English)"
+    assert not excerpt_supports_service(page, "Sunday English Mass 10 AM")
+    assert excerpt_supports_service(page, "Sunday Spanish Mass 10 AM")
+    assert excerpt_supports_service(page, "Sunday English Mass 11 AM")
+    assert excerpt_supports_service("Sunday 10 AM Mass in Spanish", "Sunday Spanish Mass 10 AM")

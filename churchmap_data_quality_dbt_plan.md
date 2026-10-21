@@ -1168,6 +1168,17 @@ PR #41 was merged at e9980b51, so these fixes go on a new branch from `main`.
 
 Inputs are in `outbox/`, including `known_congregations_v7` (1,289 known). S and W need small overlay readers in `build_seeds.py` when they return.
 
+### Status 2026-10-21: review of 91be6af, four issues fixed (PR #42)
+
+1. **Spelled-out house numbers.** "Twenty-One Main Street" had verified as "1 Main Street" because the alias matched the trailing "one". Number-word runs are now read as whole numbers ("twenty-one" → 21, "one hundred five" → 105) before comparing, and the per-word alias is gone.
+2. **Service language was dropped.** "Sunday Mass 10 AM (Spanish); Sunday Mass 11 AM (English)" had supported "Sunday English Mass 10 AM": one label-first/time-first decision was shared by activity and language, so the trailing "(Spanish)" was ignored. Activity and language now decide separately.
+3. **Carry-over could revive a rejected fact** (verified → not_found → fetch_failed ended as verified). Carry-over now requires the latest verdict that judged the fact (`verified`, `not_found`, `partial`, `not_an_excerpt`, `source_gone`) to be `verified`.
+4. **Deleted sources carried over.** 404/410 are now `source_gone`, and only transient failures carry: no response, 408, 425, 429, or 5xx (403 doesn't).
+
+**Effect on the real data:** C-042's site now answers 403, so its 3 facts no longer carry over. Profile-ready goes 133 → 132; visit-ready is unchanged at 127.
+
+**Tests:** 295 passed; each review example is a test.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:

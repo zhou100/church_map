@@ -118,9 +118,15 @@ Each verdict carries a **fact fingerprint** (`analytics/scripts/fact_fingerprint
 | `not_an_excerpt` | the "excerpt" describes the page instead of quoting it |
 | `fetch_failed` / `robots_blocked` / `unsupported` / `unsafe_url` | could not check |
 | `skipped_facebook` | Page facts follow D-3; we never fetch Facebook |
+| `source_gone` | the cited page returns 404/410 |
 | `stale` | the fact, its URL or excerpt changed since the check; re-run the check |
 
-A `fetch_failed` (timeout, 5xx) doesn't undo a `verified` from the last 30 days for the same fact fingerprint. The seed keeps it with `carried_over = true` and the original check time, using `returns/recheck/history/`.
+A transient `fetch_failed` doesn't undo a recent `verified`. Transient means no response (timeout or connection error), 408, 425, 429, or 5xx. The seed keeps the earlier `verified`, with `carried_over = true` and the original check time (history in `returns/recheck/history/`), only if all of these hold:
+- the fact fingerprint is the same;
+- that verification is at most 30 days old;
+- the latest verdict that judged the fact (`verified`, `not_found`, `partial`, `not_an_excerpt`, `source_gone`) is that verification.
+
+A 404/410 is `source_gone` and never carries; a 403 doesn't carry either.
 
 Only `verified` lets a website or denomination fact through. Everything else needs
 another source or another pass.
