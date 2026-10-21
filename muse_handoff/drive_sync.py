@@ -9,6 +9,8 @@ returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
     python3 muse_handoff/drive_sync.py status
     python3 muse_handoff/drive_sync.py new-discovery --title "Marin County" --state CA \\
         --cities "San Rafael=25,Novato=20,Mill Valley=15" --other "Any other Marin County city=10"
+    python3 muse_handoff/drive_sync.py new-leads --title "Bay Area IRS leads" --state CA \\
+        --leads muse_handoff/outbox/irs_leads_bay_sample100.csv      # from analytics/scripts/irs_leads.py
     python3 muse_handoff/drive_sync.py publish WP-0001
     python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build]
 
@@ -32,6 +34,7 @@ import shutil
 import sqlite3
 import subprocess
 import sys
+from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -47,7 +50,13 @@ RECEIVED_COLS = ["file", "wp_id", "received_at", "done_sha256"]
 
 # What Muse returns (name inside returns/WP-xxxx/) -> local kind (<kind>_WP0001.csv).
 OUTPUT_KINDS = {"results.csv": "results", "new_candidates.csv": "new_candidates",
-                "service_fixes.csv": "service_fixes", "worship_location.csv": "worship_location"}
+                "service_fixes.csv": "service_fixes", "worship_location.csv": "worship_location",
+                "lead_outcomes.csv": "lead_outcomes"}
+RECHECKED = {"results", "new_candidates", "service_fixes", "worship_location"}  # files that cite sources
+LEAD_OUTCOMES = {"active", "closed", "no_trace", "not_a_congregation", "out_of_scope", "already_known"}
+LEAD_COLS = ["lead_id", "ein", "irs_name", "irs_street", "irs_city", "irs_zip", "ruling_year"]
+OUTCOME_COLS = ["lead_id", "outcome", "known_id", "evidence_url", "evidence_type", "meets_at_irs_address",
+                "checked_at", "minutes_spent", "notes"]
 REFERENCE = ["BRIEF_v3.md", "results_TEMPLATE_v3.csv", "new_candidates_TEMPLATE_v3.csv",
              "service_fixes_S_TEMPLATE.csv", "worship_location_W_TEMPLATE.csv", "validate_returns.py"]
 KNOWN_COLS = ["known_id", "kind", "name", "current_name", "city", "street_address", "website",
@@ -140,8 +149,12 @@ def known_congregations(state: str, cities: list[str], db: Path, seeds: Path) ->
             "select city, latitude, longitude from churches where state = ? and latitude is not null", (state,))
             if (city or "").lower() in want]
         if pins:
-            lat0, lat1 = min(p[0] for p in pins) - BBOX_MARGIN, max(p[0] for p in pins) + BBOX_MARGIN
-            lon0, lon1 = min(p[1] for p in pins) - BBOX_MARGIN, max(p[1] for p in pins) + BBOX_MARGIN
+            # Trim the outer 2% so a few pins mislabeled with a far-away city name
+            # don't stretch the box across the state.
+            lats, lons = sorted(p[0] for p in pins), sorted(p[1] for p in pins)
+            cut = len(pins) // 50
+            lat0, lat1 = lats[cut] - BBOX_MARGIN, lats[-1 - cut] + BBOX_MARGIN
+            lon0, lon1 = lons[cut] - BBOX_MARGIN, lons[-1 - cut] + BBOX_MARGIN
             q = ("select church_id, name, city, address, website from churches where state = ? and "
                  "((latitude between ? and ? and longitude between ? and ?) or lower(city) in (%s))"
                  % ",".join("?" * len(want)))
@@ -238,6 +251,107 @@ def cmd_new_discovery(args) -> int:
     return 0
 
 
+LEADS_TASK = """# {wp_id} — check leads: {title}
+
+**Rules:** `reference/BRIEF_v3.md` (v3.2) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+
+## What
+
+`leads.csv` lists {n} congregations from the **IRS list of tax-exempt organizations** that are in neither our directory nor your earlier results. We want to know, for each one, **whether a congregation by that name meets today**, and if so, where. The answer "we can't find it" is just as useful as a find: this package measures how much of the IRS list is real.
+
+The IRS gives a **name, a filing address, and a year**. Treat them as a lead only:
+- The IRS address is where the paperwork goes: often a pastor's home, a treasurer, or a mailbox. **Never report it as the church's address** unless the church's own source (S1–S3) states it as the place it meets.
+- Don't look up the people who live at an address, and never report a personal name, home, or phone (N1).
+- Spend **at most about 5 minutes per lead**: search the name with the city, then the name alone, and check Facebook Pages. If nothing in S1–S4 shows the congregation, the outcome is `no_trace`.
+
+## Output 1: `lead_outcomes.csv`, exactly one row per `lead_id`
+
+| Column | Value |
+|---|---|
+| `lead_id` | from `leads.csv` |
+| `outcome` | `active`: an S1–S3 source, or a Facebook Page post within 12 months, shows it meets now; `closed`: a source says it closed, merged, or dissolved; `no_trace`: nothing found in S1–S4; `not_a_congregation`: a ministry, school, or other organization that holds no regular worship; `out_of_scope`: not a Christian congregation (D-1); `already_known`: it is in `known_congregations.csv` |
+| `known_id` | for `already_known`: its `known_id` |
+| `evidence_url`, `evidence_type` | the page that decided the outcome (blank for `no_trace`); `own_site` / `fb_page` / `denomination` / `other` |
+| `meets_at_irs_address` | `yes` / `no` / `unknown`: does a source say it meets at the IRS street address? |
+| `checked_at` | per-row UTC time, `YYYY-MM-DDTHH:MM:SSZ` (D7) |
+| `minutes_spent`, `notes` | what you searched, and anything unusual |
+
+## Output 2: `new_candidates.csv`
+
+- For every `active` lead: one full v3 row (`new_candidates_TEMPLATE_v3.csv`) with `candidate_ref` = its `lead_id`, `task = {task}`, and `found_via` as usual.
+- For an `already_known` lead: a row only if you add language, service, or children's facts, with `possible_match_id` = the `known_id`.
+- Congregations you find along the way that are not leads: `{task}-901`, `{task}-902`, ….
+
+The same source rules apply as always: facts come from the congregation's own site or Page, or its denomination; excerpts are verbatim (N9).
+
+## Inputs
+
+| File | Rows | sha256 |
+|---|---:|---|
+| `outbox/{wp_id}/leads.csv` | {n} | `{leads_sha}` |
+| `outbox/{wp_id}/known_congregations.csv` | {known_n} | `{known_sha}` |
+
+## Output files (in `returns/{wp_id}/`)
+
+`lead_outcomes.csv`, `new_candidates.csv`, `run_log.md` (D9 manifest; counts per outcome; blocked sites), then `DONE.md` last.
+
+## Check before delivering
+
+```bash
+python3 reference/validate_returns.py ALL - returns/{wp_id}/new_candidates.csv
+```
+
+Zero `ERROR` lines is required. We also check that every lead has exactly one outcome and that every `active` lead has a candidate row.
+"""
+
+
+def cmd_new_leads(args) -> int:
+    leads = read_csv(Path(args.leads))
+    if not leads:
+        raise SystemExit(f"no leads in {args.leads}")
+    wp_id = next_wp_id()
+    task = wp_id.replace("-", "")
+    pkg = OUTBOX / wp_id
+    pkg.mkdir(parents=True)
+    for i, r in enumerate(leads, 1):
+        r["lead_id"] = f"{task}-{i:03d}"
+    write_csv(pkg / "leads.csv", LEAD_COLS, leads)
+    cities = sorted({r["irs_city"] for r in leads})
+    known = known_congregations(args.state, cities, Path(args.db), Path(args.seeds))
+    write_csv(pkg / "known_congregations.csv", KNOWN_COLS, known)
+    (pkg / "TASK.md").write_text(LEADS_TASK.format(
+        wp_id=wp_id, task=task, title=args.title, n=len(leads), leads_sha=sha256(pkg / "leads.csv"),
+        known_n=len(known), known_sha=sha256(pkg / "known_congregations.csv")), encoding="utf-8")
+    print(f"{wp_id}: {args.title}; {len(leads)} leads in {len(cities)} cities; {len(known)} known -> {pkg}")
+    print(f"review {pkg / 'TASK.md'}, then: python3 muse_handoff/drive_sync.py publish {wp_id}")
+    return 0
+
+
+def check_leads(wp_id: str, outcomes: Path, cands: Path | None) -> list[str]:
+    """Every lead exactly once with a known outcome; every active lead has a candidate row."""
+    leads = {r["lead_id"] for r in read_csv(OUTBOX / wp_id / "leads.csv")}
+    rows = read_csv(outcomes)
+    errs = []
+    if rows and set(OUTCOME_COLS) - set(rows[0]):
+        errs.append(f"ERROR lead_outcomes.csv is missing columns: {sorted(set(OUTCOME_COLS) - set(rows[0]))}")
+    seen = Counter(r.get("lead_id", "") for r in rows)
+    errs += [f"ERROR {lid}: {n} outcome rows (want exactly 1)" for lid, n in sorted(seen.items()) if n > 1]
+    errs += [f"ERROR {lid}: no outcome row" for lid in sorted(leads - set(seen))]
+    errs += [f"ERROR {lid}: not a lead in leads.csv" for lid in sorted(set(seen) - leads)]
+    refs = {r["candidate_ref"] for r in read_csv(cands)} if cands else set()
+    for r in rows:
+        lid, outcome = r.get("lead_id", ""), r.get("outcome", "")
+        if outcome not in LEAD_OUTCOMES:
+            errs.append(f"ERROR {lid}: outcome={outcome!r} not allowed")
+        if outcome == "active" and lid not in refs:
+            errs.append(f"ERROR {lid}: outcome active but no new_candidates row with candidate_ref {lid}")
+        if outcome == "already_known" and not r.get("known_id"):
+            errs.append(f"ERROR {lid}: outcome already_known needs known_id")
+        if outcome in ("active", "closed", "not_a_congregation", "out_of_scope") and not r.get("evidence_url"):
+            errs.append(f"ERROR {lid}: outcome {outcome} needs evidence_url")
+    return errs
+
+
 def sync_reference() -> None:
     copy_if_changed(HANDOFF / "drive" / "README_FOR_MUSE.md", DRIVE / "README_FOR_MUSE.md")
     for name in REFERENCE:
@@ -293,7 +407,7 @@ def validate(kind: str, path: Path, received: str, wp_id: str) -> tuple[bool, st
             return False, f"ERROR results.csv returned but {wp_id} has no manifest; this package expects no results.csv\n"
         argv = ["ALL", str(path), "-", "--redo", "--manifest", str(manifest)]
     else:
-        return True, ""  # S/W answers have no row-level validator; recheck and build_seeds gate them
+        return True, ""  # S/W answers are gated by recheck and build_seeds; lead outcomes by check_leads
     p = subprocess.run([sys.executable, "-I", str(validator), *argv, "--received-at", received],
                        capture_output=True, text=True)
     return p.returncode == 0, p.stdout + p.stderr
@@ -356,6 +470,11 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
             errors = [ln for ln in out.splitlines() if ln.startswith("ERROR")]
             problems.append(f"## `{name}`\n\n```\n" + "\n".join(errors or out.splitlines()[-20:]) + "\n```\n")
         staged.append(local)
+    if "lead_outcomes.csv" in outputs:
+        cands = stage / f"new_candidates_{tag}.csv"
+        errs = check_leads(wp_id, stage / f"lead_outcomes_{tag}.csv", cands if cands.exists() else None)
+        if errs:
+            problems.append("## `lead_outcomes.csv`\n\n```\n" + "\n".join(errs) + "\n```\n")
     if problems:
         row.update(state="needs_fix", done_sha256=done_sha, note=f"{len(problems)} file(s) failed validation")
         write_feedback(wp_id, problems)
@@ -368,7 +487,8 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     shutil.rmtree(stage, ignore_errors=True)
     if recheck:
         subprocess.run([str(ROOT / "analytics/.venv/bin/python"), str(ROOT / "analytics/scripts/recheck_sources.py"),
-                        *[str(RET / p.name) for p in staged]], check=True)
+                        *[str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]],
+                       check=True)
     row.update(state="ingested", ingested_at=now_utc(), done_sha256=done_sha,
                note="partial delivery; queue the rest" if partial else "")
     fb = DRIVE / "feedback" / f"{wp_id}.md"
@@ -418,6 +538,13 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--db", default=str(ROOT / "holyhub.db"), help="local directory snapshot (read only)")
     p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
     p.set_defaults(fn=cmd_new_discovery)
+    p = sub.add_parser("new-leads", help="build a lead-checking package from a leads CSV (irs_leads.py)")
+    p.add_argument("--title", required=True)
+    p.add_argument("--state", required=True)
+    p.add_argument("--leads", required=True)
+    p.add_argument("--db", default=str(ROOT / "holyhub.db"))
+    p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
+    p.set_defaults(fn=cmd_new_leads)
     p = sub.add_parser("publish", help="copy a package to the Drive outbox and queue it")
     p.add_argument("wp_id")
     p.set_defaults(fn=cmd_publish)

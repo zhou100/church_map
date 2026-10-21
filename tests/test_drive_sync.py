@@ -148,3 +148,73 @@ def test_new_discovery_numbers_packages_and_writes_the_task(tmp_path, monkeypatc
     assert "task = WP0002" in task and "| Novato | 20 |" in task and "| Any other Marin city | 10 |" in task
     with pytest.raises(SystemExit):
         ds.parse_caps("San Rafael")
+
+
+# --- lead-checking packages (IRS leads) -----------------------------------------------
+
+def _leads_pkg(outbox, n=3):
+    pkg = outbox / "WP-0003"
+    pkg.mkdir(parents=True)
+    ds.write_csv(pkg / "leads.csv", ds.LEAD_COLS, [dict(lead_id=f"WP0003-{i:03d}") for i in range(1, n + 1)])
+
+
+def _outcomes(path, rows):
+    ds.write_csv(path, ds.OUTCOME_COLS, rows)
+
+
+def test_every_lead_needs_exactly_one_known_outcome(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    _leads_pkg(tmp_path)
+    out = tmp_path / "o.csv"
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="no_trace"), dict(lead_id="WP0003-001", outcome="no_trace"),
+                    dict(lead_id="WP0003-002", outcome="gone"), dict(lead_id="WP0003-009", outcome="no_trace")])
+    errs = "\n".join(ds.check_leads("WP-0003", out, None))
+    assert "WP0003-001: 2 outcome rows" in errs and "WP0003-003: no outcome row" in errs
+    assert "outcome='gone'" in errs and "WP0003-009: not a lead" in errs
+
+
+def test_active_lead_needs_evidence_and_a_candidate_row(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    _leads_pkg(tmp_path, n=2)
+    out, cands = tmp_path / "o.csv", tmp_path / "c.csv"
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="active", evidence_url="https://a.example"),
+                    dict(lead_id="WP0003-002", outcome="already_known", evidence_url="https://b.example")])
+    ds.write_csv(cands, ["candidate_ref"], [dict(candidate_ref="WP0003-901")])
+    errs = "\n".join(ds.check_leads("WP-0003", out, cands))
+    assert "WP0003-001: outcome active but no new_candidates row" in errs
+    assert "WP0003-002: outcome already_known needs known_id" in errs
+    ds.write_csv(cands, ["candidate_ref"], [dict(candidate_ref="WP0003-001")])
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="active", evidence_url="https://a.example"),
+                    dict(lead_id="WP0003-002", outcome="already_known", known_id="77001")])
+    assert ds.check_leads("WP-0003", out, cands) == []
+
+
+il = _load("irs_leads", _ROOT / "analytics" / "scripts" / "irs_leads.py")
+
+
+def test_irs_matching_by_street_or_near_identical_name_in_the_same_city():
+    idx = il.Index()
+    idx.add("osm:1", "First Baptist Church of San Rafael", "San Rafael", "1 A Street", "94901")
+    idx.add("osm:2", "St. Mary's Catholic Church", "Oakland", "", "")
+    assert idx.match("FIRST BAPTIST CHURCH", "SAN RAFAEL", "", "") == ("name", "osm:1")
+    assert idx.match("SOMETHING ELSE INC", "SAN RAFAEL", "1 A ST", "94901-1234") == ("street", "osm:1")
+    assert idx.match("SAINT MARYS CATHOLIC CHURCH", "OAKLAND", "", "") == ("name", "osm:2")
+    assert idx.match("FIRST BAPTIST CHURCH", "NOVATO", "", "") is None
+
+
+def test_irs_filters_keep_congregations_and_drop_mailboxes(tmp_path):
+    cols = ["EIN", "NAME", "STREET", "CITY", "ZIP", "SUBSECTION", "FOUNDATION", "NTEE_CD", "ACTIVITY",
+            "GROUP", "RULING"]
+    rows = [("1", "GRACE CHURCH", "10 MAIN ST", "OAKLAND", "94601", "03", "10", "", "001000000", "0000", "1980"),
+            ("2", "GRACE CHURCH", "PO BOX 5", "OAKLAND", "94601", "03", "10", "", "", "0000", "1980"),
+            ("3", "BETH ISRAEL", "1 A ST", "OAKLAND", "94601", "03", "10", "X30", "", "0000", "1980"),
+            ("4", "GRACE CHURCH", "10 MAIN ST", "OAKLAND", "94601", "04", "10", "X20", "", "0000", "1980"),
+            ("5", "HOPE CHRISTIAN SCHOOL", "2 B ST", "OAKLAND", "94601", "03", "10", "X20", "", "0000", "1980")]
+    with (tmp_path / "bmf.csv").open("w", newline="", encoding="latin-1") as f:
+        w = csv.writer(f)
+        w.writerow(cols)
+        w.writerows(rows)
+    got = {r["EIN"]: r for r in il.bmf_churches(tmp_path / "bmf.csv")}
+    assert set(got) == {"1", "2", "5"}  # non-Christian NTEE and non-501(c)(3) dropped
+    assert got["2"]["mailbox"] and not got["1"]["mailbox"]
+    assert got["1"]["congregation_like"] and not got["5"]["congregation_like"]
