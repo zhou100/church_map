@@ -286,7 +286,7 @@ async def repair(path: Path, manual: Path | None = None, resource: bool = False)
     with path.open(encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         cols, rows = reader.fieldnames, list(reader)
-    key_col = "church_id" if "church_id" in cols else "candidate_ref"
+    key_col = next(c for c in ("church_id", "candidate_ref", "subject_id") if c in cols)
     report_rows = list(csv.DictReader(report.open(encoding="utf-8")))
     failing = [r for r in report_rows
                if r["verdict"] in REPAIRABLE and r["group"] in FINDERS and r["source_type"] != "fb_page"]

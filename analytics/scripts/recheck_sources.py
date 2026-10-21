@@ -73,12 +73,13 @@ def fact_rows(path: Path) -> list[dict]:
         rows = list(csv.DictReader(f))
     out = []
     for i, r in enumerate(rows, 1):
-        key = r.get("church_id") or r.get("candidate_ref") or f"row{i}"
+        key = r.get("church_id") or r.get("candidate_ref") or r.get("subject_id") or f"row{i}"
         name = r.get("current_name") or r.get("candidate_name") or ""
-        v2_candidate = "excerpt" in r and "source_url" in r
-        for g in (("candidate",) if v2_candidate else GROUPS):
+        worship = "address_is_worship_location" in r and "subject_id" in r       # task W overlay
+        v2_candidate = not worship and "excerpt" in r and "source_url" in r
+        for g in (("worship",) if worship else ("candidate",) if v2_candidate else GROUPS):
             url, ex = source_of(r, g)
-            stype = r.get("source_type", "") if v2_candidate else r.get(f"{g}_source_type", "")
+            stype = r.get("source_type", "") if (v2_candidate or worship) else r.get(f"{g}_source_type", "")
             if url and ex:
                 out.append({"row_key": key, "name": name, "group": g, "source_type": stype,
                             "source_url": url.strip(), "excerpt": ex,

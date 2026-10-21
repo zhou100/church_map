@@ -26,6 +26,8 @@ from urllib.parse import urlparse
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
+PACKAGE_TASK_RE = re.compile(r"^WP\d{4}$")  # work packages from the shared Drive queue
+
 ENUMS = {
     "task": {"C", "CN", "D", "E", "F", "L", "H"},
     "candidate_status": {"active", "unresolved"},
@@ -580,7 +582,7 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
         for col in ("candidate_name", "city", "status", "found_via", "match_confidence", "task"):
             if not r[col]:
                 err(w, f"missing required {col}")
-        if r["task"] and r["task"] not in ENUMS["task"]:
+        if r["task"] and r["task"] not in ENUMS["task"] and not PACKAGE_TASK_RE.match(r["task"]):
             err(w, f"task={r['task']!r} not allowed")
         if r["status"] and r["status"] not in ENUMS["candidate_status"]:
             err(w, f"status={r['status']!r} not allowed (candidates: active or unresolved)")

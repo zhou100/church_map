@@ -230,3 +230,73 @@ def test_carry_over_end_to_end(tmp_path, monkeypatch):
     bs.build_source_checks(files, {}, fps)
     out = list(csv.DictReader((tmp_path / "seeds" / "source_checks.csv").open(encoding="utf-8")))[0]
     assert (out["verdict"], out["carried_over"], out["checked_at"]) == ("verified", "true", "2026-10-20T00:00:00Z")
+
+
+# --- Round 6 overlays (task S service times, task W worship location) -------------------
+
+def _overlay_env(tmp_path, monkeypatch, base, s_row=None, w_row=None, w_verdict="verified", s_verdict="verified"):
+    ret, seeds = tmp_path / "returns", tmp_path / "seeds"
+    (ret / "recheck").mkdir(parents=True)
+    seeds.mkdir()
+    monkeypatch.setattr(bs, "RET", ret)
+    monkeypatch.setattr(bs, "SEEDS", seeds)
+    cols = sorted(set(base) | {"service_times_verbatim", "service_languages", "service_source_url",
+                               "service_source_type", "service_excerpt", "address_is_worship_location"})
+    _write(ret / "results_current.csv", cols, [base])
+    rc = ["row_key", "group", "verdict", "http_status", "match_mode", "checked_at", "fact_fingerprint"]
+    if s_row:
+        _write(ret / "service_fixes_S.csv", list(s_row), [s_row])
+        _write(ret / "recheck" / "service_fixes_S.csv", rc, [dict(row_key=s_row["subject_id"], group="service",
+               verdict=s_verdict, http_status="200", match_mode="exact", checked_at="2026-10-21T18:00:00Z",
+               fact_fingerprint=bs.fact_fingerprint(s_row, "service"))])
+    if w_row:
+        _write(ret / "worship_location_W.csv", list(w_row), [w_row])
+        _write(ret / "recheck" / "worship_location_W.csv", rc, [dict(row_key=w_row["subject_id"], group="worship",
+               verdict=w_verdict, http_status="200", match_mode="exact", checked_at="2026-10-21T18:00:00Z",
+               fact_fingerprint=bs.fact_fingerprint(w_row, "worship"))])
+    overlays, used = bs.load_overlays(), {}
+    files, fps = bs.build_results({"1": "A_calibration"}, overlays, used)
+    bs.build_source_checks(files, {}, fps, used)
+    res = list(csv.DictReader((seeds / "muse_results.csv").open(encoding="utf-8")))[0]
+    checks = {r["fact_group"]: r["verdict"] for r in csv.DictReader((seeds / "source_checks.csv").open(encoding="utf-8"))}
+    return res, checks
+
+
+S_ROW = {"subject_type": "church", "subject_id": "1", "service_times_verbatim": "Sunday Worship 10:00 AM",
+         "service_languages": "English", "service_source_url": "https://church.example.org/visit",
+         "service_source_type": "own_site", "service_excerpt": "Sunday Worship 10:00 AM in the sanctuary",
+         "checked_at": "2026-10-21T18:00:00Z", "notes": ""}
+
+
+def test_service_answer_replaces_the_schedule_and_is_checked_on_its_own_page(tmp_path, monkeypatch):
+    base = {**BASE, "service_times_verbatim": "Sat 5 pm; Sun 8, 10, 12; daily 8 am", "service_excerpt": "Sunday 10 am"}
+    res, checks = _overlay_env(tmp_path, monkeypatch, base, s_row=S_ROW)
+    assert res["service_times_verbatim"] == "Sunday Worship 10:00 AM" and checks["service"] == "verified"
+
+
+def test_service_answer_that_failed_its_check_is_not_verified(tmp_path, monkeypatch):
+    res, checks = _overlay_env(tmp_path, monkeypatch, dict(BASE), s_row=S_ROW, s_verdict="not_found")
+    assert checks["service"] == "not_found"
+
+
+W_ROW = {"subject_type": "church", "subject_id": "1", "address_is_worship_location": "yes",
+         "worship_street_address": "", "worship_city": "", "worship_zip": "",
+         "source_url": "https://church.example.org/visit", "source_type": "own_site",
+         "excerpt": "Join us Sundays at 100 Main St", "checked_at": "2026-10-21T18:00:00Z", "notes": ""}
+
+
+def test_worship_answer_counts_only_if_its_excerpt_verified(tmp_path, monkeypatch):
+    base = {**BASE, "address_is_worship_location": "unknown"}
+    res, _ = _overlay_env(tmp_path, monkeypatch, base, w_row=W_ROW)
+    assert res["address_is_worship_location"] == "yes"
+    res, _ = _overlay_env(tmp_path / "b", monkeypatch, base, w_row=W_ROW, w_verdict="not_found")
+    assert res["address_is_worship_location"] == "unknown"
+
+
+def test_corrected_street_replaces_the_address_and_takes_its_check_from_w(tmp_path, monkeypatch):
+    base = {**BASE, "street_address": "100 Main Ave", "address_excerpt": "100 Main Ave"}
+    w = {**W_ROW, "worship_street_address": "100 Main Street", "worship_city": "San Mateo", "worship_zip": "94401",
+         "excerpt": "Our church: 100 Main Street, San Mateo"}
+    res, checks = _overlay_env(tmp_path, monkeypatch, base, w_row=w)
+    assert res["street_address"] == "100 Main Street" and res["address_unsupported"] == "false"
+    assert checks["address"] == "verified"

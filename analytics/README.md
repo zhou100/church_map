@@ -45,6 +45,30 @@ The intake script runs four steps:
 3. Rebuild the seeds.
 4. Run `dbt build`.
 
+### Through the shared Drive queue
+
+From round 7 on, work moves through a Google Drive folder that Muse reads and writes. Google Drive for desktop mirrors it at `/mnt/f/My Drive/churchmap-handoff`; override with `CHURCHMAP_DRIVE`. The protocol Muse follows is [`muse_handoff/drive/README_FOR_MUSE.md`](../muse_handoff/drive/README_FOR_MUSE.md).
+
+```bash
+python3 muse_handoff/drive_sync.py new-discovery --title "Marin County" --state CA --cities "San Rafael=25,Novato=20"
+python3 muse_handoff/drive_sync.py publish WP-0003    # after reading its TASK.md
+python3 muse_handoff/drive_sync.py pull               # validate, re-check and ingest finished packages, rebuild
+python3 muse_handoff/drive_sync.py status
+```
+
+What `pull` does:
+- It reads a package only after Muse writes `DONE.md`, and only if every listed file matches its sha256.
+- A package that fails validation is not ingested. It goes back to Muse as `feedback/WP-xxxx.md`, with the state set to `needs_fix`.
+- Ingested files land in `muse_handoff/returns/` as `<kind>_WP0001.csv`, with their receive times in `received.csv`. `build_seeds.py` picks them up after the lettered rounds.
+- Excerpt repair (`repair_excerpts.py`) stays a manual step.
+
+`pull` runs every hour from the Windows scheduled task `ChurchMapMusePull`, through [`muse_handoff/drive_pull_hourly.sh`](../muse_handoff/drive_pull_hourly.sh). The script does three things:
+- re-mounts F: if WSL lost the mount;
+- starts the local Postgres;
+- appends its output to `muse_handoff/returns/drive_pull.log`.
+
+Remove the task with `schtasks.exe /Delete /TN ChurchMapMusePull /F`.
+
 `build_seeds.py` merges every pass it finds, so files that haven't arrived yet are simply skipped. The merge order:
 
 - **Results:** pilot (A, B, Facebook passes) → E → C, D, F. A later pass wins for the same `church_id`.

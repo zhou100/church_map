@@ -39,22 +39,17 @@ models:
       - name: address_is_worship_location
         tests:
           - accepted_values: {values: ['yes', 'no', 'unknown']}
-      - name: muse_batch
+      - name: muse_batch  # values checked in tests/assert_known_pass_labels.sql
         tests:
           - not_null
-          - accepted_values: {values: [A_calibration, B_main, C_main, D_main, F_main]}
-      - name: last_pass
-        tests:
-          - accepted_values: {values: [A, A_redo, A_fbcheck, B, FB1, E, C, D, F]}
+      - name: last_pass  # values checked in tests/assert_known_pass_labels.sql
 
   - name: stg_muse_candidates
     description: One congregation found outside the directory; v2 (A, B) and v3 tasks unified.
     columns:
       - name: candidate_id
         tests: [unique, not_null]
-      - name: task
-        tests:
-          - accepted_values: {values: [A, B, CN, C, D, E, F, L]}
+      - name: task  # values checked in tests/assert_known_pass_labels.sql
       - name: format
         tests:
           - accepted_values: {values: [v2, v3]}
