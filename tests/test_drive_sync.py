@@ -277,3 +277,36 @@ def test_a_failed_recheck_leaves_the_delivery_to_be_retried(queue, monkeypatch):
     status = ds.load_status()
     assert ds.pull_package(wp, status, recheck=True).startswith("waiting: source re-check failed")
     assert status["WP-0001"].get("done_sha256", "") == ""
+
+
+# --- service-fix packages -------------------------------------------------------------
+
+vr = _load("validate_returns_for_drive", _ROOT / "muse_handoff" / "validate_returns.py")
+
+
+def test_service_fix_validator_names_the_times_the_excerpt_does_not_state(tmp_path, capsys):
+    cols = ["subject_type", "subject_id", "service_times_verbatim", "service_languages", "service_source_url",
+            "service_source_type", "service_excerpt", "checked_at", "notes"]
+    rows = [dict(subject_type="church", subject_id="1", service_times_verbatim="Sunday English Mass 10 AM",
+                 service_source_url="https://a.example/mass", service_source_type="own_site",
+                 service_excerpt="Sunday Mass 10 AM; Sunday Mass 11 AM (Spanish)", checked_at="2026-10-21T10:00:00Z"),
+            dict(subject_type="candidate", subject_id="C-1", service_times_verbatim="Sunday Mass 11 AM (Spanish)",
+                 service_source_url="https://b.example/", service_source_type="own_site",
+                 service_excerpt="Sunday Mass 11 AM (Spanish)", checked_at="2026-10-21T10:00:00Z")]
+    ds.write_csv(tmp_path / "s.csv", cols, rows)
+    vr.problems.clear()
+    assert vr.main(["x", "--service-fixes", str(tmp_path / "s.csv")]) == 1
+    out = capsys.readouterr().out
+    assert "church:1" in out and "does not state: Sun 10:00 worship English" in out and "C-1 " not in out
+
+
+def test_every_service_fix_input_row_must_come_back(queue, monkeypatch):
+    drive, ret, wp = queue
+    ds.write_csv(ds.OUTBOX / "WP-0001" / "service_fix_input.csv", ds.FIX_INPUT_COLS,
+                 [dict(subject_type="church", subject_id="1"), dict(subject_type="candidate", subject_id="C-1")])
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    (wp / "service_fixes.csv").write_text("subject_type,subject_id\nchurch,1\n", encoding="utf-8")
+    (wp / "DONE.md").write_text(f"service_fixes.csv sha256={_sha(wp / 'service_fixes.csv')}\n", encoding="utf-8")
+    status = ds.load_status()
+    assert ds.pull_package(wp, status, recheck=False) == "needs_fix"
+    assert "candidate:C-1: no row" in (drive / "feedback" / "WP-0001.md").read_text()

@@ -11,6 +11,7 @@ returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
         --cities "San Rafael=25,Novato=20,Mill Valley=15" --other "Any other Marin County city=10"
     python3 muse_handoff/drive_sync.py new-leads --title "Bay Area IRS leads" --state CA \\
         --leads muse_handoff/outbox/irs_leads_bay_sample100.csv      # from analytics/scripts/irs_leads.py
+    python3 muse_handoff/drive_sync.py new-service-fixes --title "Re-quote 20 schedules" --ids 76632,C-063
     python3 muse_handoff/drive_sync.py publish WP-0001
     python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build]
 
@@ -328,6 +329,101 @@ def cmd_new_leads(args) -> int:
     return 0
 
 
+FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "recorded_service_times",
+                  "recorded_service_languages", "current_source_url", "reason"]
+
+SERVICE_FIX_TASK = """# {wp_id} — re-quote service times: {title}
+
+**Rules:** `reference/BRIEF_v3.md` (v3.2) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+
+## What
+
+These {n} congregations have a recorded weekend schedule that our map can't show yet, because the excerpt doesn't prove it. `reason` says exactly which times are missing, for example `Sun 10:00 English`. That means the excerpt doesn't state a Sunday 10:00 service in English.
+
+Our rule: a time is shown only if the excerpt states that time **with its day**, for the same kind of gathering, and **in the language the schedule names**.
+
+For each row:
+1. **Scope:** keep the weekend worship services (Saturday vigil and Sunday) and every language-specific service. Leave out weekday Masses, classes, and youth nights.
+2. **Excerpt:** from the church's own page (or its denomination's), copy a verbatim excerpt of **at most 200 characters** that states each kept time **next to its day and its language**.
+   - If the heading and the times are in different places, join the pieces with ` … `, for example `Sunday Masses … 8:00 AM, 10:00 AM … 12:00 PM (Spanish)`.
+   - Prefer the passage where each time sits right beside its own label. In lines like `8:00 AM English Mass 9:30 AM Sung Mass`, a label could belong to the time before it or after it, so we can't use them.
+3. **Schedule:** `service_times_verbatim` is **only what that excerpt states**, verbatim. If the page states no language for a time, **leave the language out**; don't add one the excerpt doesn't say.
+4. **Languages:** `service_languages` as stated (`Mandarin;English`).
+5. **No usable text:** if no page states the schedule as text, leave the times blank and say why in `notes`.
+
+## Input
+
+| File | Rows | sha256 |
+|---|---:|---|
+| `outbox/{wp_id}/service_fix_input.csv` | {n} | `{sha}` |
+
+## Output (in `returns/{wp_id}/`)
+
+- `service_fixes.csv` (`reference/service_fixes_S_TEMPLATE.csv`), exactly one row per input `subject_id`.
+- `run_log.md`.
+- `DONE.md`, written last.
+
+## Check before delivering
+
+```bash
+python3 reference/validate_returns.py --service-fixes returns/{wp_id}/service_fixes.csv
+```
+
+Zero `ERROR` lines is required. It applies the same rule as the map.
+"""
+
+
+def current_rows(ids: set[str]) -> list[dict]:
+    """The latest returned row (overlays applied) for each id, read the way build_seeds reads it."""
+    sys.path.insert(0, str(ROOT / "analytics" / "scripts"))
+    import build_seeds as bs  # noqa: PLC0415
+    overlays, latest = bs.load_overlays(), {}
+    for fname, _ in bs.RESULT_FILES + bs.package_files("results"):
+        for r in bs.read(fname) or []:
+            if r["church_id"] in ids:
+                latest[r["church_id"]] = ("church", bs.apply_overlays(r, "church", r["church_id"], overlays, {}))
+    for fname, _ in bs.CANDIDATE_FILES + bs.package_files("new_candidates"):
+        for r in bs.read(fname) or []:
+            if r.get("candidate_ref") in ids:
+                cid = r["candidate_ref"]
+                latest[cid] = ("candidate", bs.apply_overlays(r, "candidate", cid, overlays, {}))
+    names = {r["church_id"]: r["name"] for r in read_csv(ROOT / "analytics/dbt/seeds/muse_manifest.csv")}
+    out = []
+    for sid in sorted(ids):
+        if sid not in latest:
+            raise SystemExit(f"{sid}: no returned row found")
+        st, r = latest[sid]
+        out.append(dict(subject_type=st, subject_id=sid,
+                        name=r.get("current_name") or r.get("candidate_name") or names.get(sid, ""),
+                        city=r.get("city", ""), recorded_service_times=r.get("service_times_verbatim", ""),
+                        recorded_service_languages=r.get("service_languages", ""),
+                        current_source_url=r.get("service_source_url", ""),
+                        reason=_reason(r.get("service_excerpt", ""), r.get("service_times_verbatim", ""))))
+    return out
+
+
+def _reason(excerpt: str, verbatim: str) -> str:
+    from validate_returns import TIME_RE, unsupported_slots  # noqa: PLC0415
+    if not TIME_RE.search(excerpt or ""):
+        return "excerpt has no time"
+    missing = unsupported_slots(excerpt, verbatim)
+    return "excerpt does not state: " + "; ".join(missing) if missing else "excerpt supports it (re-check the page)"
+
+
+def cmd_new_service_fixes(args) -> int:
+    ids = {x.strip() for x in args.ids.split(",") if x.strip()}
+    rows = current_rows(ids)
+    wp_id = next_wp_id()
+    pkg = OUTBOX / wp_id
+    pkg.mkdir(parents=True)
+    write_csv(pkg / "service_fix_input.csv", FIX_INPUT_COLS, rows)
+    (pkg / "TASK.md").write_text(SERVICE_FIX_TASK.format(
+        wp_id=wp_id, title=args.title, n=len(rows), sha=sha256(pkg / "service_fix_input.csv")), encoding="utf-8")
+    print(f"{wp_id}: {args.title}; {len(rows)} rows -> {pkg}")
+    print(f"review {pkg / 'TASK.md'}, then: python3 muse_handoff/drive_sync.py publish {wp_id}")
+    return 0
+
+
 def check_leads(wp_id: str, outcomes: Path, cands: Path | None) -> list[str]:
     """Every lead exactly once with a known outcome; every active lead has a candidate row."""
     leads = {r["lead_id"] for r in read_csv(OUTBOX / wp_id / "leads.csv")}
@@ -408,8 +504,10 @@ def validate(kind: str, path: Path, received: str, wp_id: str) -> tuple[bool, st
         if not manifest.exists():
             return False, f"ERROR results.csv returned but {wp_id} has no manifest; this package expects no results.csv\n"
         argv = ["ALL", str(path), "-", "--redo", "--manifest", str(manifest)]
+    elif kind == "service_fixes":
+        argv = ["--service-fixes", str(path)]
     else:
-        return True, ""  # S/W answers are gated by recheck and build_seeds; lead outcomes by check_leads
+        return True, ""  # W answers are gated by recheck and build_seeds; lead outcomes by check_leads
     p = subprocess.run([sys.executable, "-I", str(validator), *argv, "--received-at", received],
                        capture_output=True, text=True)
     return p.returncode == 0, p.stdout + p.stderr
@@ -479,6 +577,14 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         if not ok and (blocking or not errors):
             problems.append(f"## `{name}`\n\n```\n" + "\n".join(blocking or out.splitlines()[-20:]) + "\n```\n")
         staged.append(local)
+    fix_input = OUTBOX / wp_id / "service_fix_input.csv"
+    if "service_fixes.csv" in outputs and fix_input.exists():
+        want = {(r["subject_type"], r["subject_id"]) for r in read_csv(fix_input)}
+        got = {(r.get("subject_type", ""), r.get("subject_id", "")) for r in read_csv(stage / f"service_fixes_{tag}.csv")}
+        errs = [f"ERROR {t}:{i}: no row in service_fixes.csv" for t, i in sorted(want - got)]
+        errs += [f"ERROR {t}:{i}: not in service_fix_input.csv" for t, i in sorted(got - want)]
+        if errs:
+            problems.append("## `service_fixes.csv`\n\n```\n" + "\n".join(errs) + "\n```\n")
     if "lead_outcomes.csv" in outputs:
         cands = stage / f"new_candidates_{tag}.csv"
         errs = check_leads(wp_id, stage / f"lead_outcomes_{tag}.csv", cands if cands.exists() else None)
@@ -572,6 +678,10 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--db", default=str(ROOT / "holyhub.db"))
     p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
     p.set_defaults(fn=cmd_new_leads)
+    p = sub.add_parser("new-service-fixes", help="ask Muse to re-quote service times for these subjects")
+    p.add_argument("--title", required=True)
+    p.add_argument("--ids", required=True, help="comma-separated church_ids and candidate refs")
+    p.set_defaults(fn=cmd_new_service_fixes)
     p = sub.add_parser("publish", help="copy a package to the Drive outbox and queue it")
     p.add_argument("wp_id")
     p.set_defaults(fn=cmd_publish)

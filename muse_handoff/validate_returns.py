@@ -721,6 +721,45 @@ def check_candidates(path: Path, received_at: datetime | None) -> list[dict]:
     return rows
 
 
+def unsupported_slots(excerpt: str, verbatim: str) -> list[str]:
+    """The recorded times the excerpt doesn't state, readable: "Sun 10:00 English"."""
+    if excerpt_supports_service(excerpt, verbatim):
+        return []
+    have = service_slots(excerpt)
+    out = []
+    for day, act, lang, t in sorted(service_slots(verbatim, claims=True), key=lambda x: (x[3], str(x))):
+        if not _slot_supported((day, act, lang, t), have):
+            out.append(" ".join(x for x in ((day or "").title(), t, act or "", (lang or "").title()) if x))
+    return out
+
+
+def check_service_fixes(path: Path, received_at: datetime | None) -> list[dict]:
+    """Task S answers (service_fixes_S_TEMPLATE.csv): one row per subject; every kept time
+    stated in the excerpt with its day, kind of gathering, and language (the map's rule)."""
+    rows = list(csv.DictReader(path.open(encoding="utf-8-sig")))
+    seen = Counter((r.get("subject_type", ""), r.get("subject_id", "")) for r in rows)
+    for (st, sid), n in seen.items():
+        if st not in ("church", "candidate") or not sid or n > 1:
+            err(f"{st}:{sid or '(blank)'}", f"subject_type/subject_id invalid or repeated ({n}x)")
+    for r in rows:
+        w = f"{r.get('subject_type', '')}:{r.get('subject_id', '')}"
+        if r.get("service_times_verbatim"):
+            if not (r.get("service_source_url") and r.get("service_excerpt")):
+                err(w, "service_times_verbatim without service_source_url and service_excerpt")
+            elif not TIME_RE.search(r["service_excerpt"]):  # the same test build_seeds applies
+                err(w, "service_excerpt contains no time")
+            else:
+                missing = unsupported_slots(r["service_excerpt"], r["service_times_verbatim"])
+                if missing:
+                    err(w, "service_excerpt does not state: " + "; ".join(missing))
+            if r.get("service_source_type") and r["service_source_type"] not in ENUMS["source_type"]:
+                err(w, f"service_source_type={r['service_source_type']!r} not allowed")
+        elif not r.get("notes"):
+            warn(w, "blank schedule without a note saying why")
+        check_common(w, r, received_at)
+    return rows
+
+
 def summarize(rows: list[dict]) -> None:
     n = len(rows)
     c = lambda pred: sum(1 for r in rows if pred(r))
@@ -756,6 +795,13 @@ def main(argv: list[str]) -> int:
         i = argv.index("--received-at")
         received_at = parse_ts(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
+    if argv[1] == "--service-fixes":  # validate_returns.py --service-fixes FILE [--received-at UTC]
+        fixes = check_service_fixes(Path(argv[2]), received_at)
+        for level, where, msg in sorted(problems, key=lambda p: (p[0], p[1])):
+            print(f"{level:5} {where:38} {msg}")
+        print(f"\n{sum(p[0] == 'ERROR' for p in problems)} errors, {sum(p[0] == 'WARN' for p in problems)} warnings; "
+              f"{len(fixes)} rows, {sum(1 for r in fixes if r.get('service_times_verbatim'))} with times")
+        return 1 if any(p[0] == "ERROR" for p in problems) else 0
     batch, results_path, candidates_path = argv[1], Path(argv[2]), Path(argv[3])
     rows = [] if str(results_path) == "-" else check_results(batch, results_path, received_at, redo, manifest)
     for r in rows:
