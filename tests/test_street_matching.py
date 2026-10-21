@@ -91,3 +91,21 @@ def test_activity_comes_from_the_nearest_keyword_not_the_whole_clause():
     assert excerpt_supports_service(excerpt, verbatim)
     assert excerpt_supports_service("9:40am 成人主日學 11:00am 國語主日崇拜", "11:00am 國語主日崇拜")
     assert not excerpt_supports_service("Sunday 10 AM Bible study 11 AM worship", "Sunday worship 10 AM")
+
+
+def test_house_number_with_a_letter_suffix():
+    assert excerpt_supports_street("592A Tennent Avenue / Pinole, California 94564", "592A Tennent Avenue")
+    assert not excerpt_supports_street("592B Tennent Avenue, Pinole", "592A Tennent Avenue")
+    assert not excerpt_supports_street("592 Tennent Avenue, Pinole", "592A Tennent Avenue")
+
+
+def test_house_number_spelled_out():
+    assert excerpt_supports_street("Parish office: One Notre Dame Avenue, San Jose", "1 Notre Dame Avenue")
+    assert not excerpt_supports_street("Two Notre Dame Avenue", "1 Notre Dame Avenue")
+
+
+def test_every_weekday_ends_the_previous_days_scope():
+    v = "Domingo: 11am - 1pm (Servicio General); Jueves: 7pm - 8:30pm (Estudio Biblico)"
+    assert excerpt_supports_service("Domingo: 11am - 1pm (Servicio General)", "Domingo: 11am - 1pm (Servicio General)")
+    assert not excerpt_supports_service("Domingo: 7pm", "Jueves: 7pm")
+    assert excerpt_supports_service("Dom 11:00 AM (General)", "Domingo 11:00 AM")

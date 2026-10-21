@@ -35,14 +35,14 @@ Coordinates for every verified address that needs a pin:
 
 ### Input
 
-`analytics/exports/geocode_input.csv`: 197 rows, sha256 `e2782395565924ee53bf46ecbbac9bd7543771f3a0750dd25277f170a8faa3d4`. The file is gitignored because it is built from Muse-derived data. Regenerate it from dbt with the query in the appendix.
+`analytics/exports/geocode_input.csv`: 208 rows, sha256 `531451dfc475b2778392e157f5b6b50567c62d2a17b6c96629f09c75fcf9eb75`. The file is gitignored because it is built from Muse-derived data. Regenerate it from dbt with the query in the appendix.
 
 | Column | Meaning |
 |---|---|
 | `geo_id` | `candidate:<candidate_id>` or `church:<church_id>`. Copy unchanged. |
-| `name`, `street`, `city`, `state`, `zip` | The verified address (displayable under our rules). 14 rows have no ZIP. |
+| `name`, `street`, `city`, `state`, `zip` | The verified address (displayable under our rules). 15 rows have no ZIP. |
 | `current_lat`, `current_lon` | The existing pin for directory churches; blank for new congregations |
-| `reason` | `new_congregation` (158), `pin_off` (16: Muse saw the pin at a different place), `verify_pin` (23: pin never checked) |
+| `reason` | `new_congregation` (158), `pin_off` (25: Muse saw the pin at a different place), `verify_pin` (25: pin never checked) |
 | `profile_ready` | Whether the record is otherwise ready to publish. Do these first if time is short. |
 
 ### Rules

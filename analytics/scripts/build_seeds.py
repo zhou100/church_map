@@ -60,6 +60,8 @@ RECEIVED_AT = {
     "results_E.csv": "2026-10-20T17:31:34Z", "new_candidates_E.csv": "2026-10-20T17:31:34Z",
     "results_D.csv": "2026-10-20T20:20:41Z", "new_candidates_D.csv": "2026-10-20T20:20:41Z",  # fill pass
     "results_C.csv": "2026-10-20T19:56:50Z", "new_candidates_C.csv": "2026-10-20T19:56:50Z",
+    "results_F.csv": "2026-10-20T23:34:24Z",
+    "new_candidates_F.csv": "2026-10-21T17:46:01Z", "new_candidates_L.csv": "2026-10-21T17:46:37Z",
 }
 
 MANIFESTS = [  # (file, batch for rows whose manifest has no batch column)

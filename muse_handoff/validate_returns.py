@@ -27,7 +27,7 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
 ENUMS = {
-    "task": {"C", "CN", "D", "E", "F", "L"},
+    "task": {"C", "CN", "D", "E", "F", "L", "H"},
     "candidate_status": {"active", "unresolved"},
     "entity_type": {"congregation", "religious_house", "non_christian", "business", "other", "unknown"},
     "status": {"active", "closed", "moved", "merged", "unresolved"},
@@ -111,6 +111,8 @@ UNIT_WORDS = {"ste", "suite", "unit", "apt", "room", "rm", "fl", "floor", "bldg"
 
 
 NAME_ABBREV = {"saint": "st", "mount": "mt", "fort": "ft"}  # "St. Lawrence" = "Saint Lawrence"
+NUMBER_WORDS = dict(enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen "
+                              "fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()))
 
 
 def street_tokens(text: str) -> list[str]:
@@ -126,7 +128,7 @@ def street_tokens(text: str) -> list[str]:
 def street_key(street: str) -> tuple[str, tuple[str, ...]] | None:
     """(house number, normalized street-name tokens up to and including the suffix)."""
     toks = street_tokens(street)
-    if not toks or not toks[0].isdigit() or len(toks) < 2:
+    if not toks or not re.fullmatch(r"\d+[a-z]?", toks[0]) or len(toks) < 2:  # "592A Tennent Ave"
         return None
     name = []
     for tok in toks[1:]:
@@ -147,9 +149,10 @@ def excerpt_supports_street(excerpt: str, street: str) -> bool:
         return False
     number, name = key
     toks = street_tokens(excerpt)
-    seqs = [[number, *name]]
+    numbers = [number] + ([NUMBER_WORDS[int(number)]] if number.isdigit() and int(number) in NUMBER_WORDS else [])
+    seqs = [[n, *name] for n in numbers]  # "One Notre Dame Avenue" = "1 Notre Dame Avenue"
     if len(name) > 1 and name[-1] in STREET_SUFFIX.values():
-        seqs.append([number, *name[:-1]])
+        seqs += [[n, *name[:-1]] for n in numbers]
     for seq in seqs:
         n = len(seq)
         for i in range(len(toks) - n + 1):
@@ -163,10 +166,14 @@ def excerpt_supports_street(excerpt: str, street: str) -> bool:
 # ---- Service times: the excerpt must state the same times on the same days ----
 SVC_TIME_RE = re.compile(r"(?<!\d)(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|[ap](?![a-z]))", re.I)
 DAY_WORDS = {
-    "sun": ("sunday", "sundays", "sun", "主日", "週日", "周日", "星期日", "禮拜日", "礼拜日", "주일", "일요일", "domingo", "domingos"),
-    "sat": ("saturday", "saturdays", "sat", "週六", "周六", "星期六", "토요일", "sábado", "sabado", "sábados"),
-    "fri": ("friday", "fridays", "週五", "周五", "星期五", "금요일", "viernes"),
-    "wed": ("wednesday", "wednesdays", "週三", "周三", "星期三", "수요일", "miércoles", "miercoles"),
+    "sun": ("sunday", "sundays", "sun", "主日", "週日", "周日", "星期日", "禮拜日", "礼拜日", "주일", "일요일",
+            "domingo", "domingos", "dom"),
+    "mon": ("monday", "mondays", "mon", "週一", "周一", "星期一", "월요일", "lunes"),
+    "tue": ("tuesday", "tuesdays", "tue", "tues", "週二", "周二", "星期二", "화요일", "martes"),
+    "wed": ("wednesday", "wednesdays", "wed", "週三", "周三", "星期三", "수요일", "miércoles", "miercoles", "mié"),
+    "thu": ("thursday", "thursdays", "thu", "thur", "thurs", "週四", "周四", "星期四", "목요일", "jueves", "jue"),
+    "fri": ("friday", "fridays", "fri", "週五", "周五", "星期五", "금요일", "viernes", "vie"),
+    "sat": ("saturday", "saturdays", "sat", "週六", "周六", "星期六", "토요일", "sábado", "sabado", "sábados", "sáb"),
 }
 
 

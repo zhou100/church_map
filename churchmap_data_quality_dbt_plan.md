@@ -1101,6 +1101,73 @@ PR #41 was merged at e9980b51, so these fixes go on a new branch from `main`.
    - Seeds map `True`→`yes`, `False`→`no`.
    - `accepted_values` tests were added.
 
+### Status 2026-10-20: task F (East Bay verification) ingested
+
+`results_F.csv` arrived at 23:34Z: 404 rows, and the sha256 matches Muse's manifest.
+- **Muse's tally:** 54 active, 348 unresolved, 2 merged. Most rows are GNIS/OSM-only with no web source, not rate-limited.
+- **Timestamps:** Muse re-checked its own batch-stamped 81-row slice, so the stamps are per-row this time.
+
+**Validation:** 1 error, 77533. The page itself reads "2411055th Avenue", Muse wrote "2411 55th Avenue", and the address is withheld. It surfaced a normalizer false negative on letter-suffixed house numbers ("592A Tennent Avenue", 76413), now fixed and tested.
+
+**Re-verification:**
+
+| Step | Facts verified (of 357) |
+|---|---:|
+| First check | 272 |
+| After repair (5 excerpts repaired, 13 facts re-sourced to churches' own sites) | 290 |
+
+**Coverage, all four manifests:**
+
+| Area | Visit-ready |
+|---|---:|
+| Pilot | 33 |
+| C | 24 |
+| D | 40 |
+| F | **30** (71 verified addresses) |
+| **Total** | **127** |
+
+`geocode_input.csv` regenerated: 208 rows, adding F's directory rows that need a pin check.
+
+**Open:**
+- F discovery (`new_candidates_F`) and task L are still to come.
+- Muse listed 8 blank F rows that do have sources (e.g. 77513 Laurel Methodist, 77654 First Baptist Oakley); they are candidates for a harvest pass.
+
+### Status 2026-10-21: round 5 complete (F discovery, L); round 6 prepared
+
+**Round 5 intake:**
+- `new_candidates_F` (94) and `new_candidates_L` (45) arrived at 17:46Z. The sha256 values match Muse's manifests, and `checked_at` stamps are per row.
+- **Validator false negatives fixed:** spelled-out house numbers ("One Notre Dame Avenue"), and all seven weekdays incl. Spanish/CJK/Korean names and abbreviations. Before this, a Thursday ("Jueves") time inherited the previous Sunday.
+- **Service-time pairing:** most L schedules fail it because Muse recorded each parish's whole week but quoted only the language-specific line. Those times are withheld; the stated languages are kept.
+
+**Re-verification after repair and re-sourcing:**
+
+| File | Facts verified |
+|---|---:|
+| `new_candidates_F` | 277 of 333 |
+| `new_candidates_L` | 153 of 168 |
+
+**Owner decisions:**
+- L-002 and L-003 are guest congregations (Muse recorded the hosts).
+- **L-006 Cornerstone Community Church** is a separate congregation sharing 468 Grand St with Bridge City Church. Its host was set to 76692 via `--manual`.
+
+**Totals:**
+
+| Measure | Value |
+|---|---:|
+| Visit-ready, all four manifests | 127 (pilot 33, C 24, D 40, F 30) |
+| New congregations | 377 (194 active, 242 with a verified address) |
+| New congregations profile-ready | **133** |
+
+**Round 6** (`muse_handoff/TASKS_round6.md`) covers no new areas.
+
+| Task | Rows | What |
+|---|---:|---|
+| S | 86 | Re-quote service times for active congregations. Weekend and language-specific services only, each time with its day in the excerpt, the schedule limited to the excerpt. |
+| W | 11 | Confirm the worship location for 8 rows that are map-ready except for it. Answer 3 street questions: C-054, D-059, 77533. |
+| H | 60 | 8 F directory rows Muse left blank despite a source, and 52 leads it located but didn't verify (16 Oakland parishes and churches, plus the L leftovers). |
+
+Inputs are in `outbox/`, including `known_congregations_v7` (1,289 known). S and W need small overlay readers in `build_seeds.py` when they return.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:
