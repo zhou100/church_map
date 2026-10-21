@@ -415,3 +415,29 @@ def test_geocodes_without_their_recorded_input_are_not_used(tmp_path, monkeypatc
     _, seeds = _geocode_env(tmp_path, monkeypatch, receipt_matches=False)
     bs.build_geocodes()
     assert list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8"))) == []
+
+
+# --- Re-check packages re-deliver a candidate_ref -------------------------------------
+
+def test_a_recheck_row_replaces_the_candidate_but_keeps_its_region(tmp_path, monkeypatch):
+    ret, seeds = tmp_path / "returns", tmp_path / "seeds"
+    ret.mkdir()
+    seeds.mkdir()
+    for name, val in (("RET", ret), ("SEEDS", seeds), ("CANDIDATE_FILES", [])):
+        monkeypatch.setattr(bs, name, val)
+    cols = ["candidate_ref", "task", "candidate_name", "city", "status", "status_source_url", "status_excerpt",
+            "street_address", "address_excerpt", "found_via", "match_confidence", "checked_at", "notes"]
+    first = dict(candidate_ref="WP0006-001", task="WP0006", candidate_name="Grace Church", city="Sacramento",
+                 status="unresolved", status_source_url="", status_excerpt="", street_address="", address_excerpt="",
+                 found_via="web_search", match_confidence="medium", checked_at="2026-10-21T21:00:00Z", notes="")
+    again = {**first, "task": "WP0014", "status": "active", "status_source_url": "https://grace.example.org/events",
+             "status_excerpt": "Sunday, October 5, 2026 · Harvest picnic", "street_address": "100 Main St",
+             "address_excerpt": "Visit us at 100 Main St, Sacramento", "checked_at": "2026-10-22T01:00:00Z"}
+    _write(ret / "new_candidates_WP0006.csv", cols, [first])
+    _write(ret / "new_candidates_WP0014.csv", cols, [again])
+    bs.build_candidates()
+    rows = list(csv.DictReader((seeds / "muse_candidates.csv").open(encoding="utf-8")))
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r["status"], r["street_address"], r["task"], r["last_pass"], r["source_file"]) == \
+        ("active", "100 Main St", "WP0006", "WP0014", "new_candidates_WP0014.csv")

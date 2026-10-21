@@ -27,6 +27,37 @@ HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
 PACKAGE_TASK_RE = re.compile(r"^WP\d{4}$")  # work packages from the shared Drive queue
+DEEP_SEARCH_FROM = 11  # brief v3.3 section A (required deeper search) applies from WP0011
+ACTIVITY_KEYS = ("events", "news", "sermons", "bulletin", "facebook")
+ACTIVITY_LINE_RE = re.compile(r"activity checked:(.*)", re.I)
+# Digits use (?<!\d)/(?!\d), not \b: a CJK character before a digit is not a word boundary.
+DATE_RE = re.compile(r"(?<!\d)20\d\d(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?!\d)"
+                     r"|(?<!\d)\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)|(?<!\d)\d{1,2}/\d{1,2}(?!\d)"
+                     r"|\d{1,2}\s*月\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}", re.I)
+COPYRIGHT_RE = re.compile(r"©|\(c\)\s*20\d\d|copyright", re.I)
+
+
+def deep_search_applies(task: str) -> bool:
+    return bool(PACKAGE_TASK_RE.match(task or "")) and int(task[2:]) >= DEEP_SEARCH_FROM
+
+
+def check_deep_search(w: str, r: dict) -> None:
+    """Brief v3.3 section A: unresolved only after the required search, recorded in notes."""
+    if r["status"] == "unresolved":
+        m = ACTIVITY_LINE_RE.search(r["notes"])
+        if not m:
+            err(w, "status=unresolved without an 'activity checked:' line in notes (brief A4)")
+        else:
+            missing = [k for k in ACTIVITY_KEYS if not re.search(rf"\b{k}\s*=\s*\S", m.group(1), re.I)]
+            if missing:
+                err(w, f"'activity checked:' line is missing {', '.join(missing)} (brief A4)")
+    if r["status"] == "active":
+        if COPYRIGHT_RE.search(r["status_excerpt"]):
+            err(w, "status_excerpt is a copyright line; a copyright year is not activity (brief A3)")
+        elif not DATE_RE.search(r["status_excerpt"]):
+            err(w, "status=active but status_excerpt contains no date (brief A3)")
+    if r.get("facebook_page_url") and not r.get("fb_last_post_date"):
+        err(w, "facebook_page_url without fb_last_post_date (brief F4, A2)")
 
 ENUMS = {
     "task": {"C", "CN", "D", "E", "F", "L", "H"},
@@ -690,6 +721,8 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
             err(w, "status=active without status_source_url")
         if not r["street_address"]:
             warn(w, "no street address (cannot be pinned)")
+        if deep_search_applies(r["task"]):
+            check_deep_search(w, r)
         check_fact_groups(w, r)
         check_common(w, r, received_at)
 

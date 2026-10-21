@@ -421,6 +421,10 @@ def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None =
                 for g, fp in raw_fingerprints(r, GROUPS).items():
                     fps[(cid, g)] = fp
                 r = {**r, "candidate_id": cid, "task": r.get("task") or task, "format": "v3"}
+                # A work package that re-delivers a ref is a re-check (refs are permanent, D11):
+                # the region/round the candidate came from stays. Task E's rebuild of A/B is a pass of its own.
+                if cid in current and re.match(r"WP\d{4}$", task):
+                    r["task"] = current[cid]["task"]
             else:
                 cid = f"{task}-{i:02d}"
                 release(used, "candidate", cid)

@@ -386,3 +386,41 @@ def test_out_of_scope_by_name_needs_a_note_not_a_url(tmp_path, monkeypatch):
     assert ds.check_leads("WP-0003", out, None) == []
     _outcomes(out, [dict(lead_id="WP0003-001", outcome="closed", notes="merged, per a podcast")])
     assert "outcome closed needs evidence_url" in "\n".join(ds.check_leads("WP-0003", out, None))
+
+
+# --- Re-check packages: every unresolved new congregation, one row back per ref ----------
+
+def test_recheck_selects_unresolved_new_congregations_closest_to_the_map_first(tmp_path):
+    cols = ["candidate_id", "task", "candidate_name", "city", "status", "street_address", "official_url",
+            "duplicate_of_church_id", "possible_match_church_id", "possible_match_candidate_id"]
+    rows = [dict(candidate_id="A-1", task="D", status="unresolved", street_address="", official_url=""),
+            dict(candidate_id="A-2", task="D", status="unresolved", street_address="1 Main", official_url="x"),
+            dict(candidate_id="A-3", task="D", status="active", street_address="1 Main", official_url="x"),
+            dict(candidate_id="A-4", task="D", status="unresolved", duplicate_of_church_id="7"),
+            dict(candidate_id="A-5", task="D", status="unresolved", possible_match_church_id="8"),
+            dict(candidate_id="A-6", task="D", status="unresolved", possible_match_candidate_id="C-1"),
+            dict(candidate_id="A-7", task="F", status="unresolved", street_address="", official_url="y")]
+    with (tmp_path / "muse_candidates.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=cols, restval="")
+        w.writeheader()
+        w.writerows(rows)
+    out = ds.recheck_rows(tmp_path)
+    assert [r["candidate_ref"] for r in out] == ["A-2", "A-7", "A-1"]
+    assert out[1]["origin_task"] == "F" and list(out[0]) == ds.RECHECK_INPUT_COLS
+
+
+def test_recheck_return_needs_exactly_the_input_refs_under_this_task(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    (tmp_path / "WP-0014").mkdir()
+    ds.write_csv(tmp_path / "WP-0014" / "recheck_input.csv", ds.RECHECK_INPUT_COLS,
+                 [dict(candidate_ref="D-001"), dict(candidate_ref="WP0006-001")])
+    out = tmp_path / "new_candidates.csv"
+    ds.write_csv(out, ["candidate_ref", "task"], [dict(candidate_ref="D-001", task="WP0014"),
+                                                   dict(candidate_ref="WP0006-001", task="WP0014")])
+    assert ds.check_recheck("WP-0014", out) == []
+    ds.write_csv(out, ["candidate_ref", "task"], [dict(candidate_ref="D-001", task="D"),
+                                                   dict(candidate_ref="D-001", task="WP0014"),
+                                                   dict(candidate_ref="WP0014-001", task="WP0014")])
+    errs = "\n".join(ds.check_recheck("WP-0014", out))
+    assert "D-001: 2 rows" in errs and "WP0006-001: no row" in errs
+    assert "WP0014-001: not in recheck_input.csv" in errs and "task='D', want WP0014" in errs

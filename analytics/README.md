@@ -51,6 +51,7 @@ From round 7 on, work moves through a Google Drive folder that Muse reads and wr
 
 ```bash
 python3 muse_handoff/drive_sync.py new-discovery --title "Marin County" --state CA --cities "San Rafael=25,Novato=20"
+python3 muse_handoff/drive_sync.py new-recheck --title "Unresolved congregations"   # brief section A again, 100 per package; rows replace the earlier ones by candidate_ref
 python3 muse_handoff/drive_sync.py publish WP-0003    # after reading its TASK.md
 python3 muse_handoff/drive_sync.py pull               # validate, re-check and ingest finished packages, rebuild
 python3 muse_handoff/drive_sync.py status
