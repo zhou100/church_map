@@ -44,7 +44,8 @@ sys.path.insert(0, str(Path(__file__).resolve().parent))
 sys.path.insert(0, str(Path(__file__).resolve().parents[2] / "muse_handoff"))
 import recheck_sources as rs  # noqa: E402
 from validate_returns import (NAME_ABBREV, STREET_DIRECTION, STREET_SUFFIX,  # noqa: E402
-                              excerpt_supports_street, street_key)
+                              excerpt_supports_service, excerpt_supports_street, service_times_of,
+                              street_key)
 
 EXCERPT_CAP = 200
 REPAIRABLE = ("not_found", "partial", "not_an_excerpt")
@@ -136,22 +137,20 @@ def _times(s: str) -> list[str]:
 
 
 def find_service(text: str, verbatim: str) -> str | None:
-    wanted = set(_times(verbatim))
-    if not wanted:
+    """A passage containing the recorded schedule itself (service_times_verbatim),
+    word for word up to punctuation and spacing. Matching times alone is not enough:
+    "Sunday worship 10 AM" must not be repaired with a page that says "Saturday Bible
+    study 10 AM; Sunday worship 11 AM". If the schedule isn't on the page as recorded,
+    nothing is repaired and the fact stays for review."""
+    words = re.findall(r"[^\W_]+", verbatim or "")
+    if len(words) < 2 or not service_times_of(verbatim):
         return None
-    for hit in TIME_RE.finditer(text):
-        span_end = hit.end()
-        seen = set(_times(hit.group(0)))
-        for later in TIME_RE.finditer(text, hit.end()):
-            if later.end() - hit.start() > EXCERPT_CAP:
-                break
-            seen |= set(_times(later.group(0)))
-            span_end = later.end()
-            if wanted <= seen:
-                break
-        if wanted <= seen:
-            return window(text, hit.start(), span_end)
-    return None
+    pat = re.compile(r"(?<![^\W_])" + r"[\W_]*".join(re.escape(w) for w in words) + r"(?![^\W_])", re.I)
+    hit = pat.search(text)
+    if not hit:
+        return None
+    passage = window(text, hit.start(), hit.end())
+    return passage if passage and excerpt_supports_service(passage, verbatim) else None
 
 
 FINDERS = {
@@ -195,16 +194,18 @@ async def official_pages(fetcher, official_url: str) -> list[tuple[str, str]]:
     return out
 
 
-async def resource_blocked(rows: list[dict], key_col: str, report: list[dict], log: list[dict], today: str) -> None:
+async def resource_blocked(rows: list[dict], key_col: str, report: list[dict], log: list[dict], today: str,
+                           official: dict[str, str] | None = None) -> None:
     """When the cited source can't be fetched by us (403, robots), look for the same
     fact on the church's own website. If found, cite that page instead (own_site) with
-    a verbatim passage. The fact value never changes; if it isn't there, nothing does."""
+    a verbatim passage. The fact value never changes; if it isn't there, nothing does.
+    `official` gives the website for rows that don't carry one (S/W answers)."""
     by_key = {r[key_col]: r for r in rows}
     targets = [c for c in report if c["verdict"] in UNREACHABLE and c["group"] in FINDERS]
     need = {}
     for c in targets:
         row = by_key.get(c["row_key"])
-        off = (row or {}).get("official_url", "")
+        off = (row or {}).get("official_url") or (official or {}).get(c["row_key"], "")
         if row and off and urlparse_host(off) != urlparse_host(c["source_url"]):
             need.setdefault(off, []).append((c, row))
     if not need:
@@ -229,6 +230,18 @@ async def resource_blocked(rows: list[dict], key_col: str, report: list[dict], l
                 else:
                     log.append({"row_key": c["row_key"], "group": g, "action": "not_resourced",
                                 "reason": "fact not found on the church's own site", "old_excerpt": "", "new_excerpt": ""})
+
+
+def official_urls() -> dict[str, str]:
+    """{church_id or candidate_id: official_url} from the built seeds. An S/W answer row
+    names only its subject; its website is on the subject's own record."""
+    seeds = Path(__file__).resolve().parents[1] / "dbt" / "seeds"
+    out = {}
+    for name, key in (("muse_results.csv", "church_id"), ("muse_candidates.csv", "candidate_id")):
+        if (seeds / name).exists():
+            with (seeds / name).open(encoding="utf-8") as f:
+                out.update({r[key]: r["official_url"] for r in csv.DictReader(f) if r.get("official_url")})
+    return out
 
 
 def urlparse_host(url: str) -> str:
@@ -287,7 +300,7 @@ async def repair(path: Path, manual: Path | None = None, resource: bool = False)
     with path.open(encoding="utf-8-sig") as f:
         reader = csv.DictReader(f)
         cols, rows = reader.fieldnames, list(reader)
-    key_col = "church_id" if "church_id" in cols else "candidate_ref"
+    key_col = next(c for c in ("church_id", "candidate_ref", "subject_id") if c in cols)
     report_rows = list(csv.DictReader(report.open(encoding="utf-8")))
     failing = [r for r in report_rows
                if r["verdict"] in REPAIRABLE and r["group"] in FINDERS and r["source_type"] != "fb_page"]
@@ -296,7 +309,8 @@ async def repair(path: Path, manual: Path | None = None, resource: bool = False)
     log: list[dict] = []
     apply_manual(rows, key_col, manual, log, today)
     if resource:
-        await resource_blocked(rows, key_col, report_rows, log, today)
+        await resource_blocked(rows, key_col, report_rows, log, today,
+                               official_urls() if key_col == "subject_id" else None)
     async with httpx.AsyncClient(headers={"User-Agent": rs.USER_AGENT}) as client:
         fetcher = rs.Fetcher(client)
         pages = {}

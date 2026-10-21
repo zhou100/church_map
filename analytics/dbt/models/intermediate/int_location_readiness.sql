@@ -50,6 +50,7 @@ joined as (
         m.muse_status,
         coalesce(m.muse_status = 'active', false)                     as verified_active,
         m.pin_check,
+        m.address_is_worship_location,
         coalesce(m.fb_last_post_date >= a.as_of_date - 365, false)    as fb_page_fresh,
         m.street_address is not null                                  as muse_has_address,
         m.address_source_type,
@@ -90,6 +91,9 @@ select
     is_in_scope
         and verified_active
         and address_displayable
+        -- The address must be where they meet. "no" (office, mailing) and "unknown"
+        -- stay contact addresses: shown on the profile, not offered as a place to visit.
+        and coalesce(address_is_worship_location, '') = 'yes'
         and coords_ok
         and coalesce(pin_check, 'unknown') <> 'off'
         and (website_verified or (fb_page_linkable and fb_page_fresh) or phone_displayable)

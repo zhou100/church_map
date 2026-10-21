@@ -26,8 +26,10 @@ from urllib.parse import urlparse
 HERE = Path(__file__).resolve().parent
 MANIFEST = HERE / "peninsula_seed_v1.csv"
 
+PACKAGE_TASK_RE = re.compile(r"^WP\d{4}$")  # work packages from the shared Drive queue
+
 ENUMS = {
-    "task": {"C", "CN", "D", "E", "F", "L"},
+    "task": {"C", "CN", "D", "E", "F", "L", "H"},
     "candidate_status": {"active", "unresolved"},
     "entity_type": {"congregation", "religious_house", "non_christian", "business", "other", "unknown"},
     "status": {"active", "closed", "moved", "merged", "unresolved"},
@@ -111,11 +113,48 @@ UNIT_WORDS = {"ste", "suite", "unit", "apt", "room", "rm", "fl", "floor", "bldg"
 
 
 NAME_ABBREV = {"saint": "st", "mount": "mt", "fort": "ft"}  # "St. Lawrence" = "Saint Lawrence"
+NUMBER_WORDS = dict(enumerate("zero one two three four five six seven eight nine ten eleven twelve thirteen "
+                              "fourteen fifteen sixteen seventeen eighteen nineteen twenty".split()))
+
+
+UNIT_NUMBER = {w: i for i, w in NUMBER_WORDS.items()}
+TENS_NUMBER = {"twenty": 20, "thirty": 30, "forty": 40, "fifty": 50, "sixty": 60, "seventy": 70, "eighty": 80,
+               "ninety": 90}
+
+
+def _merge_number_words(toks: list[str]) -> list[str]:
+    """Read a run of number words as one number: "twenty one" / "twenty-one" -> "21",
+    "one hundred five" -> "105", "one" -> "1". A single word is never matched on its
+    own inside a longer phrase ("one" is not "twenty-one")."""
+    out, i = [], 0
+    while i < len(toks):
+        if toks[i] not in UNIT_NUMBER and toks[i] not in TENS_NUMBER:
+            out.append(toks[i])
+            i += 1
+            continue
+        total, cur, j = 0, 0, i
+        while j < len(toks):
+            w = toks[j]
+            if w in TENS_NUMBER and cur % 100 == 0:
+                cur += TENS_NUMBER[w]
+            elif w in UNIT_NUMBER and (cur % 10 == 0 or cur == 0) and not (cur % 100 >= 10 and cur % 100 < 20):
+                cur += UNIT_NUMBER[w]
+            elif w == "hundred" and 0 < cur < 10:
+                cur *= 100
+            elif w == "and" and cur >= 100:
+                pass
+            else:
+                break
+            j += 1
+        total += cur
+        out.append(str(total))
+        i = j
+    return out
 
 
 def street_tokens(text: str) -> list[str]:
     t = (text or "").lower().replace(".", "")
-    toks = re.findall(r"#|[^\W_]+", t)
+    toks = _merge_number_words(re.findall(r"#|[^\W_]+", t))
     out = []
     for x in toks:
         x = re.sub(r"^(\d+)(st|nd|rd|th)$", r"\1", x)  # "39th" = "39"
@@ -126,7 +165,7 @@ def street_tokens(text: str) -> list[str]:
 def street_key(street: str) -> tuple[str, tuple[str, ...]] | None:
     """(house number, normalized street-name tokens up to and including the suffix)."""
     toks = street_tokens(street)
-    if not toks or not toks[0].isdigit() or len(toks) < 2:
+    if not toks or not re.fullmatch(r"\d+[a-z]?", toks[0]) or len(toks) < 2:  # "592A Tennent Ave"
         return None
     name = []
     for tok in toks[1:]:
@@ -147,7 +186,7 @@ def excerpt_supports_street(excerpt: str, street: str) -> bool:
         return False
     number, name = key
     toks = street_tokens(excerpt)
-    seqs = [[number, *name]]
+    seqs = [[number, *name]]  # number words were already read as whole numbers by street_tokens
     if len(name) > 1 and name[-1] in STREET_SUFFIX.values():
         seqs.append([number, *name[:-1]])
     for seq in seqs:
@@ -158,6 +197,248 @@ def excerpt_supports_street(excerpt: str, street: str) -> bool:
                 if len(seq) == len(name) + 1 or nxt not in STREET_SUFFIX.values():
                     return True
     return False
+
+
+# ---- Service times: the excerpt must state the same times on the same days ----
+SVC_TIME_RE = re.compile(r"(?<!\d)(\d{1,2})(?:[:.](\d{2}))?\s*(a\.?\s?m\.?|p\.?\s?m\.?|[ap](?![a-z]))", re.I)
+DAY_WORDS = {
+    "sun": ("sunday", "sundays", "sun", "主日", "週日", "周日", "星期日", "禮拜日", "礼拜日", "주일", "일요일",
+            "domingo", "domingos", "dom"),
+    "mon": ("monday", "mondays", "mon", "週一", "周一", "星期一", "월요일", "lunes"),
+    "tue": ("tuesday", "tuesdays", "tue", "tues", "週二", "周二", "星期二", "화요일", "martes"),
+    "wed": ("wednesday", "wednesdays", "wed", "週三", "周三", "星期三", "수요일", "miércoles", "miercoles", "mié"),
+    "thu": ("thursday", "thursdays", "thu", "thur", "thurs", "週四", "周四", "星期四", "목요일", "jueves", "jue"),
+    "fri": ("friday", "fridays", "fri", "週五", "周五", "星期五", "금요일", "viernes", "vie"),
+    "sat": ("saturday", "saturdays", "sat", "週六", "周六", "星期六", "토요일", "sábado", "sabado", "sábados", "sáb"),
+}
+
+
+CJK_NUM = {"一": 1, "二": 2, "兩": 2, "两": 2, "三": 3, "四": 4, "五": 5, "六": 6, "七": 7, "八": 8, "九": 9,
+           "十": 10, "十一": 11, "十二": 12}
+CJK_TIME_RE = re.compile(r"(上午|下午|早上|晚上|中午|午前|午後|오전|오후)?\s*(\d{1,2}|十[一二]?|[一二兩两三四五六七八九])"
+                         r"\s*(?:[:：](\d{2})|[點点時时시])\s*(?:(\d{1,2})\s*[分분]|(半))?")
+PM_WORDS = ("下午", "晚上", "午後", "오후")
+ACTIVITY_WORDS = {
+    "worship": ("worship", "service", "services", "mass", "masses", "liturgy", "eucharist", "celebration", "vigil",
+                "崇拜", "聚會", "聚会", "彌撒", "弥撒", "禮拜", "礼拜", "예배", "misa", "culto", "servicio"),
+    "study": ("bible study", "sunday school", "fellowship", "prayer", "youth", "class", "classes", "choir",
+              "small group", "growth group", "主日學", "主日学", "團契", "团契", "查經", "查经", "禱告", "祷告",
+              "성경공부", "escuela dominical", "estudio bíblico"),
+}
+LANGUAGE_WORDS = {
+    "english": ("english", "英文", "英語", "英语", "영어", "inglés"), "spanish": ("spanish", "español", "espanol"),
+    "mandarin": ("mandarin", "國語", "国语", "普通話", "普通话", "華語", "华语"), "cantonese": ("cantonese", "粵語", "粤语", "廣東話"),
+    "korean": ("korean", "한국어", "韓語"), "vietnamese": ("vietnamese", "tiếng việt"), "taiwanese": ("taiwanese", "台語", "台语"),
+    "japanese": ("japanese", "日本語"), "tagalog": ("tagalog", "filipino"),
+}
+
+
+def _has_word(t: str, w: str) -> bool:
+    return bool(re.search(rf"(?<![a-z]){re.escape(w)}(?![a-z])", t)) if w.isascii() else w in t
+
+
+RANGE_LINK_RE = re.compile(r"\s*(?:[-–—~]|to|until)\s*$")
+BARE_START_RE = re.compile(r"(?<![\d:.])(\d{1,2})(?:[:.](\d{2}))?\s*(?:[-–—~]|to)\s*$")
+
+
+def _minutes(hhmm: str) -> int:
+    return int(hhmm[:2]) * 60 + int(hhmm[3:])
+
+
+def _times_in(chunk: str) -> list[tuple[int, str]]:
+    """(position, HH:MM) for each service start in the chunk. In a range ("10:00am –
+    11:10am", "9:30–10:45am") the end is not a service of its own: a range is a dash
+    between times 15 minutes to 3 hours apart. Times further apart ("8:00 a.m.- 1:00
+    p.m. – 7:00 p.m.") stay a list."""
+    out = []
+    for m in SVC_TIME_RE.finditer(chunk):
+        h, mm, ap = m.groups()
+        hour = int(h)
+        if not 1 <= hour <= 12:
+            continue
+        pm = ap.lower().startswith("p")
+        t = f"{hour % 12 + (12 if pm else 0):02d}:{int(mm or 0):02d}"
+        bare = BARE_START_RE.search(chunk[:m.start()])
+        if bare and 1 <= int(bare.group(1)) <= 12:  # "9:30–10:45am": the start takes the end's half of day
+            h0, m0 = int(bare.group(1)), int(bare.group(2) or 0)
+            same = h0 % 12 * 60 + m0 <= hour % 12 * 60 + int(mm or 0)
+            start = f"{h0 % 12 + (12 if pm == same else 0):02d}:{m0:02d}"
+            if 15 <= _minutes(t) - _minutes(start) <= 180:
+                out.append((bare.start(), start))
+                continue
+        if out and RANGE_LINK_RE.fullmatch(chunk[out[-1][2]:m.start()] if len(out[-1]) > 2 else "x") \
+                and 15 <= _minutes(t) - _minutes(out[-1][1]) <= 180:
+            continue
+        out.append((m.start(), t, m.end()))
+    for m in CJK_TIME_RE.finditer(chunk):
+        ap, h, m1, m2, half = m.groups()
+        hour = int(h) if h.isdigit() else CJK_NUM.get(h, 0)
+        if not ap or not 1 <= hour <= 12:
+            continue  # without 上午/下午/오전/오후 the half of day is unknown
+        minute = int(m1 or m2 or (30 if half else 0))
+        out.append((m.start(), f"{hour % 12 + (12 if ap in PM_WORDS else 0):02d}:{minute:02d}"))
+    return [(x[0], x[1]) for x in out]
+
+
+def _day_positions(chunk: str) -> list[tuple[int, str]]:
+    found = []
+    for day, words in DAY_WORDS.items():
+        for w in words:
+            pat = rf"(?<![a-z]){re.escape(w)}(?![a-z])" if w.isascii() else re.escape(w)
+            found += [(m.start(), day) for m in re.finditer(pat, chunk)]
+    return sorted(found)
+
+
+def _class_positions(chunk: str, table: dict) -> list[tuple[int, int, str]]:
+    """(start, end, class) of every keyword; "sunday school" wins over its "sunday"."""
+    found = []
+    for cls, words in table.items():
+        for w in words:
+            pat = rf"(?<![a-z]){re.escape(w)}(?![a-z])" if w.isascii() else re.escape(w)
+            found += [(m.start(), m.end(), cls) for m in re.finditer(pat, chunk)]
+    return found
+
+
+def _label_votes(found: list[tuple[int, int, str]], times: list[int]) -> tuple[int, int]:
+    """(times with a label just before them, times with a label just after them)."""
+    bounds = [-1, *times, 10**9]
+    starts = [f[0] for f in found]
+    before = sum(any(bounds[i] < x < bounds[i + 1] for x in starts) for i in range(len(times)))
+    after = sum(any(bounds[i + 1] < x < bounds[i + 2] for x in starts) for i in range(len(times)))
+    return before, after
+
+
+def _labels_after(found: list[tuple[int, int, str]], times: list[int], chunk: str) -> bool | None:
+    """Is this clause written time-first ("9:40am 成人主日學 11:00am 國語主日崇拜")
+    rather than label-first ("主日崇拜：上午 9:00")? Whichever reading gives more times
+    a label wins, so one unlabelled time at the start ("Weekly Services Sunday 10:00am …
+    Cantonese Sunday Worship 11:20am") doesn't flip the whole clause. Ties go, in order,
+    to: a label in parentheses annotating the time before it ("9:45am (English)"); a label
+    after the last time (time-first) or before the first (label-first). None = still
+    ambiguous ("Saturday 4pm English (Vigil) Sunday 8am")."""
+    if not found or not times:
+        return False
+    before, after = _label_votes(found, times)
+    if after != before:
+        return after > before
+    starts = [f[0] for f in found]
+    if any(re.search(r"\([^)]*$", chunk[max(b for b in [-1, *times] if b < x) + 1:x]) for x in starts):
+        return True  # inside parentheses opened after a time: "5:00 PM (Vigil English)"
+    trailing, leading = sum(x > times[-1] for x in starts), sum(x < times[0] for x in starts)
+    if trailing != leading:
+        return trailing > leading
+    return None
+
+
+def _classes_for_times(found: list[tuple[int, int, str]], times: list[int], labels_after: bool) -> list:
+    """The keyword class belonging to each time. Time-first, a label annotates only the
+    time it follows ("4:00 PM (Vietnamese)"). Label-first, a label annotates the times
+    after it; in a clause that opens with its label ("Spanish: 8:00 a.m. – 1:00 p.m."),
+    a time with no label of its own continues the one before it."""
+    heading = not labels_after and bool(found) and min(f[0] for f in found) < times[0]
+    out, prev = [], None
+    for i, pos in enumerate(times):
+        nxt = times[i + 1] if i + 1 < len(times) else 10**9
+        prv = times[i - 1] if i else -1
+        if labels_after:
+            cands = [f for f in found if pos < f[0] < nxt]
+            cls = min(cands)[2] if cands else None
+        else:
+            cands = [f for f in found if prv < f[0] < pos]
+            cls = max(cands)[2] if cands else (prev if heading else None)
+        out.append(cls)
+        prev = cls
+    return out
+
+
+BARE_WORDS = {"and", "or", "at", "y", "et", "to", "until"}  # all a fragment of bare times may say
+
+
+def service_slots(text: str, claims: bool = False) -> set[tuple]:
+    """(day, activity, language, HH:MM) for every service time in the text. A time takes
+    the nearest day named before it (carrying over from earlier clauses), and the activity
+    and language keywords that belong to it within its clause (split on ; , | / sentence
+    ends, lines), label-first or time-first as the clause is written. Activity and
+    language are read separately: in "Sunday Mass 10 AM (Spanish)" the activity precedes
+    the time while the language follows it. A clause of bare times continues the
+    heading-style labels before it ("Spanish Masses: Sunday 8:00, 10:00, 12:00").
+
+    Where a clause could be read either way, evidence (an excerpt) keeps only a label both
+    readings agree on, and claims (claims=True, a recorded schedule) keep both readings,
+    so an ambiguous layout can withhold a time but never support a wrong one."""
+    slots, day, carried = set(), None, (None, None)
+    for chunk in re.split(r"[;,|/\n；，、。]+|\.\s", (text or "").lower()):
+        days = _day_positions(chunk)
+        acts, langs = _class_positions(chunk, ACTIVITY_WORDS), _class_positions(chunk, LANGUAGE_WORDS)
+        found_times = sorted(_times_in(chunk))
+        positions = [p for p, _ in found_times]
+        if not positions:
+            if acts or langs:  # a heading ("ENGLISH", "Spanish Masses:") for the times that follow
+                carried = (max(acts)[2] if acts else None, max(langs)[2] if langs else None)
+        elif not (days or acts or langs) and not set(re.findall(r"[^\W\d_]+", SVC_TIME_RE.sub(" ", chunk))) - BARE_WORDS:
+            for _, t in found_times:
+                slots.add((day, *carried, t))
+        else:
+            per_time, carry = [], []
+            for found in (acts, langs):
+                after = _labels_after(found, positions, chunk)
+                if after is None:
+                    a, b = _classes_for_times(found, positions, True), _classes_for_times(found, positions, False)
+                    per_time.append([{x, y} if claims else {x if x == y else None} for x, y in zip(a, b)])
+                    carry.append(None)
+                else:
+                    cls = _classes_for_times(found, positions, after)
+                    per_time.append([{c} for c in cls])
+                    carry.append(None if after else cls[-1])  # only heading-style labels carry on
+            for i, (pos, t) in enumerate(found_times):
+                before = [d for p, d in days if p < pos]
+                for a in per_time[0][i]:
+                    for lang in per_time[1][i]:
+                        slots.add((before[-1] if before else day, a, lang, t))
+            carried = tuple(carry)
+        if days:
+            day = days[-1][1]
+    return slots
+
+
+def service_times_of(text: str) -> set[str]:
+    return {s[3] for s in service_slots(text)}
+
+
+def service_days_of(text: str) -> set[str]:
+    return {s[0] for s in service_slots(text) if s[0]}
+
+
+def _slot_supported(want: tuple, have: set[tuple]) -> bool:
+    day, act, lang, t = want
+    for d, a, l, tt in have:
+        if tt != t:
+            continue
+        if day and d != day:          # a day the record states must be stated, and the same
+            continue
+        if act and a and a != act:    # worship vs Bible study, if both say
+            continue
+        if lang and l != lang:        # a language the record states must be stated for this time
+            continue
+        return True
+    return False
+
+
+def excerpt_supports_service(excerpt: str, verbatim: str) -> bool:
+    """Each time in the recorded schedule must appear in the excerpt on the same day, for
+    the same kind of gathering and in the same language where either text says so.
+    "Sunday worship 10 AM" is not supported by "Saturday Bible study 10 AM; Sunday
+    worship 11 AM". A schedule with no parseable time is not judged here."""
+    want = service_slots(verbatim, claims=True)
+    if not want:
+        return True
+    squash = lambda x: re.sub(r"\s+", " ", (x or "").lower()).strip()
+    v, e = squash(verbatim), squash(excerpt)
+    i = e.find(v)
+    if v and i >= 0 and not (e[i - 1:i].isalnum() or e[i + len(v):i + len(v) + 1].isalnum()):
+        return True  # the excerpt states the recorded schedule word for word
+    have = service_slots(excerpt)
+    return all(_slot_supported(w, have) for w in want)
 
 
 FACT_GROUPS = {
@@ -299,6 +580,9 @@ def check_fact_groups(w: str, r: dict) -> None:
         err(w, "phone_excerpt does not contain the phone's last 4 digits")
     if r.get("service_times_verbatim") and r.get("service_excerpt") and not TIME_RE.search(r["service_excerpt"]):
         err(w, "service_excerpt has no time token")
+    elif r.get("service_times_verbatim") and r.get("service_excerpt") and \
+            not excerpt_supports_service(r["service_excerpt"], r["service_times_verbatim"]):
+        err(w, "service_excerpt does not state the same times on the same days as service_times_verbatim")
     phone_ctx = NEGATED_PERSONAL_RE.sub("", r.get("notes", "") + " " + r.get("phone_excerpt", ""))
     if r.get("phone") and PERSONAL_PHONE_RE.search(phone_ctx):
         err(w, "phone looks like a personal number (D-2): leave blank, note 'personal number withheld'")
@@ -390,7 +674,7 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
         for col in ("candidate_name", "city", "status", "found_via", "match_confidence", "task"):
             if not r[col]:
                 err(w, f"missing required {col}")
-        if r["task"] and r["task"] not in ENUMS["task"]:
+        if r["task"] and r["task"] not in ENUMS["task"] and not PACKAGE_TASK_RE.match(r["task"]):
             err(w, f"task={r['task']!r} not allowed")
         if r["status"] and r["status"] not in ENUMS["candidate_status"]:
             err(w, f"status={r['status']!r} not allowed (candidates: active or unresolved)")
@@ -399,6 +683,9 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
         if r["match_confidence"] and r["match_confidence"] not in ENUMS["match_confidence"]:
             err(w, f"match_confidence={r['match_confidence']!r} not allowed")
         check_multi(w, "url_evidence", r["url_evidence"], "url_evidence")
+        if r.get("address_is_worship_location") and \
+                r["address_is_worship_location"] not in ENUMS["address_is_worship_location"]:
+            err(w, f"address_is_worship_location={r['address_is_worship_location']!r} not allowed (yes/no/unknown)")
         if r["status"] == "active" and not r["status_source_url"]:
             err(w, "status=active without status_source_url")
         if not r["street_address"]:
@@ -431,6 +718,45 @@ def check_candidates(path: Path, received_at: datetime | None) -> list[dict]:
     stamps = Counter(r["checked_at"] for r in rows)
     if len(rows) > 3 and len(stamps) == 1:
         warn("candidates", f"all {len(rows)} rows share checked_at {next(iter(stamps))}; likely reconstructed")
+    return rows
+
+
+def unsupported_slots(excerpt: str, verbatim: str) -> list[str]:
+    """The recorded times the excerpt doesn't state, readable: "Sun 10:00 English"."""
+    if excerpt_supports_service(excerpt, verbatim):
+        return []
+    have = service_slots(excerpt)
+    out = []
+    for day, act, lang, t in sorted(service_slots(verbatim, claims=True), key=lambda x: (x[3], str(x))):
+        if not _slot_supported((day, act, lang, t), have):
+            out.append(" ".join(x for x in ((day or "").title(), t, act or "", (lang or "").title()) if x))
+    return out
+
+
+def check_service_fixes(path: Path, received_at: datetime | None) -> list[dict]:
+    """Task S answers (service_fixes_S_TEMPLATE.csv): one row per subject; every kept time
+    stated in the excerpt with its day, kind of gathering, and language (the map's rule)."""
+    rows = list(csv.DictReader(path.open(encoding="utf-8-sig")))
+    seen = Counter((r.get("subject_type", ""), r.get("subject_id", "")) for r in rows)
+    for (st, sid), n in seen.items():
+        if st not in ("church", "candidate") or not sid or n > 1:
+            err(f"{st}:{sid or '(blank)'}", f"subject_type/subject_id invalid or repeated ({n}x)")
+    for r in rows:
+        w = f"{r.get('subject_type', '')}:{r.get('subject_id', '')}"
+        if r.get("service_times_verbatim"):
+            if not (r.get("service_source_url") and r.get("service_excerpt")):
+                err(w, "service_times_verbatim without service_source_url and service_excerpt")
+            elif not TIME_RE.search(r["service_excerpt"]):  # the same test build_seeds applies
+                err(w, "service_excerpt contains no time")
+            else:
+                missing = unsupported_slots(r["service_excerpt"], r["service_times_verbatim"])
+                if missing:
+                    err(w, "service_excerpt does not state: " + "; ".join(missing))
+            if r.get("service_source_type") and r["service_source_type"] not in ENUMS["source_type"]:
+                err(w, f"service_source_type={r['service_source_type']!r} not allowed")
+        elif not r.get("notes"):
+            warn(w, "blank schedule without a note saying why")
+        check_common(w, r, received_at)
     return rows
 
 
@@ -469,6 +795,13 @@ def main(argv: list[str]) -> int:
         i = argv.index("--received-at")
         received_at = parse_ts(argv[i + 1])
         argv = argv[:i] + argv[i + 2:]
+    if argv[1] == "--service-fixes":  # validate_returns.py --service-fixes FILE [--received-at UTC]
+        fixes = check_service_fixes(Path(argv[2]), received_at)
+        for level, where, msg in sorted(problems, key=lambda p: (p[0], p[1])):
+            print(f"{level:5} {where:38} {msg}")
+        print(f"\n{sum(p[0] == 'ERROR' for p in problems)} errors, {sum(p[0] == 'WARN' for p in problems)} warnings; "
+              f"{len(fixes)} rows, {sum(1 for r in fixes if r.get('service_times_verbatim'))} with times")
+        return 1 if any(p[0] == "ERROR" for p in problems) else 0
     batch, results_path, candidates_path = argv[1], Path(argv[2]), Path(argv[3])
     rows = [] if str(results_path) == "-" else check_results(batch, results_path, received_at, redo, manifest)
     for r in rows:

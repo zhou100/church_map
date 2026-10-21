@@ -48,6 +48,7 @@ select
     is_new_congregation
         and verified_active
         and address_displayable
+        and coalesce(address_is_worship_location, '') = 'yes'   -- where they meet, not an office
         and (website_verified or (fb_page_linkable and fb_page_fresh) or phone_displayable)
                                                                          as profile_ready,
     true                                                                 as needs_geocode

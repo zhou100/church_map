@@ -45,6 +45,30 @@ The intake script runs four steps:
 3. Rebuild the seeds.
 4. Run `dbt build`.
 
+### Through the shared Drive queue
+
+From round 7 on, work moves through a Google Drive folder that Muse reads and writes. Google Drive for desktop mirrors it at `/mnt/f/My Drive/churchmap-handoff`; override with `CHURCHMAP_DRIVE`. The protocol Muse follows is [`muse_handoff/drive/README_FOR_MUSE.md`](../muse_handoff/drive/README_FOR_MUSE.md).
+
+```bash
+python3 muse_handoff/drive_sync.py new-discovery --title "Marin County" --state CA --cities "San Rafael=25,Novato=20"
+python3 muse_handoff/drive_sync.py publish WP-0003    # after reading its TASK.md
+python3 muse_handoff/drive_sync.py pull               # validate, re-check and ingest finished packages, rebuild
+python3 muse_handoff/drive_sync.py status
+```
+
+What `pull` does:
+- It reads a package only after Muse writes `DONE.md`, and only if every listed file matches its sha256.
+- A package that fails validation is not ingested. It goes back to Muse as `feedback/WP-xxxx.md`, with the state set to `needs_fix`.
+- Ingested files land in `muse_handoff/returns/` as `<kind>_WP0001.csv`, with their receive times in `received.csv`. `build_seeds.py` picks them up after the lettered rounds.
+- Excerpt repair (`repair_excerpts.py`) stays a manual step.
+
+`pull` runs every hour from the Windows scheduled task `ChurchMapMusePull`, through [`muse_handoff/drive_pull_hourly.sh`](../muse_handoff/drive_pull_hourly.sh). The script does three things:
+- re-mounts F: if WSL lost the mount;
+- starts the local Postgres;
+- appends its output to `muse_handoff/returns/drive_pull.log`.
+
+Remove the task with `schtasks.exe /Delete /TN ChurchMapMusePull /F`.
+
 `build_seeds.py` merges every pass it finds, so files that haven't arrived yet are simply skipped. The merge order:
 
 - **Results:** pilot (A, B, Facebook passes) → E → C, D, F. A later pass wins for the same `church_id`.
@@ -64,6 +88,7 @@ analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/ret
 - The original file is kept as `<stem>.muse.csv`.
 - Every change is logged in `returns/repairs/`.
 - Facts that aren't on their page are left alone.
+- Service times are repaired only when the recorded schedule itself is on the page. Seeds publish times only if the excerpt states the same times on the same days, for the same kind of gathering and language (`excerpt_supports_service`).
 - Repairs accumulate across runs. Re-check between runs.
 - `--resource-blocked`: if the cited page blocks our checker (403, robots.txt), look for the same fact on the church's own site (homepage plus up to 3 contact/schedule links) and cite that page instead.
 
@@ -85,7 +110,8 @@ analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/ret
 | `mart_language_supply` | language × city × origin | Where a service in a given language exists, and how much of it can be shown |
 | `mart_quality_audit` | field (+ all) | Owner's blind audit vs Muse |
 
-`visit_ready` = in scope, active per Muse, an address from the church's own site or
+`visit_ready` = in scope, active per Muse, **an address stated to be where they meet**
+(`address_is_worship_location = yes`; an office or unknown address stays contact-only), from the church's own site or
 its denomination **whose excerpt our re-check found on the cited page**, or (D-3) from
 its fresh Facebook Page; valid coordinates; pin not off; and a verified website,
 fresh Page or displayable phone.
@@ -103,7 +129,7 @@ How it matches:
 - The excerpt is tried whole, then fragment by fragment. All fragments must be found.
 - Punctuation, table borders, line breaks, zero-width characters, and digit/letter spacing are ignored. Numbers and Latin words must match whole: 94022 ≠ 94024, "23 Main" is not in "123 Main".
 - Short fragments ("9 am") must sit within 300 characters of the previous fragment.
-- Spaceless matching (PDF text) is used only when every number in the fragment is on the page.
+- Spaceless matching keeps the gap between numbers. Number boundaries are checked at the same occurrence, so "23 Main" never matches inside "123 Main".
 - A word cut by the 200-character excerpt cap may match as a prefix; a cut number may not.
 
 Each verdict carries a **fact fingerprint** (`analytics/scripts/fact_fingerprint.py`): value + source URL + excerpt. `build_seeds.py` only accepts a verdict whose fingerprint matches the row it publishes. A later correction is `stale` until it is re-checked.
@@ -116,7 +142,15 @@ Each verdict carries a **fact fingerprint** (`analytics/scripts/fact_fingerprint
 | `not_an_excerpt` | the "excerpt" describes the page instead of quoting it |
 | `fetch_failed` / `robots_blocked` / `unsupported` / `unsafe_url` | could not check |
 | `skipped_facebook` | Page facts follow D-3; we never fetch Facebook |
+| `source_gone` | the cited page returns 404/410 |
 | `stale` | the fact, its URL or excerpt changed since the check; re-run the check |
+
+A transient `fetch_failed` doesn't undo a recent `verified`. Transient means no response (timeout or connection error), 408, 425, 429, or 5xx. The seed keeps the earlier `verified`, with `carried_over = true` and the original check time (history in `returns/recheck/history/`), only if all of these hold:
+- the fact fingerprint is the same;
+- that verification is at most 30 days old;
+- the latest verdict that judged the fact (`verified`, `not_found`, `partial`, `not_an_excerpt`, `source_gone`) is that verification.
+
+A 404/410 is `source_gone` and never carries; a 403 doesn't carry either.
 
 Only `verified` lets a website or denomination fact through. Everything else needs
 another source or another pass.

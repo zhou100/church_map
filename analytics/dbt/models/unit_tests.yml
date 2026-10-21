@@ -1,0 +1,67 @@
+version: 2
+
+# dbt unit tests (dbt >= 1.8): fixed inputs, no seeds or warehouse data needed.
+unit_tests:
+  - name: visit_ready_requires_the_worship_location
+    description: >
+      Identical churches that differ only in address_is_worship_location. An office or
+      mailing address ("no") or an unknown one is never visit-ready (review of e9980b51).
+    model: int_location_readiness
+    given:
+      - input: ref('stg_churches')
+        rows:
+          - {church_id: 1, source: osm, street_text: Main St, has_house_number: false, has_google_address: false, city: San Mateo, state: CA, coords_ok: true}
+          - {church_id: 2, source: osm, street_text: Main St, has_house_number: false, has_google_address: false, city: San Mateo, state: CA, coords_ok: true}
+          - {church_id: 3, source: osm, street_text: Main St, has_house_number: false, has_google_address: false, city: San Mateo, state: CA, coords_ok: true}
+      - input: ref('int_scope')
+        rows:
+          - {church_id: 1, scope_status: in_scope}
+          - {church_id: 2, scope_status: in_scope}
+          - {church_id: 3, scope_status: in_scope}
+      - input: ref('stg_muse_results')
+        rows:
+          - {church_id: 1, muse_batch: A_calibration, muse_status: active, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'yes'}
+          - {church_id: 2, muse_batch: A_calibration, muse_status: active, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'no'}
+          - {church_id: 3, muse_batch: A_calibration, muse_status: active, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: unknown}
+      - input: ref('stg_source_checks')
+        rows:
+          - {subject_type: church, subject_id: '1', fact_group: address, is_verified: true}
+          - {subject_type: church, subject_id: '1', fact_group: phone, is_verified: true}
+          - {subject_type: church, subject_id: '2', fact_group: address, is_verified: true}
+          - {subject_type: church, subject_id: '2', fact_group: phone, is_verified: true}
+          - {subject_type: church, subject_id: '3', fact_group: address, is_verified: true}
+          - {subject_type: church, subject_id: '3', fact_group: phone, is_verified: true}
+      - input: ref('fact_holds')
+        format: sql
+        rows: "select null::bigint as church_id, null::text as field, null::text as reason where false"
+      - input: ref('int_coordinate_clusters')
+        format: sql
+        rows: "select null::bigint as church_id, null::bigint as records_at_point where false"
+    expect:
+      rows:
+        - {church_id: 1, address_displayable: true, visit_ready: true}
+        - {church_id: 2, address_displayable: true, visit_ready: false}
+        - {church_id: 3, address_displayable: true, visit_ready: false}
+
+  - name: profile_ready_requires_the_worship_location
+    description: The same rule for congregations found outside the directory.
+    model: int_candidate_readiness
+    given:
+      - input: ref('stg_muse_candidates')
+        rows:
+          - {candidate_id: X-1, is_new_congregation: true, muse_status: active, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'yes'}
+          - {candidate_id: X-2, is_new_congregation: true, muse_status: active, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'no'}
+          - {candidate_id: X-3, is_new_congregation: true, muse_status: active, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: unknown}
+      - input: ref('stg_source_checks')
+        rows:
+          - {subject_type: candidate, subject_id: X-1, fact_group: address, is_verified: true}
+          - {subject_type: candidate, subject_id: X-1, fact_group: phone, is_verified: true}
+          - {subject_type: candidate, subject_id: X-2, fact_group: address, is_verified: true}
+          - {subject_type: candidate, subject_id: X-2, fact_group: phone, is_verified: true}
+          - {subject_type: candidate, subject_id: X-3, fact_group: address, is_verified: true}
+          - {subject_type: candidate, subject_id: X-3, fact_group: phone, is_verified: true}
+    expect:
+      rows:
+        - {candidate_id: X-1, address_displayable: true, profile_ready: true}
+        - {candidate_id: X-2, address_displayable: true, profile_ready: false}
+        - {candidate_id: X-3, address_displayable: true, profile_ready: false}

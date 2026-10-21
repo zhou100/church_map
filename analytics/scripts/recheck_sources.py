@@ -73,12 +73,13 @@ def fact_rows(path: Path) -> list[dict]:
         rows = list(csv.DictReader(f))
     out = []
     for i, r in enumerate(rows, 1):
-        key = r.get("church_id") or r.get("candidate_ref") or f"row{i}"
+        key = r.get("church_id") or r.get("candidate_ref") or r.get("subject_id") or f"row{i}"
         name = r.get("current_name") or r.get("candidate_name") or ""
-        v2_candidate = "excerpt" in r and "source_url" in r
-        for g in (("candidate",) if v2_candidate else GROUPS):
+        worship = "address_is_worship_location" in r and "subject_id" in r       # task W overlay
+        v2_candidate = not worship and "excerpt" in r and "source_url" in r
+        for g in (("worship",) if worship else ("candidate",) if v2_candidate else GROUPS):
             url, ex = source_of(r, g)
-            stype = r.get("source_type", "") if v2_candidate else r.get(f"{g}_source_type", "")
+            stype = r.get("source_type", "") if (v2_candidate or worship) else r.get(f"{g}_source_type", "")
             if url and ex:
                 out.append({"row_key": key, "name": name, "group": g, "source_type": stype,
                             "source_url": url.strip(), "excerpt": ex,
@@ -153,12 +154,28 @@ def _trim_cut_words(ss: str) -> str:
     return " ".join(words)
 
 
-def _numbers_present(ss: str, page_s: str) -> bool:
-    """Every number in the fragment appears on the page as a whole number."""
-    return all(_bounded_positions(page_s, n) for n in re.findall(r"\d+", ss))
+def squash(s: str) -> str:
+    """Spaceless text for words split by markup or PDF layout ("Sun day" -> "sunday"),
+    except that a space between two numbers stays: "5528 1430" must not become one
+    number. Built from spaced(), so punctuation is already gone."""
+    return re.sub(r"(?<!\d) | (?!\d)", "", spaced(s))
 
 
-def _score(segs: list[str], page_s: str, page_l: str, capped: bool = False) -> tuple[int, set]:
+def _digit_bounded_at(hay: str, needle: str) -> bool:
+    """needle occurs in hay at a position where it doesn't extend a number on either
+    side. The boundary belongs to the same occurrence: "23 Main" inside "123 Main" is
+    rejected even if a separate "23" ("Established 23 years ago") is elsewhere."""
+    start = hay.find(needle) if needle else -1
+    while start != -1:
+        end = start + len(needle)
+        if not (needle[0].isdigit() and start and hay[start - 1].isdigit()) and \
+           not (needle[-1].isdigit() and end < len(hay) and hay[end].isdigit()):
+            return True
+        start = hay.find(needle, start + 1)
+    return False
+
+
+def _score(segs: list[str], page_s: str, page_q: str, capped: bool = False) -> tuple[int, set]:
     found, modes, last = 0, set(), None
     for i, seg in enumerate(segs):
         ss = spaced(seg)
@@ -172,11 +189,9 @@ def _score(segs: list[str], page_s: str, page_l: str, capped: bool = False) -> t
         if positions:
             found, last = found + 1, positions[0]
             modes.add("exact")
-        elif (not short and len(segments(seg, fine=True)) == 1
-              and loose(seg) in page_l and _numbers_present(ss, page_s)):
+        elif not short and len(segments(seg, fine=True)) == 1 and _digit_bounded_at(page_q, squash(seg)):
             # Spaceless matching (PDF text, words split by markup) for an indivisible
-            # fragment, and only if each of its numbers is on the page whole: without
-            # spaces, "23 Main" would match "123 Main" and "9 am" could hide in "19 am".
+            # fragment, with number boundaries checked at that very occurrence.
             found, last = found + 1, None
             modes.add("loose")
     return found, modes
@@ -188,11 +203,11 @@ def match(excerpt: str, page_text: str) -> tuple[str, int, int, str]:
     Every part of the excerpt has to be found. Numbers and Latin words match whole;
     short fragments must also appear near the fragment before them.
     """
-    page_s, page_l = spaced(page_text), loose(page_text)
+    page_s, page_q = spaced(page_text), squash(page_text)
     best = None
     capped = len(excerpt) >= EXCERPT_CAP - 10
     for segs in ([excerpt], segments(excerpt), segments(excerpt, fine=True)):
-        found, modes = _score(segs, page_s, page_l, capped)
+        found, modes = _score(segs, page_s, page_q, capped)
         cand = (found / len(segs), found, len(segs), modes)
         if best is None or cand[0] > best[0]:
             best = cand
@@ -334,6 +349,9 @@ class Fetcher:
                 if r.is_redirect and r.headers.get("location"):
                     hop = urljoin(hop, r.headers["location"])
                     continue
+                if r.status_code in (404, 410):
+                    # The page is gone: a judgement on the source, never a transient failure.
+                    return {"verdict": "source_gone", "http_status": r.status_code, "final_url": hop}
                 if r.status_code != 200:
                     return {"verdict": "fetch_failed", "http_status": r.status_code, "final_url": hop}
                 if len(r.content) > MAX_BYTES:
@@ -383,9 +401,27 @@ async def run(paths: list[Path]) -> None:
             w = csv.DictWriter(fh, fieldnames=cols)
             w.writeheader()
             w.writerows(out)
+        append_history(path.stem, out)
         print(f"\n{path.name}: {len(out)} facts -> {dest.relative_to(ROOT)}")
         for v, n in Counter(r["verdict"] for r in out).most_common():
             print(f"  {v:18} {n}")
+
+
+HISTORY_COLS = ["row_key", "group", "source_url", "verdict", "http_status", "fact_fingerprint", "checked_at"]
+
+
+def append_history(stem: str, rows: list[dict]) -> None:
+    """Append every verdict to returns/recheck/history/<stem>.csv (no excerpts). The
+    latest file above is what the seeds use; the history lets a fact keep a recent
+    "verified" through a transient fetch failure (see build_seeds.carry_over)."""
+    hist = OUT_DIR / "history" / f"{stem}.csv"
+    hist.parent.mkdir(parents=True, exist_ok=True)
+    new = not hist.exists()
+    with hist.open("a", newline="", encoding="utf-8") as fh:
+        w = csv.DictWriter(fh, fieldnames=HISTORY_COLS, extrasaction="ignore")
+        if new:
+            w.writeheader()
+        w.writerows(rows)
 
 
 def main() -> None:

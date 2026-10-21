@@ -28,6 +28,7 @@ hidden until recheck_sources.py has run on it.
 from __future__ import annotations
 
 import argparse
+from datetime import datetime, timedelta
 import csv
 import re
 import sys
@@ -41,7 +42,7 @@ sys.path.insert(0, str(HANDOFF))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 from fact_fingerprint import FACT_FIELDS, fact_fingerprint  # noqa: E402
 from validate_returns import NEGATED_PERSONAL_RE, PERSONAL_PHONE_RE, STRICT_TS_RE  # noqa: E402
-from validate_returns import excerpt_supports_street  # noqa: E402
+from validate_returns import excerpt_supports_service, excerpt_supports_street  # noqa: E402
 from validate_returns import TIME_RE as EXCERPT_TIME_RE  # noqa: E402  (grading has its own TIME_RE)
 
 RET = HANDOFF / "returns"  # replaced by --returns
@@ -59,7 +60,39 @@ RECEIVED_AT = {
     "results_E.csv": "2026-10-20T17:31:34Z", "new_candidates_E.csv": "2026-10-20T17:31:34Z",
     "results_D.csv": "2026-10-20T20:20:41Z", "new_candidates_D.csv": "2026-10-20T20:20:41Z",  # fill pass
     "results_C.csv": "2026-10-20T19:56:50Z", "new_candidates_C.csv": "2026-10-20T19:56:50Z",
+    "results_F.csv": "2026-10-20T23:34:24Z",
+    "new_candidates_F.csv": "2026-10-21T17:46:01Z", "new_candidates_L.csv": "2026-10-21T17:46:37Z",
+    # round 6, read from the shared Drive folder (file times there)
+    "service_fixes_S.csv": "2026-10-21T18:40:02Z", "worship_location_W.csv": "2026-10-21T18:40:12Z",
+    "results_H.csv": "2026-10-21T18:48:32Z", "new_candidates_H.csv": "2026-10-21T18:48:33Z",
 }
+
+# Work packages delivered through the shared Drive folder (muse_handoff/drive_sync.py)
+# land as <kind>_WP0001.csv; their receive times are in returns/received.csv.
+PACKAGE_RE = re.compile(r"^(results|new_candidates|service_fixes|worship_location)_(WP\d{4})\.csv$")
+
+
+def package_files(kind: str) -> list[tuple[str, str]]:
+    """[(file name, package id)] for one kind, in package order (a later package wins)."""
+    out = []
+    for p in sorted(RET.glob(f"{kind}_WP*.csv")):
+        m = PACKAGE_RE.match(p.name)
+        if m and m.group(1) == kind:
+            out.append((p.name, m.group(2)))
+    return out
+
+
+def received_at(fname: str) -> str:
+    if fname in RECEIVED_AT:
+        return RECEIVED_AT[fname]
+    path = RET / "received.csv"
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                if r["file"] == fname:
+                    return r["received_at"]
+    return ""
+
 
 MANIFESTS = [  # (file, batch for rows whose manifest has no batch column)
     ("peninsula_seed_v1.csv", None),
@@ -72,7 +105,7 @@ MANIFEST_COLS = ["church_id", "name", "known_city", "state", "latitude", "longit
 
 # Result files in override order: a later file wins for the same church_id.
 RESULT_FILES = [("results_current.csv", None), ("results_E.csv", "E"),
-                ("results_C.csv", "C"), ("results_D.csv", "D"), ("results_F.csv", "F")]
+                ("results_C.csv", "C"), ("results_D.csv", "D"), ("results_F.csv", "F"), ("results_H.csv", "H")]
 GROUPS = ("status", "address", "phone", "service", "kids")
 RESULT_COLS = [
     "church_id", "batch", "entity_type", "status", "status_source_url", "status_source_type",
@@ -90,7 +123,16 @@ RESULT_COLS = [
 CANDIDATE_FILES = [("new_candidates_A.csv", "A"), ("new_candidates_B.csv", "B"),
                    ("new_candidates_CN.csv", "CN"), ("new_candidates_C.csv", "C"),
                    ("new_candidates_D.csv", "D"), ("new_candidates_E.csv", "E"),
-                   ("new_candidates_F.csv", "F"), ("new_candidates_L.csv", "L")]
+                   ("new_candidates_F.csv", "F"), ("new_candidates_L.csv", "L"),
+                   ("new_candidates_H.csv", "H")]
+
+# Overlay files: answers to targeted follow-up tasks, applied on top of the latest row
+# for the same subject before fingerprinting and sanitizing, so every gate applies.
+OVERLAY_S = "service_fixes_S.csv"      # task S: service times re-quoted from the page
+OVERLAY_W = "worship_location_W.csv"   # task W: is this where they meet / corrected street
+STALE_W: set[tuple[str, str]] = set()  # W answers dropped because the address they answered changed
+SERVICE_COLS = ("service_times_verbatim", "service_languages", "service_source_url", "service_source_type",
+                "service_excerpt")
 CAND_COLS = [
     "candidate_id", "task", "format", "candidate_name", "current_name_native", "denomination_stated",
     "city", "state", "zip", "official_url", "url_evidence", "facebook_page_url", "fb_page_evidence",
@@ -166,7 +208,7 @@ def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
         r["personal_phone_withheld"] = "true"
     else:
         r["personal_phone_withheld"] = "false"
-    ts, received = r.get("checked_at", ""), RECEIVED_AT.get(fname, "")
+    ts, received = r.get("checked_at", ""), received_at(fname)
     reliable = (ts not in UNRELIABLE_STAMPS and ts not in bulk
                 and (not ts or STRICT_TS_RE.match(ts) is not None)
                 and not (received and ts > received))
@@ -175,7 +217,10 @@ def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
         r["checked_at"] = ""
     # The service group has one excerpt for times and languages. If it backs only the
     # languages (no time in it), the times are unsupported and are not published.
-    if r.get("service_times_verbatim") and r.get("service_excerpt") and not EXCERPT_TIME_RE.search(r["service_excerpt"]):
+    if r.get("service_times_verbatim") and r.get("service_excerpt") and (
+            not EXCERPT_TIME_RE.search(r["service_excerpt"])
+            or not excerpt_supports_service(r["service_excerpt"], r["service_times_verbatim"])):
+        # The excerpt has no time, or not the same times on the same days.
         r["service_times_verbatim"] = ""
         r["service_times_unsupported"] = "true"
     else:
@@ -189,6 +234,8 @@ def sanitize(r: dict, fname: str = "", bulk: frozenset = frozenset()) -> dict:
         r["address_unsupported"] = "true"
     else:
         r["address_unsupported"] = "false"
+    wl = (r.get("address_is_worship_location") or "").strip().lower()
+    r["address_is_worship_location"] = {"true": "yes", "false": "no"}.get(wl, wl)  # agent wrote True/False
     r["service_languages"] = normalize_languages(r.get("service_languages", ""))
     return r
 
@@ -207,7 +254,10 @@ def pilot_pass_map() -> dict[str, str]:
 
 def build_manifest() -> dict[str, str]:
     rows, batch_of = [], {}
-    for fname, batch in MANIFESTS:
+    # A verification work package carries its own manifest: outbox/WP-0001/manifest.csv.
+    packages = [(str(p.relative_to(HANDOFF)), p.parent.name.replace("-", ""))
+                for p in sorted((HANDOFF / "outbox").glob("WP-[0-9][0-9][0-9][0-9]/manifest.csv"))]
+    for fname, batch in MANIFESTS + packages:
         path = HANDOFF / fname
         if not path.exists():
             continue
@@ -221,22 +271,108 @@ def build_manifest() -> dict[str, str]:
     return batch_of
 
 
+def w_input_path(fname: str) -> Path:
+    """The input a W answer file was asked from: round 6's, or its package's."""
+    m = PACKAGE_RE.match(fname)
+    if m:
+        return HANDOFF / "outbox" / f"WP-{m.group(2)[2:]}" / "worship_location_input.csv"
+    return HANDOFF / "outbox" / "worship_location_W_input.csv"
+
+
+def asked_address(r: dict) -> str:
+    """The recorded address a W question was about (street + city, case and spacing ignored)."""
+    return "|".join(" ".join((r.get(f) or "").split()).casefold() for f in ("street_address", "city"))
+
+
+def load_overlays() -> tuple[dict, dict]:
+    """(S rows, W rows) keyed by (subject_type, subject_id). A W answer is used only if
+    its own excerpt re-verified on its page with the same fingerprint; otherwise the
+    record keeps what it had (an unproven "yes" must not make an address visit-ready).
+    It is also bound to the address it was asked about (`_asked`); an answer whose
+    question we can't find is not used."""
+    s_rows, w_rows = {}, {}
+    for fname in [OVERLAY_S] + [f for f, _ in package_files("service_fixes")]:
+        for r in read(fname) or []:
+            s_rows[(r["subject_type"], r["subject_id"])] = {**r, "_file": fname}
+    for fname in [OVERLAY_W] + [f for f, _ in package_files("worship_location")]:
+        checks_path = RET / "recheck" / f"{Path(fname).stem}.csv"
+        checks = {}
+        if checks_path.exists():
+            with checks_path.open(encoding="utf-8") as f:
+                checks = {r["row_key"]: r for r in csv.DictReader(f) if r["group"] == "worship"}
+        asked = {}
+        if w_input_path(fname).exists():
+            with w_input_path(fname).open(encoding="utf-8") as f:
+                asked = {(r["subject_type"], r["subject_id"]): asked_address(r) for r in csv.DictReader(f)}
+        for r in read(fname) or []:
+            key = (r["subject_type"], r["subject_id"])
+            c = checks.get(r["subject_id"])
+            if key in asked and c and c["verdict"] == "verified" and \
+                    c.get("fact_fingerprint") == fact_fingerprint(r, "worship"):
+                w_rows[key] = {**r, "_file": fname, "_asked": asked[key]}
+    return s_rows, w_rows
+
+
+def release(used: dict, subject_type: str, sid: str) -> None:
+    """A newer record for this subject replaces the older one: whatever S/W owned for
+    the older record is decided again for the newer one."""
+    for group in ("service", "address"):
+        used.pop((subject_type, sid, group), None)
+
+
+def apply_overlays(raw: dict, subject_type: str, sid: str, overlays: tuple[dict, dict],
+                   used: dict) -> dict:
+    """Merge S/W answers into a raw returned row; record which fact groups they now own.
+    Called for every pass in order, so ownership always describes the latest record."""
+    s_rows, w_rows = overlays
+    raw = dict(raw)
+    release(used, subject_type, sid)
+    o = s_rows.get((subject_type, sid))
+    if o:
+        for c in SERVICE_COLS:
+            raw[c] = o.get(c, "")  # S is newer and stricter; a blank answer clears the old schedule
+        used[(subject_type, sid, "service")] = (o["_file"], "service", o)
+    o = w_rows.get((subject_type, sid))
+    if o and o["_asked"] != asked_address(raw):
+        # The record's address changed after W was asked: the answer is about another
+        # address (a "yes" for 100 Main St says nothing about 200 Main St). Ask again.
+        STALE_W.add((subject_type, sid))
+        o = None
+    if o:
+        ans = (o.get("address_is_worship_location") or "").strip().lower()
+        if o.get("worship_street_address") and ans == "no":
+            # "no" answers for the recorded address; the worship address W gives in its
+            # place is, by the task's definition, where they meet.
+            ans = "yes"
+        if ans in ("yes", "no", "unknown"):
+            raw["address_is_worship_location"] = ans
+        if o.get("worship_street_address"):
+            raw.update(street_address=o["worship_street_address"], city=o.get("worship_city") or raw.get("city", ""),
+                       zip=o.get("worship_zip") or raw.get("zip", ""), address_source_url=o.get("source_url", ""),
+                       address_source_type=o.get("source_type", ""), address_excerpt=o.get("excerpt", ""))
+            used[(subject_type, sid, "address")] = (o["_file"], "worship", o)
+    return raw
+
+
 def raw_fingerprints(raw: dict, groups) -> dict[str, str]:
     """Fingerprints of the facts in a raw returned row (before sanitizing)."""
     return {g: fact_fingerprint(raw, g) for g in groups}
 
 
-def build_results(batch_of: dict[str, str]) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+def build_results(batch_of: dict[str, str], overlays: tuple[dict, dict] = ({}, {}), used: dict | None = None
+                  ) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
     """Returns ({church_id: source file}, {(church_id, group): fact fingerprint})."""
+    used = {} if used is None else used
     pilot_passes = pilot_pass_map()
     current: dict[str, dict] = {}
     fps: dict[tuple[str, str], str] = {}
-    for fname, label in RESULT_FILES:
+    for fname, label in RESULT_FILES + package_files("results"):
         rows = read(fname)
         if rows is None:
             continue
         bulk = frozenset(bulk_stamps(rows))
         for raw in rows:
+            raw = apply_overlays(raw, "church", raw["church_id"], overlays, used)
             for g, fp in raw_fingerprints(raw, GROUPS).items():
                 fps[(raw["church_id"], g)] = fp
             r = sanitize(dict(raw), fname, bulk)
@@ -260,10 +396,12 @@ def candidate_from_v2(r: dict, cid: str, task: str) -> dict:
     }
 
 
-def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None = None
+                     ) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
+    used = {} if used is None else used
     current: dict[str, dict] = {}
     fps: dict[tuple[str, str], str] = {}
-    for fname, task in CANDIDATE_FILES:
+    for fname, task in CANDIDATE_FILES + package_files("new_candidates"):
         rows = read(fname)
         if rows is None:
             continue
@@ -271,11 +409,13 @@ def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
         for i, r in enumerate(rows, 1):
             if "candidate_ref" in r:  # v3
                 cid = r["candidate_ref"]
+                r = apply_overlays(r, "candidate", cid, overlays, used)
                 for g, fp in raw_fingerprints(r, GROUPS).items():
                     fps[(cid, g)] = fp
                 r = {**r, "candidate_id": cid, "task": r.get("task") or task, "format": "v3"}
             else:
                 cid = f"{task}-{i:02d}"
+                release(used, "candidate", cid)
                 for g in GROUPS:
                     fps.pop((cid, g), None)
                 fps[(cid, "address")] = fact_fingerprint(r, "candidate")  # v2 source backs the address
@@ -297,15 +437,62 @@ def build_candidates() -> tuple[dict[str, str], dict[tuple[str, str], str]]:
     return {r["candidate_id"]: r["source_file"] for r in out}, fps
 
 
+TRANSIENT_HTTP = {"", "408", "425", "429", "500", "502", "503", "504"}  # "" = timeout / connection error
+DECISIVE = {"verified", "not_found", "partial", "not_an_excerpt", "source_gone"}  # verdicts that judge the fact
+CARRY_DAYS = 30
+
+
+def load_history(stem: str) -> dict[tuple[str, str, str], list[tuple[str, str]]]:
+    """Every (checked_at, verdict) per (row_key, group, fact_fingerprint) in the re-check history."""
+    path = RET / "recheck" / "history" / f"{stem}.csv"
+    hist: dict[tuple[str, str, str], list[tuple[str, str]]] = {}
+    if path.exists():
+        with path.open(encoding="utf-8") as f:
+            for r in csv.DictReader(f):
+                if r.get("fact_fingerprint"):
+                    hist.setdefault((r["row_key"], r["group"], r["fact_fingerprint"]), []).append(
+                        (r["checked_at"], r["verdict"]))
+    return hist
+
+
+def carry_over(verdict: str, http_status: str, checked_at: str, key: tuple[str, str, str],
+               history: dict[tuple[str, str, str], list[tuple[str, str]]]) -> tuple[str, str, bool]:
+    """Keep a recent 'verified' through a transient fetch failure, and only then.
+
+    - The latest check couldn't fetch the page for a transient reason (timeout,
+      connection error, 408/425/429/5xx). A 404/410 is 'source_gone' and never carries.
+    - The fact is the one verified (same fingerprint).
+    - Among earlier checks of that fact, the latest one that actually judged it
+      (verified / not_found / partial / not_an_excerpt / source_gone) is 'verified':
+      verified -> not_found -> fetch_failed stays unverified.
+    - That verification is at most CARRY_DAYS old.
+    Returns (verdict, checked_at, carried); checked_at is then the verification relied on."""
+    if verdict != "fetch_failed" or str(http_status or "") not in TRANSIENT_HTTP or not checked_at:
+        return verdict, checked_at, False
+    decisive = [(t, v) for t, v in history.get(key, []) if v in DECISIVE and t and t <= checked_at]
+    if not decisive:
+        return verdict, checked_at, False
+    last_t, last_v = max(decisive)
+    if last_v != "verified":
+        return verdict, checked_at, False
+    try:
+        age = datetime.fromisoformat(checked_at.replace("Z", "+00:00")) - datetime.fromisoformat(last_t.replace("Z", "+00:00"))
+    except ValueError:
+        return verdict, checked_at, False
+    if timedelta(0) <= age <= timedelta(days=CARRY_DAYS):
+        return "verified", last_t, True
+    return verdict, checked_at, False
+
+
 def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str],
-                        fps: dict[tuple[str, str], str]) -> None:
+                        fps: dict[tuple[str, str], str], used: dict | None = None) -> None:
     """Attach re-check verdicts to the facts they were made for.
 
     A verdict counts only if its fact fingerprint equals the fingerprint of the row
     being published (value + source URL + excerpt). Otherwise it is "stale": a
     correction made after the check must be re-checked, not inherit "verified".
     """
-    rows, missing, stale = [], set(), 0
+    rows, missing, stale, carried_n = [], set(), 0, 0
     for subject_type, files in (("church", church_files), ("candidate", cand_files)):
         by_file: dict[str, list[str]] = {}
         for sid, fname in files.items():
@@ -316,6 +503,7 @@ def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str]
                 missing.add(fname)
                 continue
             wanted = set(sids)
+            history = load_history(Path(fname).stem)
             with path.open(encoding="utf-8") as f:
                 for r in csv.DictReader(f):
                     key = r["row_key"]
@@ -324,17 +512,52 @@ def build_source_checks(church_files: dict[str, str], cand_files: dict[str, str]
                     if key not in wanted:
                         continue
                     group = "address" if r["group"] == "candidate" else r["group"]
+                    if (subject_type, key, group) in (used or {}):
+                        continue  # this fact now comes from an S/W answer, checked below
                     current_fp = fps.get((key, group))
                     if current_fp is None:  # that fact is no longer in the row
                         continue
-                    verdict = r["verdict"]
+                    verdict, checked_at, carried = r["verdict"], r["checked_at"], False
                     if r.get("fact_fingerprint") != current_fp:
                         verdict, stale = "stale", stale + 1
+                    else:
+                        verdict, checked_at, carried = carry_over(
+                            verdict, r.get("http_status", ""), checked_at, (r["row_key"], r["group"], current_fp), history)
+                        carried_n += carried
                     rows.append({"subject_type": subject_type, "subject_id": key, "fact_group": group,
                                  "verdict": verdict, "http_status": r["http_status"],
-                                 "match_mode": r["match_mode"], "checked_at": r["checked_at"]})
+                                 "match_mode": r["match_mode"], "checked_at": checked_at,
+                                 "carried_over": "true" if carried else "false"})
+    # Facts owned by an S/W answer: verdict from that file's own check, bound to the answer.
+    overlay_checks: dict[str, dict] = {}
+    for (subject_type, sid, group), (fname, check_group, o) in sorted((used or {}).items()):
+        stem = Path(fname).stem
+        if stem not in overlay_checks:
+            path = RET / "recheck" / f"{stem}.csv"
+            overlay_checks[stem] = {}
+            if path.exists():
+                with path.open(encoding="utf-8") as f:
+                    overlay_checks[stem] = {(r["row_key"], r["group"]): r for r in csv.DictReader(f)}
+            else:
+                missing.add(fname)
+        r = overlay_checks[stem].get((sid, check_group))
+        if r is None:
+            continue
+        fp = fact_fingerprint(o, check_group)
+        verdict, checked_at, carried = r["verdict"], r["checked_at"], False
+        if r.get("fact_fingerprint") != fp:
+            verdict, stale = "stale", stale + 1
+        else:
+            verdict, checked_at, carried = carry_over(verdict, r.get("http_status", ""), checked_at,
+                                                      (sid, check_group, fp), load_history(stem))
+            carried_n += carried
+        rows.append({"subject_type": subject_type, "subject_id": sid, "fact_group": group,
+                     "verdict": verdict, "http_status": r["http_status"], "match_mode": r["match_mode"],
+                     "checked_at": checked_at, "carried_over": "true" if carried else "false"})
     write("source_checks.csv", ["subject_type", "subject_id", "fact_group", "verdict", "http_status",
-                                "match_mode", "checked_at"], rows)
+                                "match_mode", "checked_at", "carried_over"], rows)
+    if carried_n:
+        print(f"  {carried_n} verdicts carried over a transient fetch failure (verified within {CARRY_DAYS} days)")
     if stale:
         print(f"  WARNING: {stale} re-check verdicts are stale (fact changed or checked before "
               f"fingerprints existed); those facts stay hidden until recheck_sources.py runs again.")
@@ -470,9 +693,18 @@ def main() -> None:
     RET = ap.parse_args().returns.resolve()
     SEEDS.mkdir(parents=True, exist_ok=True)
     batch_of = build_manifest()
-    church_files, church_fps = build_results(batch_of)
-    cand_files, cand_fps = build_candidates()
-    build_source_checks(church_files, cand_files, {**church_fps, **cand_fps})
+    overlays, used = load_overlays(), {}
+    church_files, church_fps = build_results(batch_of, overlays, used)
+    cand_files, cand_fps = build_candidates(overlays, used)
+    build_source_checks(church_files, cand_files, {**church_fps, **cand_fps}, used)
+    if used:
+        n_s = sum(1 for k in used if k[2] == "service")
+        print(f"  overlays applied: {n_s} service answers (S), "
+              f"{len(overlays[1]) - len(STALE_W)} verified worship answers (W), "
+              f"{sum(1 for k in used if k[2] == 'address')} of them with a corrected street")
+    if STALE_W:
+        print(f"  WARNING: {len(STALE_W)} W answers are for an address the record no longer has; not used, "
+              f"ask again: {', '.join(f'{t}:{i}' for t, i in sorted(STALE_W))}")
     build_reviews()
     build_dedup()
 

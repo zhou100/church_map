@@ -29,9 +29,12 @@ def test_phone_passage():
     assert ex and "(650) 755-0478" in ex and ex in PAGE and _verifies(ex)
 
 
-def test_service_passage_must_hold_every_time():
-    ex = rx.find_service(PAGE, "Sat 5 pm; Sun 8 am, 10 am, 12 pm")
-    assert ex and all(t in ex for t in ("5:00 PM", "8:00 AM", "10:00 AM", "12:00 PM")) and _verifies(ex)
+def test_service_schedule_assembled_from_separate_times_is_not_repaired():
+    # The record isn't on the page word for word: matching hours alone could pair them
+    # with the wrong day or activity, so the fact is left for review instead.
+    assert rx.find_service(PAGE, "Sat 5 pm; Sun 8 am, 10 am, 12 pm") is None
+    ex = rx.find_service(PAGE, "Sunday 8:00 AM, 10:00 AM and 12:00 PM (Spanish)")
+    assert ex and "Sunday 8:00 AM, 10:00 AM and 12:00 PM (Spanish)" in ex and _verifies(ex)
 
 
 def test_fact_not_on_page_is_not_repaired():
@@ -79,6 +82,30 @@ def test_blocked_source_is_resourced_to_the_churchs_own_site(monkeypatch):
     assert [x["action"] for x in log] == ["resourced", "not_resourced"]
 
 
+
+def test_blocked_service_answer_is_resourced_via_its_subjects_website(monkeypatch):
+    # An S answer row has no official_url; the website comes from the subject's record.
+    import asyncio
+
+    rows = [{"subject_type": "candidate", "subject_id": "D-080", "service_times_verbatim": "Sunday 9:00 AM English",
+             "service_languages": "English", "service_source_url": "https://www.dsj.org/mass-prayer-services/",
+             "service_source_type": "denomination", "service_excerpt": "Sunday Schedule … 9:00 AM English",
+             "notes": ""}]
+    report = [{"row_key": "D-080", "group": "service", "verdict": "fetch_failed",
+               "source_url": "https://www.dsj.org/mass-prayer-services/"}]
+    seen = []
+
+    async def fake_pages(fetcher, url):
+        seen.append(url)
+        return [("https://croatian.example.org/mass", rx.collapse("Mass times: Sunday 9:00 AM English"))]
+
+    monkeypatch.setattr(rx, "official_pages", fake_pages)
+    log = []
+    asyncio.run(rx.resource_blocked(rows, "subject_id", report, log, "2026-10-21",
+                                    {"D-080": "https://croatian.example.org/"}))
+    assert seen == ["https://croatian.example.org/"]
+    assert rows[0]["service_source_url"] == "https://croatian.example.org/mass" and "official_url" not in rows[0]
+
 def test_names_near_the_fact_are_cut_out():
     page = rx.collapse("Children's Ministry | 8:00pm 137 Dempsey Road Milpitas, Ca 95035 Contact Sam Shin | Senior Pastor")
     ex = rx.find_address(page, "137 Dempsey Rd")
@@ -109,3 +136,11 @@ def test_repair_finds_ordinal_and_saint_spellings_but_not_other_streets():
     assert "1971 Saint Lawrence Dr" in rx.find_address(page, "1971 St. Lawrence Dr.")
     assert "1555 39 Avenue" in rx.find_address(page, "1555 39th Avenue")
     assert rx.find_address(rx.collapse("1860 Grant Road Los Altos"), "1860 Grant Ave") is None
+
+
+def test_service_repair_requires_the_recorded_schedule_not_just_the_hour():
+    page = rx.collapse("Saturday Bible study 10 AM; Sunday worship 11 AM. Everyone welcome.")
+    assert rx.find_service(page, "Sunday worship 10 AM") is None
+    page = rx.collapse("Welcome! Sunday Worship: 10:00 AM in the sanctuary. Children's church follows.")
+    ex = rx.find_service(page, "Sunday Worship 10:00 AM")
+    assert ex and "Sunday Worship: 10:00 AM" in ex

@@ -19,12 +19,14 @@ FACT_FIELDS = {
     "service": ("service_times_verbatim", "service_languages"),
     "kids": ("kids_program_verbatim",),
     "candidate": ("street_address", "city", "zip"),  # v2 candidates: one source for the row
+    # Task W answers: is this the worship location, and (if not as recorded) where is it
+    "worship": ("address_is_worship_location", "worship_street_address", "worship_city", "worship_zip"),
 }
 
 
 def source_of(row: dict, group: str) -> tuple[str, str]:
     """(source_url, excerpt) for a fact group, in either return format."""
-    if group == "candidate":
+    if group in ("candidate", "worship"):
         return row.get("source_url", ""), row.get("excerpt", "")
     return row.get(f"{group}_source_url", ""), row.get(f"{group}_excerpt", "")
 

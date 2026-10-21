@@ -1051,6 +1051,148 @@ The geocoding input was regenerated without C-054 and D-059.
 
 **C-054 and D-059 stay withheld** until their street name is confirmed. In both cases the church's own site uses a different street name from the recorded value.
 
+### Status 2026-10-20: review of e9980b51, three P2 issues fixed (branch `fix/review-p2-visit-ready`)
+
+PR #41 was merged at e9980b51, so these fixes go on a new branch from `main`.
+
+1. **Spaceless matching let a number match inside a longer one.** "23 Main Street" verified against a page saying "123 Main Street" when a separate "23" ("Established 23 years ago") was elsewhere: the number check looked anywhere on the page.
+   - Now `squash()` removes spaces but keeps the gap between two numbers, and the number boundary is checked at the same occurrence (`_digit_bounded_at`).
+   - The decoy case is tested.
+2. **Service-time repair matched hours only.** "Sunday worship 10 AM" could be "repaired" with "Saturday Bible study 10 AM; Sunday worship 11 AM". Now:
+   - `find_service` repairs only when the recorded schedule itself is on the page (word for word up to punctuation and spacing); otherwise the fact stays for review.
+   - A shared `excerpt_supports_service` pairs every time with its day (the nearest day named before it), activity (worship vs study/fellowship/class) and language (same clause), including 上午/下午/오전/오후 times.
+   - The validator errors on a mismatch; `build_seeds` withholds those times (`service_times_unsupported`), whatever the source.
+3. **An office address could be visit-ready.** Readiness ignored `address_is_worship_location`.
+   - `visit_ready` (directory) and `profile_ready` (new congregations) now require `yes`.
+   - `no` and `unknown` stay contact addresses.
+   - Two dbt unit tests use fixed inputs. Each was checked to fail without the fix.
+**Measured on the real data** (re-verification re-run on every return):
+
+| Measure | Before the fixes | After |
+|---|---:|---:|
+| Service times shown, directory churches | 142 | **125** |
+| Service times shown, new congregations | 166 | **128** |
+| Visit-ready, pilot | 34 | 33 |
+| Visit-ready, C | 26 | 24 |
+| Visit-ready, D | 40 | 40 |
+| Profile-ready new congregations | 101 | 95 |
+
+- **Issue 1:** 3 facts lost `verified` because of the stricter number boundaries (A-05 status, 77726 status, CN-032 phone). Three more (C-042) were transient fetch failures on the re-run.
+- **Issue 2:** 100 schedules are now withheld.
+  - Most of them (about 70%) are schedules Muse recorded in full (Saturday vigil, daily Masses, and so on) while quoting only part of the page, e.g. just the Sunday line.
+  - The rest disagree on day, activity, or language.
+  - A first version of the pairing rule also withheld correct rows: one clause mixing worship and Sunday-school labels, and time-first layouts such as "9:40am 成人主日學". Attribution is now label-first or time-first per clause, and those cases are tested.
+- **Issue 3:** a handful of `unknown` / `no` rows are no longer ready.
+
+**Follow-ups proposed, not done:**
+- (a) Where the full schedule isn't supported but the verified excerpt itself names its day for every time, show the excerpt text as the schedule (it is the page's own wording).
+- (b) **Done.** `recheck_sources.py` appends every verdict (no excerpts) to `returns/recheck/history/<stem>.csv`. When the latest check only failed to fetch (`fetch_failed`: a timeout or 5xx), `build_seeds` keeps a `verified` from the history if:
+  - it has the same fact fingerprint;
+  - it is at most 30 days old.
+
+  The carried verdict keeps the original verification time and `carried_over = true`. `not_found`, robots blocks, and parse failures never carry over. The history was seeded from the previous two runs, and C-042 (3 facts) carried over.
+
+**D-013 ZIP sourced in-house.** The geocoder had two Waller St segments and no ZIP to choose between them.
+- The church's own contact page states "22 Waller St, San Francisco, CA 94102", so the ZIP, source, and excerpt were corrected through `--manual` and logged.
+- The address re-verified, and `geocode_input.csv` was regenerated: 196 rows, D-013 now carrying 94102.
+
+4. **Found along the way: enum violation.** Muse wrote `True`/`False` in `address_is_worship_location` for 5 discoveries, and the validator didn't check that enum for v3 candidates.
+   - The validator now errors on it.
+   - Seeds map `True`→`yes`, `False`→`no`.
+   - `accepted_values` tests were added.
+
+### Status 2026-10-20: task F (East Bay verification) ingested
+
+`results_F.csv` arrived at 23:34Z: 404 rows, and the sha256 matches Muse's manifest.
+- **Muse's tally:** 54 active, 348 unresolved, 2 merged. Most rows are GNIS/OSM-only with no web source, not rate-limited.
+- **Timestamps:** Muse re-checked its own batch-stamped 81-row slice, so the stamps are per-row this time.
+
+**Validation:** 1 error, 77533. The page itself reads "2411055th Avenue", Muse wrote "2411 55th Avenue", and the address is withheld. It surfaced a normalizer false negative on letter-suffixed house numbers ("592A Tennent Avenue", 76413), now fixed and tested.
+
+**Re-verification:**
+
+| Step | Facts verified (of 357) |
+|---|---:|
+| First check | 272 |
+| After repair (5 excerpts repaired, 13 facts re-sourced to churches' own sites) | 290 |
+
+**Coverage, all four manifests:**
+
+| Area | Visit-ready |
+|---|---:|
+| Pilot | 33 |
+| C | 24 |
+| D | 40 |
+| F | **30** (71 verified addresses) |
+| **Total** | **127** |
+
+`geocode_input.csv` regenerated: 208 rows, adding F's directory rows that need a pin check.
+
+**Open:**
+- F discovery (`new_candidates_F`) and task L are still to come.
+- Muse listed 8 blank F rows that do have sources (e.g. 77513 Laurel Methodist, 77654 First Baptist Oakley); they are candidates for a harvest pass.
+
+### Status 2026-10-21: round 5 complete (F discovery, L); round 6 prepared
+
+**Round 5 intake:**
+- `new_candidates_F` (94) and `new_candidates_L` (45) arrived at 17:46Z. The sha256 values match Muse's manifests, and `checked_at` stamps are per row.
+- **Validator false negatives fixed:** spelled-out house numbers ("One Notre Dame Avenue"), and all seven weekdays incl. Spanish/CJK/Korean names and abbreviations. Before this, a Thursday ("Jueves") time inherited the previous Sunday.
+- **Service-time pairing:** most L schedules fail it because Muse recorded each parish's whole week but quoted only the language-specific line. Those times are withheld; the stated languages are kept.
+
+**Re-verification after repair and re-sourcing:**
+
+| File | Facts verified |
+|---|---:|
+| `new_candidates_F` | 277 of 333 |
+| `new_candidates_L` | 153 of 168 |
+
+**Owner decisions:**
+- L-002 and L-003 are guest congregations (Muse recorded the hosts).
+- **L-006 Cornerstone Community Church** is a separate congregation sharing 468 Grand St with Bridge City Church. Its host was set to 76692 via `--manual`.
+
+**Totals:**
+
+| Measure | Value |
+|---|---:|
+| Visit-ready, all four manifests | 127 (pilot 33, C 24, D 40, F 30) |
+| New congregations | 377 (194 active, 242 with a verified address) |
+| New congregations profile-ready | **133** |
+
+**Round 6** (`muse_handoff/TASKS_round6.md`) covers no new areas.
+
+| Task | Rows | What |
+|---|---:|---|
+| S | 86 | Re-quote service times for active congregations. Weekend and language-specific services only, each time with its day in the excerpt, the schedule limited to the excerpt. |
+| W | 11 | Confirm the worship location for 8 rows that are map-ready except for it. Answer 3 street questions: C-054, D-059, 77533. |
+| H | 60 | 8 F directory rows Muse left blank despite a source, and 52 leads it located but didn't verify (16 Oakland parishes and churches, plus the L leftovers). |
+
+Inputs are in `outbox/`, including `known_congregations_v7` (1,289 known). S and W need small overlay readers in `build_seeds.py` when they return.
+
+### Status 2026-10-21: review of 91be6af, four issues fixed (PR #42)
+
+1. **Spelled-out house numbers.** "Twenty-One Main Street" had verified as "1 Main Street" because the alias matched the trailing "one". Number-word runs are now read as whole numbers ("twenty-one" → 21, "one hundred five" → 105) before comparing, and the per-word alias is gone.
+2. **Service language was dropped.** "Sunday Mass 10 AM (Spanish); Sunday Mass 11 AM (English)" had supported "Sunday English Mass 10 AM": one label-first/time-first decision was shared by activity and language, so the trailing "(Spanish)" was ignored. Activity and language now decide separately.
+3. **Carry-over could revive a rejected fact** (verified → not_found → fetch_failed ended as verified). Carry-over now requires the latest verdict that judged the fact (`verified`, `not_found`, `partial`, `not_an_excerpt`, `source_gone`) to be `verified`.
+4. **Deleted sources carried over.** 404/410 are now `source_gone`, and only transient failures carry: no response, 408, 425, 429, or 5xx (403 doesn't).
+
+**Effect on the real data:** C-042's site now answers 403, so its 3 facts no longer carry over. Profile-ready goes 133 → 132; visit-ready is unchanged at 127.
+
+**Tests:** 295 passed; each review example is a test.
+
+### Status 2026-10-21: review of b8898c8, three issues fixed (PR #42)
+
+1. **A W answer is bound to the address it was asked about.** A "yes" for 100 Main Street with no replacement address used to follow the church ID onto 200 Main Street once the base record changed. Each W answer now carries the street + city from its input (`outbox/worship_location_W_input.csv`, or `outbox/WP-xxxx/worship_location_input.csv` for a package). If the record's address has changed, the answer is not used and `build_seeds.py` lists it to ask again. An answer whose question can't be found is not used.
+2. **A delivery of `lead_outcomes.csv` alone no longer fails every pull.** With nothing that cites a source (for example every lead `no_trace`), the source re-check is skipped instead of calling `recheck_sources.py` with no files.
+3. **What the package asked for decides which answers must come back.** A package with `leads.csv` must return `lead_outcomes.csv`, and one with `service_fix_input.csv` must return `service_fixes.csv`. Before this, leaving the file out of `DONE.md` skipped its completeness check.
+
+**Effect on the real data:** none. All 10 verified round-6 W answers are still for the address on the record.
+
+**Tests:** 371 passed; each review example is a test.
+
+### Status 2026-10-21: review of ac909e6, one issue fixed (PR #42)
+
+**S/W ownership follows the latest pass.** Passes share one record of which facts an S or W answer owns. When W corrected round 1's address and a later pass recorded a different address, the stale-W check dropped the answer but left its ownership in place. The new address then showed W's old `verified` instead of its own `not_found`. Each record now releases its subject's S/W ownership before its overlays are decided, so the last pass decides. **Effect on the real data:** none (seeds byte-identical). **Tests:** 374 passed.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:

@@ -230,3 +230,37 @@ def test_pdf_like_spacing_with_whole_numbers_verifies():
     page = _t("<p>LordsGrace Christian Church 1101 San Antonio Rd MountainView, CA 94043</p>")
     assert rs.match("Lords Grace Christian Church 1101 San Antonio Rd Mountain View, CA 94043", page)[0] == "verified"
     assert rs.match("Lords Grace Christian Church 101 San Antonio Rd Mountain View, CA 94043", page)[0] != "verified"
+
+
+# --- Review of e9980b51, issue 1: number boundaries belong to the same occurrence -----
+
+def test_house_number_inside_a_longer_number_with_a_decoy_elsewhere():
+    page = _t("<p>Visit us at 123 Main Street, Palo Alto.</p><p>Established 23 years ago.</p>")
+    assert rs.match("23 Main Street", page)[0] != "verified"
+    assert rs.match("123 Main Street", page)[0] == "verified"
+
+
+def test_squash_keeps_numbers_apart():
+    assert rs.squash("Call 650-579-5528 1430 Palm Drive") == "call650 579 5528 1430palmdrive"
+    page = _t("<p>Sun<span>day</span> Wor<b>ship</b> at 1430 Palm Drive</p>")
+    assert rs.match("Sunday Worship", page)[0] == "verified"
+
+
+def test_deleted_page_is_source_gone_not_a_fetch_failure(monkeypatch):
+    import asyncio
+    import httpx
+    monkeypatch.setattr(rs, "is_public", lambda host: True)
+    monkeypatch.setattr(rs, "PER_HOST_DELAY_S", 0)
+
+    def handler(req):
+        if req.url.path == "/robots.txt":
+            return httpx.Response(404)
+        return httpx.Response(410 if req.url.path == "/gone" else 503)
+
+    async def go():
+        async with httpx.AsyncClient(transport=httpx.MockTransport(handler)) as c:
+            f = rs.Fetcher(c)
+            return await f.fetch("https://church.example.org/gone"), await f.fetch("https://church.example.org/busy")
+
+    gone, busy = asyncio.run(go())
+    assert gone["verdict"] == "source_gone" and busy["verdict"] == "fetch_failed" and busy["http_status"] == 503
