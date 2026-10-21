@@ -47,6 +47,7 @@ STATUS = OUTBOX / "status.csv"  # master copy; mirrored read-only to the Drive r
 STATUS_COLS = ["wp_id", "title", "state", "published_at", "started_at", "delivered_at", "ingested_at",
                "done_sha256", "note"]
 RECEIVED_COLS = ["file", "wp_id", "received_at", "done_sha256"]
+LATE_STAMP = "is after the file was received"
 
 # What Muse returns (name inside returns/WP-xxxx/) -> local kind (<kind>_WP0001.csv).
 OUTPUT_KINDS = {"results.csv": "results", "new_candidates.csv": "new_candidates",
@@ -459,16 +460,23 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     stage = RET / "staging" / wp_id
     shutil.rmtree(stage, ignore_errors=True)
     stage.mkdir(parents=True)
-    problems, staged = [], []
+    problems, staged, notes = [], [], []
     tag = wp_id.replace("-", "")
     for name in sorted(outputs):
         kind = OUTPUT_KINDS[name]
         local = stage / f"{kind}_{tag}.csv"
         shutil.copyfile(wp_dir / name, local)
         ok, out = validate(kind, local, received, tag)
-        if not ok:
-            errors = [ln for ln in out.splitlines() if ln.startswith("ERROR")]
-            problems.append(f"## `{name}`\n\n```\n" + "\n".join(errors or out.splitlines()[-20:]) + "\n```\n")
+        errors = [ln for ln in out.splitlines() if ln.startswith("ERROR")]
+        # A stamp later than the delivery is not a real check time. build_seeds marks it
+        # unreliable and blanks it, and the recheck verifies the excerpt itself, so it
+        # doesn't block the facts (same handling as batch A's reconstructed stamps).
+        late = [ln for ln in errors if LATE_STAMP in ln]
+        if late:
+            notes.append(f"{len(late)} checked_at stamp(s) after delivery in {name}; marked unreliable")
+        blocking = [ln for ln in errors if LATE_STAMP not in ln]
+        if not ok and (blocking or not errors):
+            problems.append(f"## `{name}`\n\n```\n" + "\n".join(blocking or out.splitlines()[-20:]) + "\n```\n")
         staged.append(local)
     if "lead_outcomes.csv" in outputs:
         cands = stage / f"new_candidates_{tag}.csv"
@@ -489,8 +497,9 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         subprocess.run([str(ROOT / "analytics/.venv/bin/python"), str(ROOT / "analytics/scripts/recheck_sources.py"),
                         *[str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]],
                        check=True)
-    row.update(state="ingested", ingested_at=now_utc(), done_sha256=done_sha,
-               note="partial delivery; queue the rest" if partial else "")
+    if partial:
+        notes.append("partial delivery; queue the rest")
+    row.update(state="ingested", ingested_at=now_utc(), done_sha256=done_sha, note="; ".join(notes))
     fb = DRIVE / "feedback" / f"{wp_id}.md"
     if fb.exists():
         fb.unlink()  # ours to remove: the problems it listed are fixed
@@ -507,7 +516,11 @@ def rebuild() -> None:
 def cmd_pull(args) -> int:
     if not DRIVE.exists():
         raise SystemExit(f"Drive folder {DRIVE} not mounted")
+    sync_reference()  # README/brief changes reach Muse without a new package
     status = load_status()
+    for wp in args.again:  # forget the handled DONE.md so the same delivery is processed again
+        if wp in status:
+            status[wp]["done_sha256"] = ""
     ingested = []
     for wp_dir in sorted((DRIVE / "returns").glob("WP-*")):
         if not (wp_dir.is_dir() and WP_RE.match(wp_dir.name)):
@@ -551,6 +564,8 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("pull", help="ingest delivered packages")
     p.add_argument("--no-recheck", action="store_true")
     p.add_argument("--no-build", action="store_true")
+    p.add_argument("--again", nargs="*", default=[], metavar="WP-xxxx",
+                   help="process these packages' current DONE.md again (after a rule change)")
     p.set_defaults(fn=cmd_pull)
     args = ap.parse_args(argv)
     return args.fn(args)

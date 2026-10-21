@@ -218,3 +218,18 @@ def test_irs_filters_keep_congregations_and_drop_mailboxes(tmp_path):
     assert set(got) == {"1", "2", "5"}  # non-Christian NTEE and non-501(c)(3) dropped
     assert got["2"]["mailbox"] and not got["1"]["mailbox"]
     assert got["1"]["congregation_like"] and not got["5"]["congregation_like"]
+
+
+def test_late_stamps_do_not_block_a_delivery(queue, monkeypatch):
+    drive, ret, wp = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (False, "ERROR X-1 checked_at 2026-10-21T19:23:21Z is after "
+                                                          "the file was received (19:19Z)\n"))
+    _deliver(wp)
+    status = ds.load_status()
+    assert ds.pull_package(wp, status, recheck=False) == "ingested"
+    assert "marked unreliable" in status["WP-0001"]["note"]
+    monkeypatch.setattr(ds, "validate", lambda *a: (False, "ERROR X-1 checked_at late is after the file was "
+                                                          "received\nERROR X-2 missing required city\n"))
+    _deliver(wp, body="candidate_ref,task\nWP0001-001,WP0001\nWP0001-002,WP0001\n")
+    assert ds.pull_package(wp, status, recheck=False) == "needs_fix"
+    assert "missing required city" in (drive / "feedback" / "WP-0001.md").read_text()

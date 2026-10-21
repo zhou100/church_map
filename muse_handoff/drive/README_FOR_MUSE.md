@@ -40,6 +40,10 @@ You may work on up to two packages at a time.
 
 4. If you were rate-limited or ran out of time, deliver what is finished. Write `partial: yes` in `DONE.md` and list the cities or rows not yet checked in `run_log.md`. We will queue the rest as a new package. Never mark a row `unresolved` only because you ran out of time.
 
+## Timestamps (D7)
+
+Write each row's `checked_at` at the moment you check that church, from a UTC clock. Never generate stamps in a sequence or stamp at write time: we can tell, and those stamps are discarded. The facts are kept, but we lose the record of when they were true.
+
 ## When we send a package back
 
 If our checks fail, `status.csv` shows `needs_fix` and `feedback/WP-xxxx.md` lists each problem.
