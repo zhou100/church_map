@@ -104,3 +104,28 @@ unit_tests:
         - {geo_id: 'candidate:X-3', address_unchanged: true, pin_usable: false}
         - {geo_id: 'candidate:X-9', address_unchanged: false, pin_usable: false}
         - {geo_id: 'church:7', address_unchanged: true, pin_usable: true}
+
+  - name: a_new_congregation_is_matched_against_the_raw_directory_address
+    description: >
+      Review of e734ff1: directory church 1 has no Muse result, so no verified address.
+      A candidate with its name at its raw directory address is that church found again.
+      A different name at the same address (a guest) and the same name elsewhere are not.
+    model: mart_new_congregation_directory_matches
+    given:
+      - input: ref('mart_new_congregations')
+        rows:
+          - {candidate_id: X-1, candidate_name: Grace Church, display_street_address: 100  Main St, city: Sacramento}
+          - {candidate_id: X-2, candidate_name: Iglesia Nueva Vida, display_street_address: 100 Main St, city: Sacramento}
+          - {candidate_id: X-3, candidate_name: Grace Church, display_street_address: 9 Elm St, city: Davis}
+      - input: ref('dim_church')
+        rows:
+          - {church_id: 1, display_name: Grace Church, osm_name: Grace Church, display_street_address: null, city: Sacramento}
+      - input: ref('stg_churches')
+        rows:
+          - {church_id: 1, street_text: 100 Main St, city: Sacramento}
+      - input: ref('int_geocodes')
+        format: sql
+        rows: "select null::text as subject_type, null::text as subject_id, null::boolean as pin_usable, null::text as matched_address where false"
+    expect:
+      rows:
+        - {candidate_id: X-1, church_id: 1, matched_on: directory_address}

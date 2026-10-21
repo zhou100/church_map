@@ -703,21 +703,21 @@ def _sha256(path: Path) -> str:
 
 def build_geocodes() -> None:
     """Census pins, each bound to the address it was geocoded from. The input is the
-    one whose sha256 the run recorded: the reconciliation receipt if it describes the
-    current output, else the original batch's metadata. No matching input, no pins."""
+    one whose sha256 the receipt records, and only if the receipt names this exact
+    output. A receipt for another output (an interrupted write) proves nothing about
+    this one; the batch metadata authenticates its raw response, not the output. No
+    verified binding, no pins."""
     rows = []
     output = EXPORTS / "geocode_output.csv"
-    recon, meta = EXPORTS / "geocode_reconciliation.json", EXPORTS / "geocode_census_metadata.json"
+    recon = EXPORTS / "geocode_reconciliation.json"
     digest = None
     if output.exists() and recon.exists():
         receipt = json.loads(recon.read_text(encoding="utf-8"))
         if receipt.get("output_sha256") == _sha256(output):
             digest = receipt["input_sha256"]
-    if output.exists() and digest is None and meta.exists():
-        digest = json.loads(meta.read_text(encoding="utf-8"))["input_sha256"]
     source = next((p for p in sorted(EXPORTS.glob("geocode_input*.csv")) if digest and _sha256(p) == digest), None)
     if output.exists() and source is None:
-        print("  WARNING: geocode_output.csv has no input with the sha256 its run recorded; no pins used")
+        print("  WARNING: geocode_output.csv has no receipt naming it and its input; no pins used")
     if source is not None:
         with source.open(encoding="utf-8-sig") as f:
             asked = {r["geo_id"]: r for r in csv.DictReader(f)}

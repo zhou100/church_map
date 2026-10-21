@@ -417,6 +417,17 @@ def test_geocodes_without_their_recorded_input_are_not_used(tmp_path, monkeypatc
     assert list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8"))) == []
 
 
+
+def test_a_receipt_for_another_output_is_not_rescued_by_the_batch_metadata(tmp_path, monkeypatch):
+    # Review of e734ff1: an interrupted incremental write leaves new coordinates beside the
+    # old receipt. The original batch metadata names the old input, but it authenticates
+    # the raw response, not this output: no pins, rather than pins labelled 100 Main St.
+    exports, seeds = _geocode_env(tmp_path, monkeypatch, receipt_matches=False)
+    old_sha = bs._sha256(exports / "geocode_input_old.csv")
+    (exports / "geocode_census_metadata.json").write_text(f'{{"input_sha256": "{old_sha}"}}')
+    bs.build_geocodes()
+    assert list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8"))) == []
+
 # --- Re-check packages re-deliver a candidate_ref -------------------------------------
 
 def test_a_recheck_row_replaces_the_candidate_but_keeps_its_region(tmp_path, monkeypatch):

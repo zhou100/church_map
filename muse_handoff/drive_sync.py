@@ -728,28 +728,47 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     return row["state"]
 
 
+def geocode_output_sha() -> str:
+    output = ROOT / "analytics/exports/geocode_output.csv"
+    return sha256(output) if output.exists() else ""
+
+
+def built_marker() -> Path:
+    """sha256 of the geocode output the last successful rebuild read."""
+    return ROOT / "analytics/exports/geocode_output.built_sha256"
+
+
 def rebuild() -> str:
     """Rebuild seeds and dbt. Returns "" on success, else what failed."""
+    reading = geocode_output_sha()
     if subprocess.run([sys.executable, str(ROOT / "analytics/scripts/build_seeds.py")]).returncode != 0:
         return "build_seeds.py failed"
     env = {**os.environ, "DBT_PROFILES_DIR": str(ROOT / "analytics/dbt")}
     p = subprocess.run([str(ROOT / "analytics/.venv/bin/dbt"), "build", "--project-dir", str(ROOT / "analytics/dbt"),
                         "--full-refresh", "--quiet"], env=env)
-    return "" if p.returncode == 0 else "dbt build failed"
+    if p.returncode != 0:
+        return "dbt build failed"
+    built_marker().write_text(reading + "\n", encoding="utf-8")
+    return ""
 
 
 def geocode() -> str:
-    """Census-geocode addresses that have no pin yet; rebuild if any result changed.
+    """Census-geocode addresses that have no pin yet; rebuild unless the last successful
+    rebuild already read this output. Compared with the last build, not with the output
+    before this run: a rebuild that failed after a change is retried on the next pull.
     Returns "" on success (or nothing to do), else what failed."""
-    output = ROOT / "analytics/exports/geocode_output.csv"
-    before = output.read_bytes() if output.exists() else b""
     p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"),
                         str(ROOT / "analytics/scripts/geocode_incremental.py"), "--fetch"])
     if p.returncode != 0:
         return "geocode_incremental.py failed"
-    if output.read_bytes() == before:
+    marker = built_marker()
+    current = geocode_output_sha()
+    if marker.exists() and marker.read_text(encoding="utf-8").strip() == current:
         return ""
-    return rebuild()
+    failed = rebuild()
+    if not failed:
+        marker.write_text(current + "\n", encoding="utf-8")
+    return failed
 
 
 def cmd_pull(args) -> int:

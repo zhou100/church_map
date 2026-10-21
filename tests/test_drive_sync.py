@@ -285,18 +285,49 @@ def test_a_failed_geocode_keeps_the_ingest_and_is_retried_on_every_pull(queue, m
     assert ds.cmd_pull(args) == 0 and calls
 
 
-def test_geocode_rebuilds_only_when_the_output_changed(tmp_path, monkeypatch):
+def _geocode_fixture(tmp_path, monkeypatch, results):
+    """geocode() with Census mocked; rebuild() returns each of `results` in turn."""
     monkeypatch.setattr(ds, "ROOT", tmp_path)
     out = tmp_path / "analytics/exports/geocode_output.csv"
     out.parent.mkdir(parents=True)
     out.write_text("geo_id\n")
-    rebuilt = []
-    monkeypatch.setattr(ds, "rebuild", lambda: rebuilt.append(1) or "")
+    calls = []
+    monkeypatch.setattr(ds, "rebuild", lambda: calls.append(1) or results[len(calls) - 1])
     ok = type("P", (), dict(returncode=0))()
     monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)
-    assert ds.geocode() == "" and not rebuilt
+    return out, calls, ok
+
+
+def test_geocode_rebuilds_only_when_the_last_build_read_another_output(tmp_path, monkeypatch):
+    out, calls, ok = _geocode_fixture(tmp_path, monkeypatch, ["", "", ""])
+    assert ds.geocode() == "" and len(calls) == 1  # never built: build once
+    assert ds.geocode() == "" and len(calls) == 1  # same output as the last build
     monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: (out.write_text("geo_id\nchurch:1\n"), ok)[1])
-    assert ds.geocode() == "" and rebuilt
+    assert ds.geocode() == "" and len(calls) == 2
+
+
+def test_a_rebuild_that_failed_after_new_pins_is_retried_with_unchanged_output(tmp_path, monkeypatch):
+    # Review of e734ff1: comparing with the output before the run returned success on the
+    # second pull and the failed build was never redone.
+    out, calls, ok = _geocode_fixture(tmp_path, monkeypatch, ["", "dbt build failed", ""])
+    assert ds.geocode() == ""
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: (out.write_text("geo_id\nchurch:1\n"), ok)[1])
+    assert ds.geocode() == "dbt build failed" and len(calls) == 2
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)  # nothing new from Census
+    assert ds.geocode() == "" and len(calls) == 3
+    assert ds.geocode() == "" and len(calls) == 3
+
+
+def test_a_successful_rebuild_records_the_output_it_read(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "ROOT", tmp_path)
+    out = tmp_path / "analytics/exports/geocode_output.csv"
+    out.parent.mkdir(parents=True)
+    out.write_text("geo_id\n")
+    ok, bad = type("P", (), dict(returncode=0))(), type("P", (), dict(returncode=1))()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: bad if "build" in cmd else ok)
+    assert ds.rebuild() == "dbt build failed" and not ds.built_marker().exists()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)
+    assert ds.rebuild() == "" and ds.built_marker().read_text().strip() == ds.sha256(out)
 
 
 def test_a_failed_recheck_leaves_the_delivery_to_be_retried(queue, monkeypatch):

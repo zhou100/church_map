@@ -94,16 +94,26 @@ def export_input() -> Path:
 
 
 def bound_input() -> Path | None:
-    """The input the current geocode_output.csv was made from (same rule as build_seeds)."""
+    """The input the current geocode_output.csv was made from (same rule as build_seeds):
+    only a receipt naming this exact output binds it. No fallback."""
     digest = None
     if OUTPUT.exists() and RECEIPT.exists():
         receipt = json.loads(RECEIPT.read_text(encoding="utf-8"))
         if receipt.get("output_sha256") == sha256(OUTPUT):
             digest = receipt["input_sha256"]
-    meta = EXPORTS / "geocode_census_metadata.json"
-    if OUTPUT.exists() and digest is None and meta.exists():
-        digest = json.loads(meta.read_text(encoding="utf-8"))["input_sha256"]
     return next((p for p in sorted(EXPORTS.glob("geocode_input*.csv")) if digest and sha256(p) == digest), None)
+
+
+def publish(output: list[dict], receipt: dict) -> None:
+    """Write output and receipt as one step: both go to temp files first, then replace.
+    An interruption between the two replaces leaves a receipt that names another
+    output, which build_seeds rejects (no pins) instead of mislabeling them."""
+    tmp_out, tmp_receipt = OUTPUT.with_suffix(".csv.tmp"), RECEIPT.with_suffix(".json.tmp")
+    write_csv(tmp_out, FIELDS, output)
+    receipt = {**receipt, "output_sha256": sha256(tmp_out)}
+    tmp_receipt.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    os.replace(tmp_out, OUTPUT)
+    os.replace(tmp_receipt, RECEIPT)
 
 
 def seed_ledger() -> list[dict]:
@@ -182,12 +192,10 @@ def main() -> int:
     shared = validate_clusters(output, {r["geo_id"]: r for r in rows})
     assert all(bool(o["latitude"]) == (o["status"] == "ok") for o in output)
     assert sha256(input_path) == digest
-    write_csv(OUTPUT, FIELDS, output)
-    receipt = {"input_sha256": digest, "input_file": input_path.name, "rows": len(rows),
-               "output_sha256": sha256(OUTPUT), "ledger_sha256": sha256(LEDGER),
-               "new_request_ids": batch["ids"] if batch else [], "batch": batch,
-               "sources": dict(collections.Counter(known[key(r)]["source"] for r in rows))}
-    RECEIPT.write_text(json.dumps(receipt, indent=2) + "\n", encoding="utf-8")
+    publish(output, {"input_sha256": digest, "input_file": input_path.name, "rows": len(rows),
+                     "ledger_sha256": sha256(LEDGER),
+                     "new_request_ids": batch["ids"] if batch else [], "batch": batch,
+                     "sources": dict(collections.Counter(known[key(r)]["source"] for r in rows))})
 
     by_id = {r["geo_id"]: r for r in rows}
     counts = collections.Counter(o["status"] for o in output)

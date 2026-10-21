@@ -141,6 +141,12 @@ models:
       - name: candidate_id
         tests: [unique, not_null]
 
+  - name: mart_new_congregation_directory_matches
+    description: >
+      New congregations with a directory church's name at its address (verified or raw
+      directory address, or the same Census match). Must be empty; tested by
+      assert_new_congregations_are_not_in_the_directory.
+
   - name: mart_language_supply
     description: Stated service language x city x origin; congregations, active, shown facts, ready.
     tests:
