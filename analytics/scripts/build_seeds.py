@@ -16,6 +16,9 @@ output-reuse terms are open (plan §12).
                         whose fact fingerprint no longer matches the row is "stale"
   quality_reviews.csv   the owner's blind audit, scored against Muse's answers
   dedup_candidates.csv  May dedup report (OSM duplicate pairs)
+  geocodes.csv          Census pins from analytics/exports/geocode_output.csv, each with
+                        the address it was geocoded from (the input whose sha256 the
+                        run recorded), so dbt can tell when the record has moved on
 
 Static seeds (denomination_scope.csv, fact_holds.csv) are hand-maintained.
 
@@ -30,6 +33,8 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta
 import csv
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -37,6 +42,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SEEDS = ROOT / "analytics" / "dbt" / "seeds"
 HANDOFF = ROOT / "muse_handoff"
+EXPORTS = ROOT / "analytics" / "exports"  # geocoding files (gitignored)
 
 sys.path.insert(0, str(HANDOFF))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -680,6 +686,47 @@ def build_reviews() -> None:
                                   "muse_value", "verdict", "evidence_url", "reviewer", "reviewed_on"], out)
 
 
+GEOCODE_COLS = ["geo_id", "subject_type", "subject_id", "status", "latitude", "longitude", "match_type",
+                "matched_address", "tiger_line_id", "side", "distance_from_current_pin_m", "geocoded_at",
+                "geocoded_street", "geocoded_city", "geocoded_zip", "input_sha256"]
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def build_geocodes() -> None:
+    """Census pins, each bound to the address it was geocoded from. The input is the
+    one whose sha256 the run recorded: the reconciliation receipt if it describes the
+    current output, else the original batch's metadata. No matching input, no pins."""
+    rows = []
+    output = EXPORTS / "geocode_output.csv"
+    recon, meta = EXPORTS / "geocode_reconciliation.json", EXPORTS / "geocode_census_metadata.json"
+    digest = None
+    if output.exists() and recon.exists():
+        receipt = json.loads(recon.read_text(encoding="utf-8"))
+        if receipt.get("output_sha256") == _sha256(output):
+            digest = receipt["input_sha256"]
+    if output.exists() and digest is None and meta.exists():
+        digest = json.loads(meta.read_text(encoding="utf-8"))["input_sha256"]
+    source = next((p for p in sorted(EXPORTS.glob("geocode_input*.csv")) if digest and _sha256(p) == digest), None)
+    if output.exists() and source is None:
+        print("  WARNING: geocode_output.csv has no input with the sha256 its run recorded; no pins used")
+    if source is not None:
+        with source.open(encoding="utf-8-sig") as f:
+            asked = {r["geo_id"]: r for r in csv.DictReader(f)}
+        with output.open(encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                a = asked.get(r["geo_id"])
+                if a is None:
+                    continue
+                subject_type, subject_id = r["geo_id"].split(":", 1)
+                rows.append({**r, "subject_type": subject_type, "subject_id": subject_id,
+                             "geocoded_street": a["street"], "geocoded_city": a["city"],
+                             "geocoded_zip": a["zip"], "input_sha256": digest})
+    write("geocodes.csv", GEOCODE_COLS, rows)
+
+
 def build_dedup() -> None:
     with (ROOT / "dedup_report.csv").open(encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
@@ -707,6 +754,7 @@ def main() -> None:
               f"ask again: {', '.join(f'{t}:{i}' for t, i in sorted(STALE_W))}")
     build_reviews()
     build_dedup()
+    build_geocodes()
 
 
 if __name__ == "__main__":

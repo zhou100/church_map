@@ -75,6 +75,7 @@ analytics/dbt/seeds/muse_results.csv
 analytics/dbt/seeds/muse_candidates.csv
 analytics/dbt/seeds/quality_reviews.csv
 analytics/dbt/seeds/source_checks.csv
+analytics/dbt/seeds/geocodes.csv
 # Files sent to Muse that contain Muse-derived data (current names, addresses)
 muse_handoff/outbox/
 

@@ -102,8 +102,10 @@ analytics/.venv/bin/python analytics/scripts/recheck_sources.py muse_handoff/ret
 | `int_scope` | church | Decision D-1 (`in_scope`, `in_scope_labeled`, `out_of_scope`, `not_a_congregation`, `pending`, `duplicate`) |
 | `int_coordinate_clusters` | church in a dense point | Centroid / bulk-import pins |
 | `int_location_readiness` | church | Readiness flags; display rule (macro `displayable`); `visit_ready` |
-| `int_candidate_readiness` | candidate | Same display rule; `profile_ready` (still needs geocoding for a pin) |
-| `dim_church` | church | Display-ready attributes, only rule-passing facts |
+| `stg_geocodes` | subject | Census pin from `analytics/exports/geocode_output.csv`, with the address it was geocoded from |
+| `int_geocodes` | subject | `pin_usable`: an `ok` pin whose geocoded address is still the record's address |
+| `int_candidate_readiness` | candidate | Same display rule; `profile_ready`; `map_ready` = profile-ready with a usable pin |
+| `dim_church` | church | Display-ready attributes, only rule-passing facts; `proposed_*` Census pin (applied at publishing, plan B2) |
 | `mart_coverage_snapshot` | geo_scope × source | Map-readiness funnel: national, plus one scope per Muse manifest |
 | `mart_muse_scorecard` | Muse pass (+ all) | Yield per pass |
 | `mart_new_congregations` | candidate | Congregations the directory lacks (duplicates and enrichments excluded) |

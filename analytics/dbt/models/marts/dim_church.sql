@@ -35,6 +35,10 @@ select
     r.service_displayable,
     r.kids_displayable,
     r.visit_ready,
+    r.proposed_pin_usable,
+    r.proposed_latitude,
+    r.proposed_longitude,
+    r.proposed_pin_moves_m,
     m.match_confidence,
     m.checked_at                                                 as muse_checked_at,
     m.last_pass                                                  as muse_last_pass

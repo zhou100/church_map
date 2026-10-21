@@ -378,3 +378,40 @@ def test_a_later_pass_that_moves_the_address_takes_w_ownership_back(tmp_path, mo
     checks = {r["fact_group"]: r["verdict"] for r in csv.DictReader((seeds / "source_checks.csv").open(encoding="utf-8"))}
     assert res["street_address"] == "200 Main Street" and checks["address"] == "not_found"
     assert used == {} and bs.STALE_W == {("church", "1")}
+
+
+# --- Census geocodes seed --------------------------------------------------------------
+
+def _geocode_env(tmp_path, monkeypatch, receipt_matches=True):
+    exports, seeds = tmp_path / "exports", tmp_path / "seeds"
+    exports.mkdir()
+    seeds.mkdir()
+    monkeypatch.setattr(bs, "EXPORTS", exports)
+    monkeypatch.setattr(bs, "SEEDS", seeds)
+    _write(exports / "geocode_input_old.csv", ["geo_id", "street", "city", "state", "zip"],
+           [dict(geo_id="candidate:X-1", street="100 Main St", city="San Mateo", state="CA", zip="94401")])
+    _write(exports / "geocode_input.csv", ["geo_id", "street", "city", "state", "zip"],  # regenerated since
+           [dict(geo_id="candidate:X-1", street="200 Main St", city="San Mateo", state="CA", zip="94401")])
+    _write(exports / "geocode_output.csv", bs.GEOCODE_COLS[:1] + ["status", "latitude", "longitude"],
+           [dict(geo_id="candidate:X-1", status="ok", latitude="37.5", longitude="-122.3")])
+    old_sha = bs._sha256(exports / "geocode_input_old.csv")
+    out_sha = bs._sha256(exports / "geocode_output.csv") if receipt_matches else "0" * 64
+    (exports / "geocode_reconciliation.json").write_text(f'{{"input_sha256": "{old_sha}", "output_sha256": "{out_sha}"}}')
+    return exports, seeds
+
+
+def test_geocodes_carry_the_address_their_run_recorded(tmp_path, monkeypatch):
+    # The live input was regenerated after the run; the pin belongs to the input it was
+    # geocoded from (found by sha256), so dbt sees 100 Main St, not 200.
+    _, seeds = _geocode_env(tmp_path, monkeypatch)
+    bs.build_geocodes()
+    row = list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8")))[0]
+    assert (row["subject_type"], row["subject_id"], row["geocoded_street"]) == ("candidate", "X-1", "100 Main St")
+
+
+def test_geocodes_without_their_recorded_input_are_not_used(tmp_path, monkeypatch):
+    # The receipt describes another output and there is no batch metadata: no input can
+    # be proven, so no pins (an empty seed, not a guess).
+    _, seeds = _geocode_env(tmp_path, monkeypatch, receipt_matches=False)
+    bs.build_geocodes()
+    assert list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8"))) == []

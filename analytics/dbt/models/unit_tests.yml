@@ -37,6 +37,9 @@ unit_tests:
       - input: ref('int_coordinate_clusters')
         format: sql
         rows: "select null::bigint as church_id, null::bigint as records_at_point where false"
+      - input: ref('int_geocodes')
+        format: sql
+        rows: "select null::text as subject_type, null::text as subject_id, null::text as geocode_status, null::boolean as pin_usable, null::float8 as latitude, null::float8 as longitude, null::float8 as distance_from_current_pin_m where false"
     expect:
       rows:
         - {church_id: 1, address_displayable: true, visit_ready: true}
@@ -60,8 +63,44 @@ unit_tests:
           - {subject_type: candidate, subject_id: X-2, fact_group: phone, is_verified: true}
           - {subject_type: candidate, subject_id: X-3, fact_group: address, is_verified: true}
           - {subject_type: candidate, subject_id: X-3, fact_group: phone, is_verified: true}
+      - input: ref('int_geocodes')
+        rows:
+          - {subject_type: candidate, subject_id: X-1, geocode_status: ok, pin_usable: true, latitude: 37.5, longitude: -122.3}
+          - {subject_type: candidate, subject_id: X-2, geocode_status: ok, pin_usable: true, latitude: 37.5, longitude: -122.3}
+    expect:
+      rows:  # a pin alone doesn't make X-2 map-ready: it isn't profile-ready
+        - {candidate_id: X-1, address_displayable: true, profile_ready: true, map_ready: true}
+        - {candidate_id: X-2, address_displayable: true, profile_ready: false, map_ready: false}
+        - {candidate_id: X-3, address_displayable: true, profile_ready: false, map_ready: false}
+
+  - name: a_pin_counts_only_for_the_address_it_was_geocoded_from
+    description: >
+      A Census pin is bound to its geocoded address. Case and spacing don't matter; a
+      moved address, a missing record, or a non-ok geocode never gives a usable pin.
+    model: int_geocodes
+    given:
+      - input: ref('stg_geocodes')
+        rows:
+          - {geo_id: 'candidate:X-1', subject_type: candidate, subject_id: X-1, geocode_status: ok, latitude: 37.5, longitude: -122.3, geocoded_street: 100 Main St, geocoded_city: San Mateo, geocoded_zip: '94401'}
+          - {geo_id: 'candidate:X-2', subject_type: candidate, subject_id: X-2, geocode_status: ok, latitude: 37.5, longitude: -122.3, geocoded_street: 100 Main St, geocoded_city: San Mateo, geocoded_zip: '94401'}
+          - {geo_id: 'candidate:X-3', subject_type: candidate, subject_id: X-3, geocode_status: needs_review, geocoded_street: 100 Main St, geocoded_city: San Mateo, geocoded_zip: '94401'}
+          - {geo_id: 'candidate:X-9', subject_type: candidate, subject_id: X-9, geocode_status: ok, latitude: 37.5, longitude: -122.3, geocoded_street: 100 Main St, geocoded_city: San Mateo, geocoded_zip: '94401'}
+          - {geo_id: 'church:7', subject_type: church, subject_id: '7', geocode_status: ok, latitude: 37.5, longitude: -122.3, geocoded_street: 5 Oak Ave, geocoded_city: Pacifica, geocoded_zip: '94044'}
+      - input: ref('stg_muse_candidates')
+        rows:
+          - {candidate_id: X-1, street_address: 100  MAIN st, city: San Mateo, zip: '94401'}
+          - {candidate_id: X-2, street_address: 200 Main St, city: San Mateo, zip: '94401'}
+          - {candidate_id: X-3, street_address: 100 Main St, city: San Mateo, zip: '94401'}
+      - input: ref('stg_muse_results')
+        rows:
+          - {church_id: 7, street_address: 5 Oak Ave, city: null, zip: '94044'}
+      - input: ref('stg_churches')
+        rows:
+          - {church_id: 7, city: Pacifica}
     expect:
       rows:
-        - {candidate_id: X-1, address_displayable: true, profile_ready: true}
-        - {candidate_id: X-2, address_displayable: true, profile_ready: false}
-        - {candidate_id: X-3, address_displayable: true, profile_ready: false}
+        - {geo_id: 'candidate:X-1', address_unchanged: true, pin_usable: true}
+        - {geo_id: 'candidate:X-2', address_unchanged: false, pin_usable: false}
+        - {geo_id: 'candidate:X-3', address_unchanged: true, pin_usable: false}
+        - {geo_id: 'candidate:X-9', address_unchanged: false, pin_usable: false}
+        - {geo_id: 'church:7', address_unchanged: true, pin_usable: true}
