@@ -152,7 +152,9 @@ CAND_COLS = [
 ]
 
 # Duplicates we established that Muse did not mark (plan §6: B outcome, CN outcome).
-CANDIDATE_DUPLICATES = {"CN-025": "78022"}
+# C-030 and C-064: same name, address and website as a directory church; found when
+# their Census pins landed on that church's pin (dbt assert_new_congregations_are_not_in_the_directory).
+CANDIDATE_DUPLICATES = {"CN-025": "78022", "C-030": "76688", "C-064": "77437"}
 CANDIDATE_DUPLICATES_BY_NAME = {("B", "Bridge City Church"): "76692"}
 
 LANGUAGE_NAMES = {

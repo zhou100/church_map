@@ -102,9 +102,10 @@ Also produce a short `geocode_run_log.md`: counts by status and `match_type`, an
 - **Result:** 196 rows geocoded, 185 `ok`, 11 `failed` (see `geocode_run_log.md`).
 - **`geocodes` seed** (`build_seeds.py`): each pin carries the address it was geocoded from, taken from the input whose sha256 the run recorded. If no input matches, no pins are used.
 - **`int_geocodes`:** `pin_usable` only while the record still has that address (case and spacing ignored). A later address correction needs a new geocode.
-- **New congregations:** `map_ready` = `profile_ready` + a usable pin. **89 of 167** profile-ready congregations are map-ready. The other 78 are in rows added to `geocode_input.csv` after this run (107 rows not yet geocoded).
+- **New congregations:** `map_ready` = `profile_ready` + a usable pin. **87 of 165** profile-ready congregations are map-ready. The other 78 are in rows added to `geocode_input.csv` after this run (107 rows not yet geocoded).
+- **Two duplicates found by their pins:** C-030 Ladera Community Church (= 76688) and C-064 Trinity Church of Sunnyvale (= 77437) had the same name, address and website as a directory church. They are now in `CANDIDATE_DUPLICATES`. The dbt test `assert_new_congregations_are_not_in_the_directory` fails on any new congregation with a directory church's name at its address (same street and city, or same Census match). Different names at one address are congregations sharing a building and pass.
 - **Directory churches:** `proposed_latitude` / `proposed_longitude` on `dim_church` for 37 churches, 15 of them more than 150 m from today's pin. `visit_ready` is unchanged until B2 decides how a proposed pin replaces the directory one.
-- **dbt tests:** one geocode per subject; usable pins inside the US envelope; no two usable pins at one point unless Census matched the same address; `map_ready` only with a current pin. A unit test covers the address binding.
+- **dbt tests:** new congregations not already in the directory; one geocode per subject; usable pins inside the US envelope; no two usable pins at one point unless Census matched the same address; `map_ready` only with a current pin. A unit test covers the address binding.
 
 **Next for A:** geocode the 107 new rows. `reconcile_geocodes_census.py` is pinned to the 196-row snapshot, so this needs an incremental runner that submits only rows without a result for their current address.
 
