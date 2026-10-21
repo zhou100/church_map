@@ -343,3 +343,16 @@ def test_lead_outcomes_alone_are_accepted_without_a_recheck(queue, monkeypatch):
     monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
     monkeypatch.setattr(ds.subprocess, "run", lambda *a, **k: pytest.fail("nothing cited, nothing to re-check"))
     assert ds.pull_package(wp, ds.load_status(), recheck=True) == "pending_build"
+
+
+
+def test_out_of_scope_by_name_needs_a_note_not_a_url(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    _leads_pkg(tmp_path, n=1)
+    out = tmp_path / "o.csv"
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="out_of_scope")])
+    assert "needs evidence_url, or notes" in "\n".join(ds.check_leads("WP-0003", out, None))
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="out_of_scope", notes="A Baha'i Spiritual Assembly (N8).")])
+    assert ds.check_leads("WP-0003", out, None) == []
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="closed", notes="merged, per a podcast")])
+    assert "outcome closed needs evidence_url" in "\n".join(ds.check_leads("WP-0003", out, None))

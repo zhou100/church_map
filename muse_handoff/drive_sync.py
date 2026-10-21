@@ -273,7 +273,7 @@ The IRS gives a **name, a filing address, and a year**. Treat them as a lead onl
 | `lead_id` | from `leads.csv` |
 | `outcome` | `active`: an S1–S3 source, or a Facebook Page post within 12 months, shows it meets now; `closed`: a source says it closed, merged, or dissolved; `no_trace`: nothing found in S1–S4; `not_a_congregation`: a ministry, school, or other organization that holds no regular worship; `out_of_scope`: not a Christian congregation (D-1); `already_known`: it is in `known_congregations.csv` |
 | `known_id` | for `already_known`: its `known_id` |
-| `evidence_url`, `evidence_type` | the page that decided the outcome (blank for `no_trace`); `own_site` / `fb_page` / `denomination` / `other` |
+| `evidence_url`, `evidence_type` | the page that decided the outcome (blank for `no_trace`; for `out_of_scope` it may be blank when the name alone shows it, and `notes` says so); `own_site` / `fb_page` / `denomination` / `other` |
 | `meets_at_irs_address` | `yes` / `no` / `unknown`: does a source say it meets at the IRS street address? |
 | `checked_at` | per-row UTC time, `YYYY-MM-DDTHH:MM:SSZ` (D7) |
 | `minutes_spent`, `notes` | what you searched, and anything unusual |
@@ -329,13 +329,13 @@ def cmd_new_leads(args) -> int:
     return 0
 
 
-FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "recorded_service_times",
+FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "official_url", "recorded_service_times",
                   "recorded_service_languages", "current_source_url", "reason"]
 
 SERVICE_FIX_TASK = """# {wp_id} — re-quote service times: {title}
 
 **Rules:** `reference/BRIEF_v3.md` (v3.2) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
-
+{note}
 ## What
 
 These {n} congregations have a recorded weekend schedule that our map can't show yet, because the excerpt doesn't prove it. `reason` says exactly which times are missing, for example `Sun 10:00 English`. That means the excerpt doesn't state a Sunday 10:00 service in English.
@@ -395,7 +395,8 @@ def current_rows(ids: set[str]) -> list[dict]:
         st, r = latest[sid]
         out.append(dict(subject_type=st, subject_id=sid,
                         name=r.get("current_name") or r.get("candidate_name") or names.get(sid, ""),
-                        city=r.get("city", ""), recorded_service_times=r.get("service_times_verbatim", ""),
+                        city=r.get("city", ""), official_url=r.get("official_url", ""),
+                        recorded_service_times=r.get("service_times_verbatim", ""),
                         recorded_service_languages=r.get("service_languages", ""),
                         current_source_url=r.get("service_source_url", ""),
                         reason=_reason(r.get("service_excerpt", ""), r.get("service_times_verbatim", ""))))
@@ -407,7 +408,9 @@ def _reason(excerpt: str, verbatim: str) -> str:
     if not TIME_RE.search(excerpt or ""):
         return "excerpt has no time"
     missing = unsupported_slots(excerpt, verbatim)
-    return "excerpt does not state: " + "; ".join(missing) if missing else "excerpt supports it (re-check the page)"
+    if missing:
+        return "excerpt does not state: " + "; ".join(missing)
+    return "the excerpt states it, but our checker couldn't confirm it on the cited page"
 
 
 def cmd_new_service_fixes(args) -> int:
@@ -418,7 +421,8 @@ def cmd_new_service_fixes(args) -> int:
     pkg.mkdir(parents=True)
     write_csv(pkg / "service_fix_input.csv", FIX_INPUT_COLS, rows)
     (pkg / "TASK.md").write_text(SERVICE_FIX_TASK.format(
-        wp_id=wp_id, title=args.title, n=len(rows), sha=sha256(pkg / "service_fix_input.csv")), encoding="utf-8")
+        wp_id=wp_id, title=args.title, n=len(rows), sha=sha256(pkg / "service_fix_input.csv"),
+        note=f"\n## Why these rows\n\n{args.note}\n" if args.note else ""), encoding="utf-8")
     print(f"{wp_id}: {args.title}; {len(rows)} rows -> {pkg}")
     print(f"review {pkg / 'TASK.md'}, then: python3 muse_handoff/drive_sync.py publish {wp_id}")
     return 0
@@ -444,8 +448,13 @@ def check_leads(wp_id: str, outcomes: Path, cands: Path | None) -> list[str]:
             errs.append(f"ERROR {lid}: outcome active but no new_candidates row with candidate_ref {lid}")
         if outcome == "already_known" and not r.get("known_id"):
             errs.append(f"ERROR {lid}: outcome already_known needs known_id")
-        if outcome in ("active", "closed", "not_a_congregation", "out_of_scope") and not r.get("evidence_url"):
-            errs.append(f"ERROR {lid}: outcome {outcome} needs evidence_url")
+        if outcome in ("active", "closed", "not_a_congregation") and not r.get("evidence_url"):
+            fallback = " (if no source can be found again, the outcome is no_trace)" if outcome == "closed" else ""
+            errs.append(f"ERROR {lid}: outcome {outcome} needs evidence_url{fallback}")
+        # The name alone can show a lead isn't Christian (a Baha'i assembly), and N8 says
+        # not to search further; we decide D-1 by name the same way. The note says so.
+        if outcome == "out_of_scope" and not r.get("evidence_url") and not r.get("notes", "").strip():
+            errs.append(f"ERROR {lid}: outcome out_of_scope needs evidence_url, or notes saying the name shows it")
     return errs
 
 
@@ -688,6 +697,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("new-service-fixes", help="ask Muse to re-quote service times for these subjects")
     p.add_argument("--title", required=True)
     p.add_argument("--ids", required=True, help="comma-separated church_ids and candidate refs")
+    p.add_argument("--note", default="", help="a 'Why these rows' paragraph for TASK.md")
     p.set_defaults(fn=cmd_new_service_fixes)
     p = sub.add_parser("publish", help="copy a package to the Drive outbox and queue it")
     p.add_argument("wp_id")
