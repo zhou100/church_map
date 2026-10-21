@@ -234,12 +234,21 @@ def test_carry_over_end_to_end(tmp_path, monkeypatch):
 
 # --- Round 6 overlays (task S service times, task W worship location) -------------------
 
-def _overlay_env(tmp_path, monkeypatch, base, s_row=None, w_row=None, w_verdict="verified", s_verdict="verified"):
-    ret, seeds = tmp_path / "returns", tmp_path / "seeds"
+def _overlay_env(tmp_path, monkeypatch, base, s_row=None, w_row=None, w_verdict="verified", s_verdict="verified",
+                 w_asked=None):
+    ret, seeds, handoff = tmp_path / "returns", tmp_path / "seeds", tmp_path / "handoff"
     (ret / "recheck").mkdir(parents=True)
+    (handoff / "outbox").mkdir(parents=True)
     seeds.mkdir()
     monkeypatch.setattr(bs, "RET", ret)
     monkeypatch.setattr(bs, "SEEDS", seeds)
+    monkeypatch.setattr(bs, "HANDOFF", handoff)
+    monkeypatch.setattr(bs, "STALE_W", set())
+    if w_row and w_asked is not False:  # the W question was about this address (default: the base record's)
+        asked = w_asked or base
+        _write(handoff / "outbox" / "worship_location_W_input.csv", ["subject_type", "subject_id", "city", "street_address"],
+               [dict(subject_type=w_row["subject_type"], subject_id=w_row["subject_id"], city=asked.get("city", ""),
+                     street_address=asked.get("street_address", ""))])
     cols = sorted(set(base) | {"service_times_verbatim", "service_languages", "service_source_url",
                                "service_source_type", "service_excerpt", "address_is_worship_location"})
     _write(ret / "results_current.csv", cols, [base])
@@ -314,3 +323,23 @@ def test_no_for_the_old_address_does_not_follow_the_worship_address_that_replace
     # Without a replacement address, "no" stays on the recorded one.
     res, _ = _overlay_env(tmp_path / "b", monkeypatch, base, w_row={**W_ROW, "address_is_worship_location": "no"})
     assert res["address_is_worship_location"] == "no"
+
+
+def test_worship_answer_is_bound_to_the_address_it_was_asked_about(tmp_path, monkeypatch):
+    # Review of b8898c8: a "yes" for 100 Main Street must not carry over to 200 Main Street.
+    asked = {**BASE, "street_address": "100 Main Street", "address_is_worship_location": "unknown"}
+    res, _ = _overlay_env(tmp_path, monkeypatch, asked, w_row=W_ROW)
+    assert res["address_is_worship_location"] == "yes"
+    moved = {**asked, "street_address": "200 Main Street", "address_excerpt": "200 Main Street"}
+    res, _ = _overlay_env(tmp_path / "b", monkeypatch, moved, w_row=W_ROW, w_asked=asked)
+    assert res["address_is_worship_location"] == "unknown" and bs.STALE_W == {("church", "1")}
+    # Case and spacing don't make it a different address.
+    same = {**asked, "street_address": "100  MAIN street"}
+    res, _ = _overlay_env(tmp_path / "c", monkeypatch, same, w_row=W_ROW, w_asked=asked)
+    assert res["address_is_worship_location"] == "yes"
+
+
+def test_worship_answer_without_its_question_is_not_used(tmp_path, monkeypatch):
+    base = {**BASE, "address_is_worship_location": "unknown"}
+    res, _ = _overlay_env(tmp_path, monkeypatch, base, w_row=W_ROW, w_asked=False)
+    assert res["address_is_worship_location"] == "unknown"

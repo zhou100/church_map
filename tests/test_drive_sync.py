@@ -310,3 +310,36 @@ def test_every_service_fix_input_row_must_come_back(queue, monkeypatch):
     status = ds.load_status()
     assert ds.pull_package(wp, status, recheck=False) == "needs_fix"
     assert "candidate:C-1: no row" in (drive / "feedback" / "WP-0001.md").read_text()
+
+
+# --- Review of b8898c8 --------------------------------------------------------------
+
+def test_a_lead_package_must_return_lead_outcomes(queue, monkeypatch):
+    drive, ret, wp = queue
+    ds.write_csv(ds.OUTBOX / "WP-0001" / "leads.csv", ds.LEAD_COLS, [dict(lead_id="WP0001-001")])
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    _deliver(wp)  # new_candidates.csv only
+    status = ds.load_status()
+    assert ds.pull_package(wp, status, recheck=False) == "needs_fix"
+    assert "Missing: this package asks for one outcome per `lead_id`" in (drive / "feedback" / "WP-0001.md").read_text()
+
+
+def test_a_service_fix_package_must_return_service_fixes(queue, monkeypatch):
+    drive, ret, wp = queue
+    ds.write_csv(ds.OUTBOX / "WP-0001" / "service_fix_input.csv", ds.FIX_INPUT_COLS,
+                 [dict(subject_type="church", subject_id="1")])
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    _deliver(wp)
+    assert ds.pull_package(wp, ds.load_status(), recheck=False) == "needs_fix"
+    assert "## `service_fixes.csv`" in (drive / "feedback" / "WP-0001.md").read_text()
+
+
+def test_lead_outcomes_alone_are_accepted_without_a_recheck(queue, monkeypatch):
+    drive, ret, wp = queue
+    ds.write_csv(ds.OUTBOX / "WP-0001" / "leads.csv", ds.LEAD_COLS, [dict(lead_id="WP0001-001")])
+    _outcomes(wp / "lead_outcomes.csv", [dict(lead_id="WP0001-001", outcome="no_trace")])
+    (wp / "DONE.md").write_text(f"lead_outcomes.csv sha256={_sha(wp / 'lead_outcomes.csv')}\npartial: no\n",
+                                encoding="utf-8")
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    monkeypatch.setattr(ds.subprocess, "run", lambda *a, **k: pytest.fail("nothing cited, nothing to re-check"))
+    assert ds.pull_package(wp, ds.load_status(), recheck=True) == "pending_build"

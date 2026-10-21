@@ -577,15 +577,21 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         if not ok and (blocking or not errors):
             problems.append(f"## `{name}`\n\n```\n" + "\n".join(blocking or out.splitlines()[-20:]) + "\n```\n")
         staged.append(local)
+    # What the package asked for decides which answers must come back, not what the
+    # return happens to list: leaving lead_outcomes.csv out must not skip its check.
     fix_input = OUTBOX / wp_id / "service_fix_input.csv"
-    if "service_fixes.csv" in outputs and fix_input.exists():
+    if fix_input.exists() and "service_fixes.csv" not in outputs:
+        problems.append("## `service_fixes.csv`\n\nMissing: this package asks for one row per input subject.\n")
+    elif fix_input.exists():
         want = {(r["subject_type"], r["subject_id"]) for r in read_csv(fix_input)}
         got = {(r.get("subject_type", ""), r.get("subject_id", "")) for r in read_csv(stage / f"service_fixes_{tag}.csv")}
         errs = [f"ERROR {t}:{i}: no row in service_fixes.csv" for t, i in sorted(want - got)]
         errs += [f"ERROR {t}:{i}: not in service_fix_input.csv" for t, i in sorted(got - want)]
         if errs:
             problems.append("## `service_fixes.csv`\n\n```\n" + "\n".join(errs) + "\n```\n")
-    if "lead_outcomes.csv" in outputs:
+    if (OUTBOX / wp_id / "leads.csv").exists() and "lead_outcomes.csv" not in outputs:
+        problems.append("## `lead_outcomes.csv`\n\nMissing: this package asks for one outcome per `lead_id`.\n")
+    elif (OUTBOX / wp_id / "leads.csv").exists():
         cands = stage / f"new_candidates_{tag}.csv"
         errs = check_leads(wp_id, stage / f"lead_outcomes_{tag}.csv", cands if cands.exists() else None)
         if errs:
@@ -600,9 +606,10 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         shutil.copyfile(wp_dir / "run_log.md", RET / f"run_log_{tag}.md")
     record_received([dict(file=p.name, wp_id=wp_id, received_at=received, done_sha256=done_sha) for p in staged])
     shutil.rmtree(stage, ignore_errors=True)
-    if recheck:
+    cited = [str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]
+    if recheck and cited:  # lead_outcomes.csv alone (say, every lead no_trace) cites nothing to re-check
         p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"), str(ROOT / "analytics/scripts/recheck_sources.py"),
-                            *[str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]])
+                            *cited])
         if p.returncode != 0:  # DONE.md not recorded as handled, so the next pull retries
             return "waiting: source re-check failed; will retry"
     if partial:

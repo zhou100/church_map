@@ -1179,6 +1179,16 @@ Inputs are in `outbox/`, including `known_congregations_v7` (1,289 known). S and
 
 **Tests:** 295 passed; each review example is a test.
 
+### Status 2026-10-21: review of b8898c8, three issues fixed (PR #42)
+
+1. **A W answer is bound to the address it was asked about.** A "yes" for 100 Main Street with no replacement address used to follow the church ID onto 200 Main Street once the base record changed. Each W answer now carries the street + city from its input (`outbox/worship_location_W_input.csv`, or `outbox/WP-xxxx/worship_location_input.csv` for a package). If the record's address has changed, the answer is not used and `build_seeds.py` lists it to ask again. An answer whose question can't be found is not used.
+2. **A delivery of `lead_outcomes.csv` alone no longer fails every pull.** With nothing that cites a source (for example every lead `no_trace`), the source re-check is skipped instead of calling `recheck_sources.py` with no files.
+3. **What the package asked for decides which answers must come back.** A package with `leads.csv` must return `lead_outcomes.csv`, and one with `service_fix_input.csv` must return `service_fixes.csv`. Before this, leaving the file out of `DONE.md` skipped its completeness check.
+
+**Effect on the real data:** none. All 10 verified round-6 W answers are still for the address on the record.
+
+**Tests:** 371 passed; each review example is a test.
+
 ## 9. Views
 
 Week one: **one map-readiness view**, built as dbt docs exposures or a static HTML page generated from `mart_coverage_snapshot`. It shows:

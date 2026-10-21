@@ -130,6 +130,7 @@ CANDIDATE_FILES = [("new_candidates_A.csv", "A"), ("new_candidates_B.csv", "B"),
 # for the same subject before fingerprinting and sanitizing, so every gate applies.
 OVERLAY_S = "service_fixes_S.csv"      # task S: service times re-quoted from the page
 OVERLAY_W = "worship_location_W.csv"   # task W: is this where they meet / corrected street
+STALE_W: set[tuple[str, str]] = set()  # W answers dropped because the address they answered changed
 SERVICE_COLS = ("service_times_verbatim", "service_languages", "service_source_url", "service_source_type",
                 "service_excerpt")
 CAND_COLS = [
@@ -270,10 +271,25 @@ def build_manifest() -> dict[str, str]:
     return batch_of
 
 
+def w_input_path(fname: str) -> Path:
+    """The input a W answer file was asked from: round 6's, or its package's."""
+    m = PACKAGE_RE.match(fname)
+    if m:
+        return HANDOFF / "outbox" / f"WP-{m.group(2)[2:]}" / "worship_location_input.csv"
+    return HANDOFF / "outbox" / "worship_location_W_input.csv"
+
+
+def asked_address(r: dict) -> str:
+    """The recorded address a W question was about (street + city, case and spacing ignored)."""
+    return "|".join(" ".join((r.get(f) or "").split()).casefold() for f in ("street_address", "city"))
+
+
 def load_overlays() -> tuple[dict, dict]:
     """(S rows, W rows) keyed by (subject_type, subject_id). A W answer is used only if
     its own excerpt re-verified on its page with the same fingerprint; otherwise the
-    record keeps what it had (an unproven "yes" must not make an address visit-ready)."""
+    record keeps what it had (an unproven "yes" must not make an address visit-ready).
+    It is also bound to the address it was asked about (`_asked`); an answer whose
+    question we can't find is not used."""
     s_rows, w_rows = {}, {}
     for fname in [OVERLAY_S] + [f for f, _ in package_files("service_fixes")]:
         for r in read(fname) or []:
@@ -284,10 +300,16 @@ def load_overlays() -> tuple[dict, dict]:
         if checks_path.exists():
             with checks_path.open(encoding="utf-8") as f:
                 checks = {r["row_key"]: r for r in csv.DictReader(f) if r["group"] == "worship"}
+        asked = {}
+        if w_input_path(fname).exists():
+            with w_input_path(fname).open(encoding="utf-8") as f:
+                asked = {(r["subject_type"], r["subject_id"]): asked_address(r) for r in csv.DictReader(f)}
         for r in read(fname) or []:
+            key = (r["subject_type"], r["subject_id"])
             c = checks.get(r["subject_id"])
-            if c and c["verdict"] == "verified" and c.get("fact_fingerprint") == fact_fingerprint(r, "worship"):
-                w_rows[(r["subject_type"], r["subject_id"])] = {**r, "_file": fname}
+            if key in asked and c and c["verdict"] == "verified" and \
+                    c.get("fact_fingerprint") == fact_fingerprint(r, "worship"):
+                w_rows[key] = {**r, "_file": fname, "_asked": asked[key]}
     return s_rows, w_rows
 
 
@@ -302,6 +324,11 @@ def apply_overlays(raw: dict, subject_type: str, sid: str, overlays: tuple[dict,
             raw[c] = o.get(c, "")  # S is newer and stricter; a blank answer clears the old schedule
         used[(subject_type, sid, "service")] = (o["_file"], "service", o)
     o = w_rows.get((subject_type, sid))
+    if o and o["_asked"] != asked_address(raw):
+        # The record's address changed after W was asked: the answer is about another
+        # address (a "yes" for 100 Main St says nothing about 200 Main St). Ask again.
+        STALE_W.add((subject_type, sid))
+        o = None
     if o:
         ans = (o.get("address_is_worship_location") or "").strip().lower()
         if o.get("worship_street_address") and ans == "no":
@@ -662,8 +689,12 @@ def main() -> None:
     build_source_checks(church_files, cand_files, {**church_fps, **cand_fps}, used)
     if used:
         n_s = sum(1 for k in used if k[2] == "service")
-        print(f"  overlays applied: {n_s} service answers (S), {len(overlays[1])} verified worship answers (W), "
+        print(f"  overlays applied: {n_s} service answers (S), "
+              f"{len(overlays[1]) - len(STALE_W)} verified worship answers (W), "
               f"{sum(1 for k in used if k[2] == 'address')} of them with a corrected street")
+    if STALE_W:
+        print(f"  WARNING: {len(STALE_W)} W answers are for an address the record no longer has; not used, "
+              f"ask again: {', '.join(f'{t}:{i}' for t, i in sorted(STALE_W))}")
     build_reviews()
     build_dedup()
 
