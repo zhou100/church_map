@@ -82,6 +82,30 @@ def test_blocked_source_is_resourced_to_the_churchs_own_site(monkeypatch):
     assert [x["action"] for x in log] == ["resourced", "not_resourced"]
 
 
+
+def test_blocked_service_answer_is_resourced_via_its_subjects_website(monkeypatch):
+    # An S answer row has no official_url; the website comes from the subject's record.
+    import asyncio
+
+    rows = [{"subject_type": "candidate", "subject_id": "D-080", "service_times_verbatim": "Sunday 9:00 AM English",
+             "service_languages": "English", "service_source_url": "https://www.dsj.org/mass-prayer-services/",
+             "service_source_type": "denomination", "service_excerpt": "Sunday Schedule … 9:00 AM English",
+             "notes": ""}]
+    report = [{"row_key": "D-080", "group": "service", "verdict": "fetch_failed",
+               "source_url": "https://www.dsj.org/mass-prayer-services/"}]
+    seen = []
+
+    async def fake_pages(fetcher, url):
+        seen.append(url)
+        return [("https://croatian.example.org/mass", rx.collapse("Mass times: Sunday 9:00 AM English"))]
+
+    monkeypatch.setattr(rx, "official_pages", fake_pages)
+    log = []
+    asyncio.run(rx.resource_blocked(rows, "subject_id", report, log, "2026-10-21",
+                                    {"D-080": "https://croatian.example.org/"}))
+    assert seen == ["https://croatian.example.org/"]
+    assert rows[0]["service_source_url"] == "https://croatian.example.org/mass" and "official_url" not in rows[0]
+
 def test_names_near_the_fact_are_cut_out():
     page = rx.collapse("Children's Ministry | 8:00pm 137 Dempsey Road Milpitas, Ca 95035 Contact Sam Shin | Senior Pastor")
     ex = rx.find_address(page, "137 Dempsey Rd")
