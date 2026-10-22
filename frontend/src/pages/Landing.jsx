@@ -3,8 +3,11 @@ import AboutSection from '../components/AboutSection'
 import DimensionBars from '../components/DimensionBars'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
-import { detectLocation, getStats } from '../api/client'
+import { detectLocation, getStats, listChurches } from '../api/client'
+import { hasWebsiteProfile, rankStartingPoints } from '../churchProfile'
 
+const PREVIEW_LIMIT = 100
+const TOP_PICKS = 3
 const AUDITED_COVERAGE = { withSummary: 4332, total: 133939 }
 const DEMO_DIMENSIONS = {
   worship_energy: 4.6,
@@ -21,12 +24,36 @@ function parseLocation(value) {
   return { city: match[1].trim(), state: match[2].toUpperCase() }
 }
 
+function searchUrl({ city, state }) {
+  return `/search?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`
+}
+
 export default function Landing({ exampleChurch }) {
   const [location, setLocation] = useState('')
   const [locationError, setLocationError] = useState('')
-  const [lastSearch, setLastSearch] = useState(null)
+  const [locating, setLocating] = useState(false)
   const [coverage, setCoverage] = useState(AUDITED_COVERAGE)
+  // The map renders client-side only (see LandingMap); the prerendered page
+  // and the first hydration pass both show the placeholder.
+  const [LandingMap, setLandingMap] = useState(null)
+  const [preview, setPreview] = useState(null)
+  const [previewChurches, setPreviewChurches] = useState(null)
+  const [previewStatus, setPreviewStatus] = useState('idle')
+  const [hoveredId, setHoveredId] = useState(null)
   const userEdited = useRef(false)
+  const heroCard = useRef(null)
+
+  function showPreview(place) {
+    setPreview(place)
+    if (!userEdited.current) setLocation(`${place.city}, ${place.state}`)
+    setPreviewStatus('loading')
+    listChurches({ type: 'location', ...place }, { limit: PREVIEW_LIMIT })
+      .then(data => {
+        setPreviewChurches(data)
+        setPreviewStatus(data.length ? 'ready' : 'empty')
+      })
+      .catch(() => setPreviewStatus('error'))
+  }
 
   useEffect(() => {
     const legacyParams = new URLSearchParams(window.location.search)
@@ -35,12 +62,9 @@ export default function Landing({ exampleChurch }) {
       return
     }
 
-    try {
-      const stored = JSON.parse(localStorage.getItem('churchmap_last_search'))
-      if (stored?.city && stored?.state) setLastSearch(stored)
-    } catch {
-      localStorage.removeItem('churchmap_last_search')
-    }
+    import('../components/LandingMap')
+      .then(module => setLandingMap(() => module.default))
+      .catch(() => {})
 
     getStats()
       .then(data => setCoverage({
@@ -49,11 +73,21 @@ export default function Landing({ exampleChurch }) {
       }))
       .catch(() => {})
 
-    detectLocation()
-      .then(data => {
-        if (!userEdited.current) setLocation(`${data.city}, ${data.state}`)
-      })
-      .catch(() => {})
+    // Someone coming back sees the city they were last looking at; a first
+    // visit starts wherever the IP lookup places them.
+    let stored = null
+    try {
+      stored = JSON.parse(localStorage.getItem('churchmap_last_search'))
+    } catch {
+      localStorage.removeItem('churchmap_last_search')
+    }
+    if (stored?.city && stored?.state) {
+      showPreview({ city: stored.city, state: stored.state })
+    } else {
+      detectLocation()
+        .then(data => showPreview({ city: data.city, state: data.state }))
+        .catch(() => {})
+    }
   }, [])
 
   function handleSubmit(event) {
@@ -63,8 +97,22 @@ export default function Landing({ exampleChurch }) {
       setLocationError('Enter a city and two-letter state, like Brooklyn, NY.')
       return
     }
-    window.location.assign(`/search?city=${encodeURIComponent(parsed.city)}&state=${encodeURIComponent(parsed.state)}`)
+    window.location.assign(searchUrl(parsed))
   }
+
+  async function handleUseLocation() {
+    setLocating(true)
+    setLocationError('')
+    try {
+      const data = await detectLocation()
+      window.location.assign(searchUrl(data))
+    } catch (err) {
+      setLocationError(`${err.message}. Type a city instead.`)
+      setLocating(false)
+    }
+  }
+
+  const topPicks = rankStartingPoints(previewChurches || [], TOP_PICKS)
 
   return (
     <div className="landing-page">
@@ -82,40 +130,91 @@ export default function Landing({ exampleChurch }) {
       </nav>
 
       <main>
-        <section className="landing-hero">
-          <p className="eyebrow">Church discovery, with the homework done</p>
-          <h1>Know what a Sunday is actually like — before you walk in.</h1>
-          <p className="hero-copy">
-            We read what churches say about themselves, so you don&apos;t have to click
-            through twelve websites.
-          </p>
-          {lastSearch && (
-            <a className="continue-link" href={`/search?city=${encodeURIComponent(lastSearch.city)}&state=${encodeURIComponent(lastSearch.state)}`}>
-              Continue in {lastSearch.city} <Icon name="arrow" />
-            </a>
-          )}
-          <form className="landing-search" onSubmit={handleSubmit}>
-            <label htmlFor="landing-location">Find churches in</label>
-            <div className="landing-search-row">
-              <Icon name="pin" size={20} />
-              <input
-                id="landing-location"
-                value={location}
-                onChange={event => {
-                  userEdited.current = true
-                  setLocation(event.target.value)
-                  setLocationError('')
-                }}
-                placeholder="Brooklyn, NY"
-                autoComplete="address-level2"
-              />
-              <button type="submit">Explore churches <Icon name="arrow" /></button>
+        <section className="map-hero" aria-labelledby="map-hero-title">
+          <div className="map-hero-map">
+            {LandingMap
+              ? (
+                <LandingMap
+                  churches={previewChurches || []}
+                  hoveredId={hoveredId}
+                  onHover={setHoveredId}
+                  overlayRef={heroCard}
+                />
+              )
+              : <div className="map-hero-placeholder" />}
+          </div>
+
+          <div className="map-hero-card" ref={heroCard}>
+            <h1 id="map-hero-title">New in town? Find a church that fits.</h1>
+            <p className="map-hero-copy">
+              Every church near you on one map, and what we&apos;ve learned about each
+              before you visit.
+            </p>
+            <form className="landing-search" onSubmit={handleSubmit}>
+              <label htmlFor="landing-location">Where are you looking?</label>
+              <div className="landing-search-row">
+                <Icon name="pin" size={20} />
+                <input
+                  id="landing-location"
+                  value={location}
+                  onChange={event => {
+                    userEdited.current = true
+                    setLocation(event.target.value)
+                    setLocationError('')
+                  }}
+                  placeholder="City, ST"
+                  autoComplete="address-level2"
+                />
+                <button type="submit">Show churches <Icon name="arrow" /></button>
+              </div>
+              {locationError && <p className="landing-form-error">{locationError}</p>}
+            </form>
+            <div className="map-hero-shortcuts">
+              <button type="button" onClick={handleUseLocation} disabled={locating}>
+                <Icon name="pin" size={14} /> {locating ? 'Finding your city…' : 'Use my location'}
+              </button>
+              {previewStatus !== 'ready' && previewStatus !== 'loading' && (
+                <a href="/search?city=Brooklyn&state=NY">or try Brooklyn, NY <Icon name="arrow" size={13} /></a>
+              )}
             </div>
-            {locationError && <p className="landing-form-error">{locationError}</p>}
-          </form>
-          <a className="browse-city-link" href="/search?city=Brooklyn&state=NY">
-            Or browse a city we&apos;ve read thoroughly <Icon name="arrow" />
-          </a>
+
+            {preview && previewStatus === 'loading' && (
+              <p className="map-hero-status">Finding churches near {preview.city}, {preview.state}…</p>
+            )}
+            {preview && previewStatus === 'empty' && (
+              <p className="map-hero-status">
+                We don&apos;t have churches in {preview.city}, {preview.state} yet. Try a nearby city.
+              </p>
+            )}
+            {preview && previewStatus === 'ready' && (
+              <div className="map-hero-picks">
+                {topPicks.length > 0 && <p className="eyebrow">Start here in {preview.city}</p>}
+                <ul>
+                  {topPicks.map(church => (
+                    <li key={church.id}>
+                      <a
+                        href={`/church/${church.id}`}
+                        className={hoveredId === church.id ? 'pick-active' : ''}
+                        onMouseEnter={() => setHoveredId(church.id)}
+                        onMouseLeave={() => setHoveredId(null)}
+                        onFocus={() => setHoveredId(church.id)}
+                        onBlur={() => setHoveredId(null)}
+                      >
+                        <strong>{church.name}</strong>
+                        <span>
+                          {church.denomination || 'Church'}
+                          {hasWebsiteProfile(church) && <> · <Icon name="check" size={12} /> Website read</>}
+                        </span>
+                      </a>
+                    </li>
+                  ))}
+                </ul>
+                <a className="map-hero-all" href={searchUrl(preview)}>
+                  See every church in {preview.city} <Icon name="arrow" />
+                </a>
+              </div>
+            )}
+          </div>
         </section>
 
         {exampleChurch && (

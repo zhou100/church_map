@@ -8,6 +8,7 @@ import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { churchMarkerIcon } from '../components/mapMarker'
 import { detectLocation, listChurches } from '../api/client'
+import { byProfileUsefulness } from '../churchProfile'
 
 const PAGE = 50
 
@@ -40,14 +41,6 @@ function MapResize({ active }) {
     return () => cancelAnimationFrame(frame)
   }, [active, map])
   return null
-}
-
-function hasWebsiteProfile(church) {
-  const extracted = church.extracted_tags || {}
-  return Boolean(
-    church.website_summary ||
-    Object.values(extracted).some(value => Array.isArray(value) ? value.length : value)
-  )
 }
 
 export default function Search() {
@@ -217,11 +210,7 @@ export default function Search() {
     }
     if (sortBy === 'rating') return (b.avg_rating ?? 0) - (a.avg_rating ?? 0)
     if (sortBy === 'reviews') return (b.review_count ?? 0) - (a.review_count ?? 0)
-    if (sortBy === 'usefulness') {
-      const profileDifference = Number(hasWebsiteProfile(b)) - Number(hasWebsiteProfile(a))
-      if (profileDifference) return profileDifference
-      return (b.review_count ?? 0) - (a.review_count ?? 0)
-    }
+    if (sortBy === 'usefulness') return byProfileUsefulness(a, b)
     return 0
   }) : null
 
