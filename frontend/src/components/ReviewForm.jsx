@@ -1,6 +1,7 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState } from 'react'
+import GoogleSignInButton from './GoogleSignInButton'
 import StarInput from './StarInput'
-import { useAuth, GOOGLE_CLIENT_ID } from '../context/AuthContext'
+import { useAuth } from '../context/AuthContext'
 import { submitReview } from '../api/client'
 
 const DIM_FIELDS = [
@@ -12,48 +13,13 @@ const DIM_FIELDS = [
   { key: 'facilities',           label: 'Facilities' },
 ]
 
-function GoogleSignInButton({ onCredential }) {
-  const btnRef = useRef(null)
-
-  useEffect(() => {
-    if (!GOOGLE_CLIENT_ID) return
-
-    function init() {
-      if (!window.google || !btnRef.current) return
-      window.google.accounts.id.initialize({
-        client_id: GOOGLE_CLIENT_ID,
-        callback: (res) => onCredential(res.credential),
-      })
-      window.google.accounts.id.renderButton(btnRef.current, {
-        type: 'standard',
-        theme: 'outline',
-        size: 'large',
-        text: 'signin_with',
-        shape: 'rectangular',
-        logo_alignment: 'left',
-      })
-    }
-
-    if (window.google) {
-      init()
-    } else {
-      // GSI script is async — poll until loaded
-      const iv = setInterval(() => {
-        if (window.google) { clearInterval(iv); init() }
-      }, 100)
-      return () => clearInterval(iv)
-    }
-  }, [onCredential])
-
-  if (!GOOGLE_CLIENT_ID) {
-    return (
-      <p style={{ fontSize: '0.82rem', color: 'var(--text-3)' }}>
-        Sign-in unavailable — VITE_GOOGLE_CLIENT_ID not configured.
-      </p>
-    )
-  }
-
-  return <div ref={btnRef} style={{ minHeight: 44 }} />
+const REVIEW_BUTTON = {
+  type: 'standard',
+  theme: 'outline',
+  size: 'large',
+  text: 'signin_with',
+  shape: 'rectangular',
+  logo_alignment: 'left',
 }
 
 export default function ReviewForm({ churchId, onSubmitted }) {
@@ -110,7 +76,7 @@ export default function ReviewForm({ churchId, onSubmitted }) {
     return (
       <div className="review-form review-signin-gate">
         <p className="signin-prompt">Sign in to share your experience with this church.</p>
-        <GoogleSignInButton onCredential={handleGoogleCredential} />
+        <GoogleSignInButton onCredential={handleGoogleCredential} options={REVIEW_BUTTON} />
       </div>
     )
   }
