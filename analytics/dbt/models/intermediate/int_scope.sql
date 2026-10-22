@@ -2,6 +2,10 @@
 -- Precedence: Muse's verdict on the named entity > denomination mapping >
 -- name pattern (religious houses) > default in_scope. A Muse-confirmed duplicate
 -- record is hidden in favour of the record it duplicates.
+-- A Muse `congregation` verdict settles a `pending` label (pending means "until
+-- reviewed", D-1) but not an `out_of_scope` one, which is a ruling on the
+-- tradition itself (Muse may call a Unitarian Universalist church a
+-- congregation), nor `in_scope_labeled`, whose label must survive.
 with base as (
     select
         c.church_id,
@@ -25,6 +29,8 @@ select
         when muse_entity_type = 'non_christian'                      then 'out_of_scope'
         when muse_entity_type in ('religious_house', 'business')     then 'not_a_congregation'
         when muse_entity_type = 'unknown'                            then 'pending'
+        when muse_entity_type = 'congregation'
+             and denomination_scope = 'pending'                      then 'in_scope'
         when denomination_scope is not null                          then denomination_scope
         when name_is_religious_house                                 then 'not_a_congregation'
         else 'in_scope'
@@ -33,6 +39,8 @@ select
     case
         when duplicate_of_church_id is not null                      then 'muse'
         when muse_entity_type is not null and muse_entity_type <> 'congregation' then 'muse'
+        when muse_entity_type = 'congregation'
+             and denomination_scope = 'pending'                      then 'muse'
         when denomination_scope is not null                          then 'denomination'
         when name_is_religious_house                                 then 'name_pattern'
         when muse_entity_type = 'congregation'                       then 'muse'
