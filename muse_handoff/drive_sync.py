@@ -12,8 +12,9 @@ returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
     python3 muse_handoff/drive_sync.py new-leads --title "Bay Area IRS leads" --state CA \\
         --leads muse_handoff/outbox/irs_leads_bay_sample100.csv      # from analytics/scripts/irs_leads.py
     python3 muse_handoff/drive_sync.py new-service-fixes --title "Re-quote 20 schedules" --ids 76632,C-063
+    python3 muse_handoff/drive_sync.py new-recheck --title "Unresolved congregations"   # 100 per package
     python3 muse_handoff/drive_sync.py publish WP-0001
-    python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build]
+    python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build] [--no-geocode]
 
 pull copies each newly delivered package into muse_handoff/returns/ as
 <kind>_WP0001.csv (build_seeds.py picks those up), records when it arrived in
@@ -29,6 +30,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import importlib.util
 import os
 import re
 import shutil
@@ -184,11 +186,11 @@ def known_congregations(state: str, cities: list[str], db: Path, seeds: Path) ->
 
 DISCOVERY_TASK = """# {wp_id} — find congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.2) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
-Find Christian congregations that meet in the cities below and are **not** in `known_congregations.csv`. We care about **coverage**: finding congregations we don't have matters more than filling every fact.
+Find Christian congregations that meet in the cities below and are **not** in `known_congregations.csv`. **A row we can use has dated activity within 12 months, an address, and a way to reach the church.** Search each one as brief section A requires (events, news, sermons, bulletin, Facebook Page) before marking it `unresolved` or leaving a fact blank. The caps are maximums, not targets.
 
 - Report every language the church states (N5).
 - De-duplicate by name **and** by address (D4), against `known_congregations.csv` and against your own rows. A known congregation is worth a row only if you add language, service, or children's facts; then set `possible_match_id` to its `known_id`.
@@ -255,7 +257,7 @@ def cmd_new_discovery(args) -> int:
 
 LEADS_TASK = """# {wp_id} — check leads: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.2) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -334,7 +336,7 @@ FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "official_url", 
 
 SERVICE_FIX_TASK = """# {wp_id} — re-quote service times: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.2) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 {note}
 ## What
 
@@ -426,6 +428,96 @@ def cmd_new_service_fixes(args) -> int:
     print(f"{wp_id}: {args.title}; {len(rows)} rows -> {pkg}")
     print(f"review {pkg / 'TASK.md'}, then: python3 muse_handoff/drive_sync.py publish {wp_id}")
     return 0
+
+
+RECHECK_INPUT_COLS = ["candidate_ref", "origin_task", "candidate_name", "current_name_native", "denomination_stated",
+                      "city", "zip", "official_url", "facebook_page_url", "fb_last_post_date", "status_source_url",
+                      "street_address", "address_is_worship_location", "phone", "service_times_verbatim",
+                      "service_languages", "kids_program_verbatim"]
+
+RECHECK_TASK = """# {wp_id} — re-check unresolved congregations: {title}
+
+**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
+
+## What
+
+You reported these {n} congregations earlier with `status = unresolved`, almost always because the homepage you fetched carried no date. That keeps them off the map. Re-check each one with the full section A search:
+
+1. **Activity (A1–A3):** open the church's events, news, sermons/media and bulletin pages, and its **Facebook Page** (newest posts, events, About; search Facebook by name and city if no Page is known). Find a date tied to its activity within 12 months, cite that page in `status_source_url`, and copy the date into `status_excerpt`.
+2. **Missing facts (A5):** from the same pages, fill what is blank: the street address where it meets (`address_is_worship_location`), service times and languages, children's program, office phone.
+3. **Keep what was right:** re-cite every fact you keep, with its own source URL and a verbatim excerpt (the input shows our current values, without excerpts). Blank a fact only if its source no longer states it, and say so in `notes`.
+4. **Still nothing dated:** `status = unresolved`, with the `activity checked:` line in `notes` (A4). If you find that it closed, merged, or moved away, keep it `unresolved` and say so in `notes`.
+
+## Input
+
+| File | Rows | sha256 |
+|---|---:|---|
+| `outbox/{wp_id}/recheck_input.csv` | {n} | `{sha}` |
+
+`origin_task` is the package that first reported it; for reference only.
+
+## Output (in `returns/{wp_id}/`)
+
+| File | Contents |
+|---|---|
+| `new_candidates.csv` | `new_candidates_TEMPLATE_v3.csv` columns; **exactly one row per input `candidate_ref`, with the `candidate_ref` unchanged**; `task = {task}`; no other rows |
+| `run_log.md` | D9 manifest; counts (now active, still unresolved, facts added by group, Facebook Pages opened); blocked sites; hard rows |
+| `DONE.md` | written last; see `README_FOR_MUSE.md` |
+
+## Check before delivering
+
+```bash
+python3 reference/validate_returns.py ALL - returns/{wp_id}/new_candidates.csv
+```
+
+Zero `ERROR` lines is required. We also check that every input `candidate_ref` has exactly one row and that there are no others.
+"""
+
+
+def recheck_rows(seeds: Path) -> list[dict]:
+    """Unresolved new congregations (the dbt rule: no duplicate, no possible match), the
+    ones closest to the map first: an address, then a website."""
+    rows = [r for r in read_csv(seeds / "muse_candidates.csv")
+            if r["status"] == "unresolved" and not r["duplicate_of_church_id"]
+            and not r["possible_match_church_id"] and not r["possible_match_candidate_id"]]
+    rows.sort(key=lambda r: (not r["street_address"], not r["official_url"], r["candidate_id"]))
+    return [{**{c: r.get(c, "") for c in RECHECK_INPUT_COLS}, "candidate_ref": r["candidate_id"],
+             "origin_task": r["task"]} for r in rows]
+
+
+def cmd_new_recheck(args) -> int:
+    rows = recheck_rows(Path(args.seeds))
+    if not rows:
+        raise SystemExit("no unresolved new congregations")
+    parts = [rows[i:i + args.size] for i in range(0, len(rows), args.size)]
+    for i, part in enumerate(parts, 1):
+        wp_id = next_wp_id()
+        pkg = OUTBOX / wp_id
+        pkg.mkdir(parents=True)
+        write_csv(pkg / "recheck_input.csv", RECHECK_INPUT_COLS, part)
+        title = f"{args.title} (part {i} of {len(parts)})" if len(parts) > 1 else args.title
+        (pkg / "TASK.md").write_text(RECHECK_TASK.format(
+            wp_id=wp_id, task=wp_id.replace("-", ""), title=title, n=len(part),
+            sha=sha256(pkg / "recheck_input.csv")), encoding="utf-8")
+        print(f"{wp_id}: {title}; {len(part)} congregations -> {pkg}")
+    print("review each TASK.md, then publish them")
+    return 0
+
+
+def check_recheck(wp_id: str, cands: Path) -> list[str]:
+    """Exactly one row per input candidate_ref, nothing else, all under this package's task
+    (so the v3.3 section A checks apply to every row)."""
+    want = {r["candidate_ref"] for r in read_csv(OUTBOX / wp_id / "recheck_input.csv")}
+    rows = read_csv(cands)
+    seen = Counter(r.get("candidate_ref", "") for r in rows)
+    task = wp_id.replace("-", "")
+    errs = [f"ERROR {ref}: {n} rows (want exactly 1)" for ref, n in sorted(seen.items()) if n > 1]
+    errs += [f"ERROR {ref}: no row in new_candidates.csv" for ref in sorted(want - set(seen))]
+    errs += [f"ERROR {ref}: not in recheck_input.csv (this package takes no new congregations)"
+             for ref in sorted(set(seen) - want)]
+    errs += [f"ERROR {r.get('candidate_ref', '')}: task={r.get('task', '')!r}, want {task}"
+             for r in rows if r.get("task") != task]
+    return errs
 
 
 def check_leads(wp_id: str, outcomes: Path, cands: Path | None) -> list[str]:
@@ -605,6 +697,12 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         errs = check_leads(wp_id, stage / f"lead_outcomes_{tag}.csv", cands if cands.exists() else None)
         if errs:
             problems.append("## `lead_outcomes.csv`\n\n```\n" + "\n".join(errs) + "\n```\n")
+    if (OUTBOX / wp_id / "recheck_input.csv").exists() and "new_candidates.csv" not in outputs:
+        problems.append("## `new_candidates.csv`\n\nMissing: this package asks for one row per input `candidate_ref`.\n")
+    elif (OUTBOX / wp_id / "recheck_input.csv").exists():
+        errs = check_recheck(wp_id, stage / f"new_candidates_{tag}.csv")
+        if errs:
+            problems.append("## `new_candidates.csv` (re-check)\n\n```\n" + "\n".join(errs) + "\n```\n")
     if problems:
         row.update(state="needs_fix", done_sha256=done_sha, note=f"{len(problems)} file(s) failed validation")
         write_feedback(wp_id, problems)
@@ -631,14 +729,55 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     return row["state"]
 
 
+def geocode_build_key() -> str:
+    """What a rebuild turns into pins: the geocode output and the input its receipt
+    validly binds it to (build_seeds.geocode_binding, the rule build_seeds applies).
+    'unbound' when there is none, so a later receipt fix changes the key and rebuilds."""
+    spec = importlib.util.spec_from_file_location("build_seeds", HANDOFF.parent / "analytics/scripts/build_seeds.py")
+    bs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bs)
+    out_sha, source = bs.geocode_binding(ROOT / "analytics/exports")
+    return f"{out_sha}|{sha256(source) if source else 'unbound'}"
+
+
+def built_marker() -> Path:
+    """geocode_build_key() as the last successful rebuild read it."""
+    return ROOT / "analytics/exports/geocode_output.built_sha256"
+
+
 def rebuild() -> str:
     """Rebuild seeds and dbt. Returns "" on success, else what failed."""
+    reading = geocode_build_key()
     if subprocess.run([sys.executable, str(ROOT / "analytics/scripts/build_seeds.py")]).returncode != 0:
         return "build_seeds.py failed"
     env = {**os.environ, "DBT_PROFILES_DIR": str(ROOT / "analytics/dbt")}
     p = subprocess.run([str(ROOT / "analytics/.venv/bin/dbt"), "build", "--project-dir", str(ROOT / "analytics/dbt"),
                         "--full-refresh", "--quiet"], env=env)
-    return "" if p.returncode == 0 else "dbt build failed"
+    if p.returncode != 0:
+        return "dbt build failed"
+    built_marker().write_text(reading + "\n", encoding="utf-8")
+    return ""
+
+
+def geocode() -> str:
+    """Census-geocode addresses that have no pin yet; rebuild unless the last successful
+    rebuild already read this output with this binding. Compared with the last build, not
+    with the output before this run: a rebuild that failed after a change is retried, and
+    a receipt fixed after a build that found no binding (no pins) rebuilds even though
+    the output is unchanged.
+    Returns "" on success (or nothing to do), else what failed."""
+    p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"),
+                        str(ROOT / "analytics/scripts/geocode_incremental.py"), "--fetch"])
+    if p.returncode != 0:
+        return "geocode_incremental.py failed"
+    marker = built_marker()
+    current = geocode_build_key()
+    if marker.exists() and marker.read_text(encoding="utf-8").strip() == current:
+        return ""
+    failed = rebuild()
+    if not failed:
+        marker.write_text(current + "\n", encoding="utf-8")
+    return failed
 
 
 def cmd_pull(args) -> int:
@@ -667,6 +806,11 @@ def cmd_pull(args) -> int:
                 status[wp].update(state="ingested", ingested_at=now_utc(), build_error="")
         save_status(status)
         print(f"rebuild {'FAILED: ' + failed if failed else 'ok'} for {', '.join(pending)}")
+        rc = 1 if failed else 0
+    # Every pull, not only after a delivery: rows a failed Census call left behind are retried.
+    if not args.no_build and not args.no_geocode and rc == 0:
+        failed = geocode()
+        print(f"geocode {'FAILED: ' + failed if failed else 'ok'}")
         rc = 1 if failed else 0
     queued = sum(r["state"] in ("queued", "needs_fix") for r in status.values())
     print(f"{queued} package(s) waiting for Muse")
@@ -699,12 +843,18 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ids", required=True, help="comma-separated church_ids and candidate refs")
     p.add_argument("--note", default="", help="a 'Why these rows' paragraph for TASK.md")
     p.set_defaults(fn=cmd_new_service_fixes)
+    p = sub.add_parser("new-recheck", help="ask Muse to re-check every unresolved new congregation (brief section A)")
+    p.add_argument("--title", required=True)
+    p.add_argument("--size", type=int, default=100, help="congregations per package")
+    p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
+    p.set_defaults(fn=cmd_new_recheck)
     p = sub.add_parser("publish", help="copy a package to the Drive outbox and queue it")
     p.add_argument("wp_id")
     p.set_defaults(fn=cmd_publish)
     p = sub.add_parser("pull", help="ingest delivered packages")
     p.add_argument("--no-recheck", action="store_true")
     p.add_argument("--no-build", action="store_true")
+    p.add_argument("--no-geocode", action="store_true", help="skip the Census step for addresses without a pin")
     p.add_argument("--again", nargs="*", default=[], metavar="WP-xxxx",
                    help="process these packages' current DONE.md again (after a rule change)")
     p.set_defaults(fn=cmd_pull)

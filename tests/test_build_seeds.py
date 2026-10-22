@@ -378,3 +378,77 @@ def test_a_later_pass_that_moves_the_address_takes_w_ownership_back(tmp_path, mo
     checks = {r["fact_group"]: r["verdict"] for r in csv.DictReader((seeds / "source_checks.csv").open(encoding="utf-8"))}
     assert res["street_address"] == "200 Main Street" and checks["address"] == "not_found"
     assert used == {} and bs.STALE_W == {("church", "1")}
+
+
+# --- Census geocodes seed --------------------------------------------------------------
+
+def _geocode_env(tmp_path, monkeypatch, receipt_matches=True):
+    exports, seeds = tmp_path / "exports", tmp_path / "seeds"
+    exports.mkdir()
+    seeds.mkdir()
+    monkeypatch.setattr(bs, "EXPORTS", exports)
+    monkeypatch.setattr(bs, "SEEDS", seeds)
+    _write(exports / "geocode_input_old.csv", ["geo_id", "street", "city", "state", "zip"],
+           [dict(geo_id="candidate:X-1", street="100 Main St", city="San Mateo", state="CA", zip="94401")])
+    _write(exports / "geocode_input.csv", ["geo_id", "street", "city", "state", "zip"],  # regenerated since
+           [dict(geo_id="candidate:X-1", street="200 Main St", city="San Mateo", state="CA", zip="94401")])
+    _write(exports / "geocode_output.csv", bs.GEOCODE_COLS[:1] + ["status", "latitude", "longitude"],
+           [dict(geo_id="candidate:X-1", status="ok", latitude="37.5", longitude="-122.3")])
+    old_sha = bs._sha256(exports / "geocode_input_old.csv")
+    out_sha = bs._sha256(exports / "geocode_output.csv") if receipt_matches else "0" * 64
+    (exports / "geocode_reconciliation.json").write_text(f'{{"input_sha256": "{old_sha}", "output_sha256": "{out_sha}"}}')
+    return exports, seeds
+
+
+def test_geocodes_carry_the_address_their_run_recorded(tmp_path, monkeypatch):
+    # The live input was regenerated after the run; the pin belongs to the input it was
+    # geocoded from (found by sha256), so dbt sees 100 Main St, not 200.
+    _, seeds = _geocode_env(tmp_path, monkeypatch)
+    bs.build_geocodes()
+    row = list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8")))[0]
+    assert (row["subject_type"], row["subject_id"], row["geocoded_street"]) == ("candidate", "X-1", "100 Main St")
+
+
+def test_geocodes_without_their_recorded_input_are_not_used(tmp_path, monkeypatch):
+    # The receipt describes another output and there is no batch metadata: no input can
+    # be proven, so no pins (an empty seed, not a guess).
+    _, seeds = _geocode_env(tmp_path, monkeypatch, receipt_matches=False)
+    bs.build_geocodes()
+    assert list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8"))) == []
+
+
+
+def test_a_receipt_for_another_output_is_not_rescued_by_the_batch_metadata(tmp_path, monkeypatch):
+    # Review of e734ff1: an interrupted incremental write leaves new coordinates beside the
+    # old receipt. The original batch metadata names the old input, but it authenticates
+    # the raw response, not this output: no pins, rather than pins labelled 100 Main St.
+    exports, seeds = _geocode_env(tmp_path, monkeypatch, receipt_matches=False)
+    old_sha = bs._sha256(exports / "geocode_input_old.csv")
+    (exports / "geocode_census_metadata.json").write_text(f'{{"input_sha256": "{old_sha}"}}')
+    bs.build_geocodes()
+    assert list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8"))) == []
+
+# --- Re-check packages re-deliver a candidate_ref -------------------------------------
+
+def test_a_recheck_row_replaces_the_candidate_but_keeps_its_region(tmp_path, monkeypatch):
+    ret, seeds = tmp_path / "returns", tmp_path / "seeds"
+    ret.mkdir()
+    seeds.mkdir()
+    for name, val in (("RET", ret), ("SEEDS", seeds), ("CANDIDATE_FILES", [])):
+        monkeypatch.setattr(bs, name, val)
+    cols = ["candidate_ref", "task", "candidate_name", "city", "status", "status_source_url", "status_excerpt",
+            "street_address", "address_excerpt", "found_via", "match_confidence", "checked_at", "notes"]
+    first = dict(candidate_ref="WP0006-001", task="WP0006", candidate_name="Grace Church", city="Sacramento",
+                 status="unresolved", status_source_url="", status_excerpt="", street_address="", address_excerpt="",
+                 found_via="web_search", match_confidence="medium", checked_at="2026-10-21T21:00:00Z", notes="")
+    again = {**first, "task": "WP0014", "status": "active", "status_source_url": "https://grace.example.org/events",
+             "status_excerpt": "Sunday, October 5, 2026 · Harvest picnic", "street_address": "100 Main St",
+             "address_excerpt": "Visit us at 100 Main St, Sacramento", "checked_at": "2026-10-22T01:00:00Z"}
+    _write(ret / "new_candidates_WP0006.csv", cols, [first])
+    _write(ret / "new_candidates_WP0014.csv", cols, [again])
+    bs.build_candidates()
+    rows = list(csv.DictReader((seeds / "muse_candidates.csv").open(encoding="utf-8")))
+    assert len(rows) == 1
+    r = rows[0]
+    assert (r["status"], r["street_address"], r["task"], r["last_pass"], r["source_file"]) == \
+        ("active", "100 Main St", "WP0006", "WP0014", "new_candidates_WP0014.csv")

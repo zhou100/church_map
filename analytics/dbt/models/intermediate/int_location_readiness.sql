@@ -31,6 +31,11 @@ checks as (
 asof as (
     select '{{ var("as_of_date") }}'::date as as_of_date
 ),
+pins as (
+    select subject_id::bigint as church_id, pin_usable, latitude, longitude, distance_from_current_pin_m
+    from {{ ref('int_geocodes') }}
+    where subject_type = 'church'
+),
 joined as (
     select
         c.church_id,
@@ -68,13 +73,20 @@ joined as (
         coalesce(k.kids_source_verified, false)                       as kids_source_verified,
         m.official_url is not null
             and coalesce(m.url_evidence, 'name_only') <> 'name_only'  as website_verified,
-        m.facebook_page_url is not null and m.fb_page_evidence is not null as fb_page_linkable
+        m.facebook_page_url is not null and m.fb_page_evidence is not null as fb_page_linkable,
+        -- A Census pin for the verified address: proposed only. How it replaces the
+        -- directory pin is decided at publishing (geocode_and_publish_plan.md B2).
+        coalesce(p.pin_usable, false)                                 as proposed_pin_usable,
+        case when p.pin_usable then p.latitude end                    as proposed_latitude,
+        case when p.pin_usable then p.longitude end                   as proposed_longitude,
+        case when p.pin_usable then p.distance_from_current_pin_m end as proposed_pin_moves_m
     from c
     join s using (church_id)
     left join {{ ref('int_coordinate_clusters') }} cl on cl.church_id = c.church_id
     left join m on m.church_id = c.church_id
     left join holds h on h.church_id = c.church_id
     left join checks k on k.church_id = c.church_id
+    left join pins p on p.church_id = c.church_id
     cross join asof a
 ),
 rules as (

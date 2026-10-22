@@ -255,7 +255,7 @@ def test_a_failed_build_is_retried_until_it_succeeds(queue, monkeypatch):
     drive, ret, wp = queue
     monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
     _deliver(wp)
-    args = type("A", (), dict(again=[], no_recheck=True, no_build=False))
+    args = type("A", (), dict(again=[], no_recheck=True, no_build=False, no_geocode=True))
     monkeypatch.setattr(ds, "sync_reference", lambda: None)
     monkeypatch.setattr(ds, "rebuild", lambda: "dbt build failed")
     assert ds.cmd_pull(args) == 1
@@ -267,6 +267,91 @@ def test_a_failed_build_is_retried_until_it_succeeds(queue, monkeypatch):
     assert ds.cmd_pull(args) == 0
     row = ds.load_status()["WP-0001"]
     assert calls and row["state"] == "ingested" and row["build_error"] == ""
+
+
+def test_a_failed_geocode_keeps_the_ingest_and_is_retried_on_every_pull(queue, monkeypatch):
+    drive, ret, wp = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    _deliver(wp)
+    args = type("A", (), dict(again=[], no_recheck=True, no_build=False, no_geocode=False))
+    monkeypatch.setattr(ds, "sync_reference", lambda: None)
+    monkeypatch.setattr(ds, "rebuild", lambda: "")
+    monkeypatch.setattr(ds, "geocode", lambda: "geocode_incremental.py failed")
+    assert ds.cmd_pull(args) == 1
+    assert ds.load_status()["WP-0001"]["state"] == "ingested"
+    # Nothing new delivered: the next pull still runs the Census step.
+    calls = []
+    monkeypatch.setattr(ds, "geocode", lambda: calls.append(1) or "")
+    assert ds.cmd_pull(args) == 0 and calls
+
+
+def _geocode_fixture(tmp_path, monkeypatch, results):
+    """geocode() with Census mocked; rebuild() returns each of `results` in turn."""
+    monkeypatch.setattr(ds, "ROOT", tmp_path)
+    out = tmp_path / "analytics/exports/geocode_output.csv"
+    out.parent.mkdir(parents=True)
+    out.write_text("geo_id\n")
+    calls = []
+    monkeypatch.setattr(ds, "rebuild", lambda: calls.append(1) or results[len(calls) - 1])
+    ok = type("P", (), dict(returncode=0))()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)
+    return out, calls, ok
+
+
+def test_geocode_rebuilds_only_when_the_last_build_read_another_output(tmp_path, monkeypatch):
+    out, calls, ok = _geocode_fixture(tmp_path, monkeypatch, ["", "", ""])
+    assert ds.geocode() == "" and len(calls) == 1  # never built: build once
+    assert ds.geocode() == "" and len(calls) == 1  # same output as the last build
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: (out.write_text("geo_id\nchurch:1\n"), ok)[1])
+    assert ds.geocode() == "" and len(calls) == 2
+
+
+def test_a_rebuild_that_failed_after_new_pins_is_retried_with_unchanged_output(tmp_path, monkeypatch):
+    # Review of e734ff1: comparing with the output before the run returned success on the
+    # second pull and the failed build was never redone.
+    out, calls, ok = _geocode_fixture(tmp_path, monkeypatch, ["", "dbt build failed", ""])
+    assert ds.geocode() == ""
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: (out.write_text("geo_id\nchurch:1\n"), ok)[1])
+    assert ds.geocode() == "dbt build failed" and len(calls) == 2
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)  # nothing new from Census
+    assert ds.geocode() == "" and len(calls) == 3
+    assert ds.geocode() == "" and len(calls) == 3
+
+
+def test_a_successful_rebuild_records_the_output_it_read(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "ROOT", tmp_path)
+    out = tmp_path / "analytics/exports/geocode_output.csv"
+    out.parent.mkdir(parents=True)
+    out.write_text("geo_id\n")
+    ok, bad = type("P", (), dict(returncode=0))(), type("P", (), dict(returncode=1))()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: bad if "build" in cmd else ok)
+    assert ds.rebuild() == "dbt build failed" and not ds.built_marker().exists()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)
+    assert ds.rebuild() == "" and ds.built_marker().read_text().strip() == f"{ds.sha256(out)}|unbound"
+
+
+def test_a_receipt_fixed_after_a_build_without_binding_rebuilds_with_the_same_output(tmp_path, monkeypatch):
+    # Review of 0b692bf: the output was replaced but the interrupted write left the old
+    # receipt. The next build finds no binding (no pins) and marks the output built. A
+    # later run republishes the same output with its receipt: the output bytes are the
+    # same, but the binding is new, so it must rebuild, or the pins stay missing.
+    import json
+    exports = tmp_path / "analytics/exports"
+    exports.mkdir(parents=True)
+    inp, out, receipt = exports / "geocode_input_aaaa.csv", exports / "geocode_output.csv", \
+        exports / "geocode_reconciliation.json"
+    inp.write_text("geo_id,street,city,state,zip\ncandidate:X-1,100 Main St,San Mateo,CA,94401\n")
+    out.write_text("geo_id,status,latitude,longitude\ncandidate:X-1,ok,37.5,-122.3\n")
+    receipt.write_text(json.dumps({"input_sha256": ds.sha256(inp), "output_sha256": "0" * 64}))  # stale
+    monkeypatch.setattr(ds, "ROOT", tmp_path)
+    calls = []
+    monkeypatch.setattr(ds, "rebuild", lambda: calls.append(ds.geocode_build_key()) or "")
+    ok = type("P", (), dict(returncode=0))()
+    monkeypatch.setattr(ds.subprocess, "run", lambda cmd, **kw: ok)
+    assert ds.geocode() == "" and calls == [f"{ds.sha256(out)}|unbound"]
+    receipt.write_text(json.dumps({"input_sha256": ds.sha256(inp), "output_sha256": ds.sha256(out)}))  # fixed
+    assert ds.geocode() == "" and calls[-1] == f"{ds.sha256(out)}|{ds.sha256(inp)}" and len(calls) == 2
+    assert ds.geocode() == "" and len(calls) == 2  # built with this binding: nothing to do
 
 
 def test_a_failed_recheck_leaves_the_delivery_to_be_retried(queue, monkeypatch):
@@ -356,3 +441,86 @@ def test_out_of_scope_by_name_needs_a_note_not_a_url(tmp_path, monkeypatch):
     assert ds.check_leads("WP-0003", out, None) == []
     _outcomes(out, [dict(lead_id="WP0003-001", outcome="closed", notes="merged, per a podcast")])
     assert "outcome closed needs evidence_url" in "\n".join(ds.check_leads("WP-0003", out, None))
+
+
+# --- Re-check packages: every unresolved new congregation, one row back per ref ----------
+
+def test_recheck_selects_unresolved_new_congregations_closest_to_the_map_first(tmp_path):
+    cols = ["candidate_id", "task", "candidate_name", "city", "status", "street_address", "official_url",
+            "duplicate_of_church_id", "possible_match_church_id", "possible_match_candidate_id"]
+    rows = [dict(candidate_id="A-1", task="D", status="unresolved", street_address="", official_url=""),
+            dict(candidate_id="A-2", task="D", status="unresolved", street_address="1 Main", official_url="x"),
+            dict(candidate_id="A-3", task="D", status="active", street_address="1 Main", official_url="x"),
+            dict(candidate_id="A-4", task="D", status="unresolved", duplicate_of_church_id="7"),
+            dict(candidate_id="A-5", task="D", status="unresolved", possible_match_church_id="8"),
+            dict(candidate_id="A-6", task="D", status="unresolved", possible_match_candidate_id="C-1"),
+            dict(candidate_id="A-7", task="F", status="unresolved", street_address="", official_url="y")]
+    with (tmp_path / "muse_candidates.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=cols, restval="")
+        w.writeheader()
+        w.writerows(rows)
+    out = ds.recheck_rows(tmp_path)
+    assert [r["candidate_ref"] for r in out] == ["A-2", "A-7", "A-1"]
+    assert out[1]["origin_task"] == "F" and list(out[0]) == ds.RECHECK_INPUT_COLS
+
+
+def test_recheck_return_needs_exactly_the_input_refs_under_this_task(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    (tmp_path / "WP-0014").mkdir()
+    ds.write_csv(tmp_path / "WP-0014" / "recheck_input.csv", ds.RECHECK_INPUT_COLS,
+                 [dict(candidate_ref="D-001"), dict(candidate_ref="WP0006-001")])
+    out = tmp_path / "new_candidates.csv"
+    ds.write_csv(out, ["candidate_ref", "task"], [dict(candidate_ref="D-001", task="WP0014"),
+                                                   dict(candidate_ref="WP0006-001", task="WP0014")])
+    assert ds.check_recheck("WP-0014", out) == []
+    ds.write_csv(out, ["candidate_ref", "task"], [dict(candidate_ref="D-001", task="D"),
+                                                   dict(candidate_ref="D-001", task="WP0014"),
+                                                   dict(candidate_ref="WP0014-001", task="WP0014")])
+    errs = "\n".join(ds.check_recheck("WP-0014", out))
+    assert "D-001: 2 rows" in errs and "WP0006-001: no row" in errs
+    assert "WP0014-001: not in recheck_input.csv" in errs and "task='D', want WP0014" in errs
+
+
+def test_an_interrupted_publication_then_a_delivery_still_ends_with_the_pins(queue, tmp_path, monkeypatch):
+    # Review of 0b692bf, end to end through cmd_pull(): publish() was interrupted (new
+    # output, stale receipt). The pull first rebuilds for the delivered package, which
+    # correctly finds no binding (no pins). The Census step then repairs the receipt with
+    # byte-identical output. The pull must rebuild again and end with the pin in the seed.
+    import json
+    spec = importlib.util.spec_from_file_location(
+        "build_seeds_for_pull_test", Path(__file__).resolve().parents[1] / "analytics/scripts/build_seeds.py")
+    bs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bs)
+    drive, ret, wp = queue
+    exports, seeds = tmp_path / "analytics/exports", tmp_path / "seeds"
+    exports.mkdir(parents=True)
+    seeds.mkdir()
+    monkeypatch.setattr(bs, "EXPORTS", exports)
+    monkeypatch.setattr(bs, "SEEDS", seeds)
+    inp, out, receipt = exports / "geocode_input_aaaa.csv", exports / "geocode_output.csv", \
+        exports / "geocode_reconciliation.json"
+    inp.write_text("geo_id,street,city,state,zip\ncandidate:X-1,100 Main St,San Mateo,CA,94401\n")
+    out.write_text("geo_id,status,latitude,longitude\ncandidate:X-1,ok,37.5,-122.3\n")
+    receipt.write_text(json.dumps({"input_sha256": ds.sha256(inp), "output_sha256": "0" * 64}))  # torn write
+
+    seed_builds = []
+    ok = type("P", (), dict(returncode=0, stdout="", stderr=""))()
+
+    def run(cmd, **kw):
+        cmd = [str(c) for c in cmd]
+        if any(c.endswith("build_seeds.py") for c in cmd):
+            bs.build_geocodes()
+            seed_builds.append(len(list(csv.DictReader((seeds / "geocodes.csv").open(encoding="utf-8")))))
+        elif any(c.endswith("geocode_incremental.py") for c in cmd):  # republishes: same output, its receipt
+            receipt.write_text(json.dumps({"input_sha256": ds.sha256(inp), "output_sha256": ds.sha256(out)}))
+        return ok
+    monkeypatch.setattr(ds, "ROOT", tmp_path)
+    monkeypatch.setattr(ds.subprocess, "run", run)
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))
+    monkeypatch.setattr(ds, "sync_reference", lambda: None)
+    _deliver(wp)
+    args = type("A", (), dict(again=[], no_recheck=True, no_build=False, no_geocode=False))
+    assert ds.cmd_pull(args) == 0
+    assert ds.load_status()["WP-0001"]["state"] == "ingested"
+    assert seed_builds == [0, 1]  # the package's build had no binding; the receipt repair rebuilt with the pin
+    assert ds.cmd_pull(args) == 0 and seed_builds == [0, 1]  # nothing changed since: no rebuild

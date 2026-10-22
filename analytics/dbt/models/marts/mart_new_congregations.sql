@@ -1,5 +1,6 @@
 -- Grain: one congregation Muse found that the directory lacks (duplicates and
--- enrichments of known congregations excluded). profile_ready still needs geocoding.
+-- enrichments of known congregations excluded). map_ready = profile_ready plus a
+-- Census pin for its current address.
 select
     candidate_id,
     task,
@@ -20,7 +21,10 @@ select
     muse_status,
     found_via,
     address_displayable,
+    latitude,
+    longitude,
     profile_ready,
+    map_ready,
     needs_geocode
 from {{ ref('int_candidate_readiness') }}
 where is_new_congregation

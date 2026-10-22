@@ -2,6 +2,13 @@
 
 **This file replaces `BRIEF_v2.md` and `BRIEF_FB_pass.md`.** It holds every rule in one place. Rules that are new in v3 are marked **[v3]**.
 
+> **v3.3 (2026-10-21, after WP-0010). Search deeper; applies from WP-0011.** Marked **[v3.3]**:
+> - Reading the homepage is not enough. Before a row may be `unresolved`, or a fact left blank, you must search the pages where churches put dates and details: events, news, sermons, bulletins, and the church's Facebook Page (A1–A6).
+> - `unresolved` rows must say in `notes` exactly what was checked (A4). Our validator rejects them otherwise.
+> - A copyright year is never evidence of activity. `status_excerpt` must contain the date (A3).
+> - A row with `facebook_page_url` needs `fb_last_post_date` (F4).
+> - Why: in WP-0001 to WP-0010, 433 of 624 congregations came back `unresolved`, almost all because "the fetched homepage has no date". Facebook was never opened. Those rows can't go on the map.
+>
 > **v3.2 (2026-10-20, after round 4).** Four clarifications, marked **[v3.2]**:
 > - `candidate_ref`s are permanent: never renumber; a removed row leaves a gap (D11).
 > - The service excerpt must contain the service **times**; join two verbatim pieces with " … " if the languages are stated elsewhere.
@@ -71,11 +78,29 @@ Rules for this task:
 - **Exact page.** `<group>_source_url` is the exact page or document (or Facebook post permalink, or the Page's About URL) that contains the excerpt. Never a bare homepage when the text is on a sub-page, and never truncated.
 - **Source age.** Prefer sources dated within 24 months. If you must use an older one, give its date in `notes`. **Service times and children's programs from a source older than 12 months:** report them, and put the source date in `notes`.
 - **Conflicts.** When sources disagree, report the more recent value. Put the other value and both dates in `notes`.
-- **Freshness.** If the newest evidence from any source is older than 12 months, use `status = unresolved`, not `active`.
+- **Freshness.** If the newest evidence from any source is older than 12 months, use `status = unresolved`, not `active`. **[v3.3]** "No date on the homepage" is not a reason for `unresolved`: search as A1–A4 require first.
+
+## Activity and missing facts (A) [v3.3]
+
+Every row, discovery or verification, goes through this search. It is required, not optional.
+
+- **A1. Pages to open on the church's own site** (follow the menu, the footer, the sitemap, or the site's search):
+  - **events**: events, calendar, "what's happening", upcoming;
+  - **news**: news, blog, announcements, newsletter, pastor's letter;
+  - **sermons**: sermons, messages, media, podcast, watch, livestream (the newest sermon date);
+  - **bulletin**: weekly bulletin or worship folder (PDFs count, including ones on the parish's bulletin host such as ecatholic or discovermass);
+  - **visit**: plan your visit, contact, about, ministries, children/kids/family.
+- **A2. The church's Facebook Page** (F1), always, whether or not the site links one. If the site links none, search Facebook for the church name and city. Open the Page's own newest posts, its events, and its About section. If you can't open Facebook at all, say so in `run_log.md` once and in each row's A4 note (`facebook=no access`).
+- **A3. Dated evidence** means a date tied to the congregation's activity: an event date, a sermon or video date, a bulletin date, a post date, a "posted on" or "updated" date on a news item. Not a copyright footer year, not a date in a URL alone. It must be within 12 months of `checked_at`. Cite that exact page as `status_source_url` and copy the date into `status_excerpt` verbatim (for example `Sunday, September 14, 2026 · Fall Kickoff Picnic`). A church video channel linked from its own site counts as `own_site` when the site links it; give the channel URL and the newest video's date.
+- **A4. `unresolved` only after A1 and A2 found nothing dated within 12 months.** Then `notes` must contain this line, with the URL you opened or `none` when the site has no such page:
+  `activity checked: events=<url|none>; news=<url|none>; sermons=<url|none>; bulletin=<url|none>; facebook=<url|none|no access>; newest date seen=<date|none>`
+  The validator rejects an `unresolved` row without it, or with any of the five keys missing.
+- **A5. The same pages fill missing facts.** Before leaving the address, service times, or children's program blank, look on the visit/contact page, the bulletin masthead, the Facebook About section and pinned posts, and the kids/family ministry page. An address seen only on a map or directory site is a lead (S rules): use it to find the church's own statement of it.
+- **A6. Depth over count.** The per-city caps are maximums, not targets. One row with dated activity, an address, and service times is worth more than three rows with only a name and a homepage. Budget about 8 minutes per discovered congregation.
 
 ## Facebook (F)
 
-- **F1.** You may use the linked Facebook account Yujun authorized, **read-only and public content only**: a Page's intro/About section, the Page's own posts, and public events created by the Page.
+- **F1.** **[v3.3] Use** the linked Facebook account Yujun authorized (required by A2), **read-only and public content only**: a Page's intro/About section, the Page's own posts, and public events created by the Page.
   - Never use friends-only content, private or closed groups, personal profiles, comments, reactions, follower or member lists, or Messenger.
   - If you can't tell whether something is public, skip it.
 - **F2.** No actions as the account: no likes, follows, joins, messages, comments, RSVPs, invites, or settings changes. Contact no one.
@@ -98,7 +123,7 @@ Rules for this task:
     - 29 rows had malformed stamps such as `16:508Z`;
     - 17 rows had times later than the moment the files reached us;
     - all 23 rows of `new_candidates_E` shared one stamp.
-- **D8.** Time box: about 10 minutes per verification row. For discovery, stop at the per-city cap.
+- **D8.** Time box: about 10 minutes per verification row. For discovery, stop at the per-city cap. **[v3.3]** About 8 minutes per discovered congregation (A6); the caps are maximums.
 - **D9.** Before reporting done, re-open each output file from disk. List each file's path, row count, and sha256 in the run log.
 - **[v3.2] D11.** A `candidate_ref` is permanent once delivered. If a row is merged or removed, leave its ref unused and say so in the run log. In round 4, CN-038 to CN-040 were renumbered after a merge, which breaks every reference to them.
 - **[v3] D10.** Use the **USPS city name** that matches the ZIP (e.g. "Los Altos" for a Loyola address in 94024). The ZIP must belong to that city.

@@ -1,6 +1,7 @@
 -- Grain: one candidate congregation (outside the directory). Same display rules as
--- churches (macro displayable). Candidates have no coordinates yet: a profile can
--- be complete, but a pin needs geocoding from its displayable address first.
+-- churches (macro displayable). Candidates have no coordinates of their own: a
+-- profile can be complete, but a pin needs a Census geocode of its current address
+-- (int_geocodes.pin_usable) before it can go on the map.
 with cand as (
     select * from {{ ref('stg_muse_candidates') }}
 ),
@@ -17,9 +18,18 @@ checks as (
 asof as (
     select '{{ var("as_of_date") }}'::date as as_of_date
 ),
+pins as (
+    select subject_id as candidate_id, geocode_status, pin_usable, latitude, longitude
+    from {{ ref('int_geocodes') }}
+    where subject_type = 'candidate'
+),
 joined as (
     select
         cand.*,
+        p.geocode_status,
+        coalesce(p.pin_usable, false)                                    as pin_usable,
+        case when p.pin_usable then p.latitude end                       as latitude,
+        case when p.pin_usable then p.longitude end                      as longitude,
         coalesce(cand.muse_status = 'active', false)                     as verified_active,
         coalesce(cand.fb_last_post_date >= a.as_of_date - 365, false)    as fb_page_fresh,
         coalesce(k.address_source_verified, false)                       as address_source_verified,
@@ -31,6 +41,7 @@ joined as (
         cand.facebook_page_url is not null and cand.fb_page_evidence is not null as fb_page_linkable
     from cand
     left join checks k using (candidate_id)
+    left join pins p using (candidate_id)
     cross join asof a
 ),
 rules as (
@@ -41,15 +52,21 @@ rules as (
         {{ displayable('service_times is not null',  'service_source_type', 'service_source_verified', 'verified_active', 'fb_page_fresh') }} as service_displayable,
         {{ displayable('kids_program is not null',   'kids_source_type',    'kids_source_verified',    'verified_active', 'fb_page_fresh') }} as kids_displayable
     from joined
+),
+ready as (
+    select
+        *,
+        -- Ready for a profile: new, active, a displayable address and a way to reach them.
+        is_new_congregation
+            and verified_active
+            and address_displayable
+            and coalesce(address_is_worship_location, '') = 'yes'   -- where they meet, not an office
+            and (website_verified or (fb_page_linkable and fb_page_fresh) or phone_displayable)
+                                                                         as profile_ready
+    from rules
 )
 select
     *,
-    -- Ready for a profile once geocoded: new, active, a displayable address and a way to reach them.
-    is_new_congregation
-        and verified_active
-        and address_displayable
-        and coalesce(address_is_worship_location, '') = 'yes'   -- where they meet, not an office
-        and (website_verified or (fb_page_linkable and fb_page_fresh) or phone_displayable)
-                                                                         as profile_ready,
-    true                                                                 as needs_geocode
-from rules
+    profile_ready and pin_usable                                         as map_ready,
+    not pin_usable                                                       as needs_geocode
+from ready

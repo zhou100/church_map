@@ -128,6 +128,12 @@ seeds:
       +column_types: {keep_id: bigint, drop_id: bigint, score: double precision}
     fact_holds:
       +column_types: {church_id: bigint}
+    geocodes:
+      +column_types: {geo_id: text, subject_type: text, subject_id: text, status: text,
+                      latitude: double precision, longitude: double precision, match_type: text,
+                      matched_address: text, tiger_line_id: text, side: text,
+                      distance_from_current_pin_m: double precision, geocoded_at: timestamptz,
+                      geocoded_street: text, geocoded_city: text, geocoded_zip: text, input_sha256: text}
     source_checks:
       +column_types: {subject_type: text, subject_id: text, fact_group: text, verdict: text,
                       http_status: text, match_mode: text, checked_at: timestamptz, carried_over: boolean}

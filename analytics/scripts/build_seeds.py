@@ -16,6 +16,9 @@ output-reuse terms are open (plan §12).
                         whose fact fingerprint no longer matches the row is "stale"
   quality_reviews.csv   the owner's blind audit, scored against Muse's answers
   dedup_candidates.csv  May dedup report (OSM duplicate pairs)
+  geocodes.csv          Census pins from analytics/exports/geocode_output.csv, each with
+                        the address it was geocoded from (the input whose sha256 the
+                        run recorded), so dbt can tell when the record has moved on
 
 Static seeds (denomination_scope.csv, fact_holds.csv) are hand-maintained.
 
@@ -30,6 +33,8 @@ from __future__ import annotations
 import argparse
 from datetime import datetime, timedelta
 import csv
+import hashlib
+import json
 import re
 import sys
 from pathlib import Path
@@ -37,6 +42,7 @@ from pathlib import Path
 ROOT = Path(__file__).resolve().parents[2]
 SEEDS = ROOT / "analytics" / "dbt" / "seeds"
 HANDOFF = ROOT / "muse_handoff"
+EXPORTS = ROOT / "analytics" / "exports"  # geocoding files (gitignored)
 
 sys.path.insert(0, str(HANDOFF))
 sys.path.insert(0, str(Path(__file__).resolve().parent))
@@ -146,7 +152,9 @@ CAND_COLS = [
 ]
 
 # Duplicates we established that Muse did not mark (plan §6: B outcome, CN outcome).
-CANDIDATE_DUPLICATES = {"CN-025": "78022"}
+# C-030 and C-064: same name, address and website as a directory church; found when
+# their Census pins landed on that church's pin (dbt assert_new_congregations_are_not_in_the_directory).
+CANDIDATE_DUPLICATES = {"CN-025": "78022", "C-030": "76688", "C-064": "77437"}
 CANDIDATE_DUPLICATES_BY_NAME = {("B", "Bridge City Church"): "76692"}
 
 LANGUAGE_NAMES = {
@@ -413,6 +421,10 @@ def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None =
                 for g, fp in raw_fingerprints(r, GROUPS).items():
                     fps[(cid, g)] = fp
                 r = {**r, "candidate_id": cid, "task": r.get("task") or task, "format": "v3"}
+                # A work package that re-delivers a ref is a re-check (refs are permanent, D11):
+                # the region/round the candidate came from stays. Task E's rebuild of A/B is a pass of its own.
+                if cid in current and re.match(r"WP\d{4}$", task):
+                    r["task"] = current[cid]["task"]
             else:
                 cid = f"{task}-{i:02d}"
                 release(used, "candidate", cid)
@@ -680,6 +692,57 @@ def build_reviews() -> None:
                                   "muse_value", "verdict", "evidence_url", "reviewer", "reviewed_on"], out)
 
 
+GEOCODE_COLS = ["geo_id", "subject_type", "subject_id", "status", "latitude", "longitude", "match_type",
+                "matched_address", "tiger_line_id", "side", "distance_from_current_pin_m", "geocoded_at",
+                "geocoded_street", "geocoded_city", "geocoded_zip", "input_sha256"]
+
+
+def _sha256(path: Path) -> str:
+    return hashlib.sha256(path.read_bytes()).hexdigest()
+
+
+def geocode_binding(exports: Path) -> tuple[str, Path | None]:
+    """(output sha256, the input file it is bound to, or None). The input is the one
+    whose sha256 the receipt records, and only if the receipt names this exact output.
+    A receipt for another output (an interrupted write) proves nothing about this one;
+    the batch metadata authenticates its raw response, not the output. drive_sync keys
+    its "already built" marker on this pair, so fixing only the receipt still rebuilds."""
+    output, recon = exports / "geocode_output.csv", exports / "geocode_reconciliation.json"
+    if not output.exists():
+        return "", None
+    out_sha, digest = _sha256(output), None
+    if recon.exists():
+        receipt = json.loads(recon.read_text(encoding="utf-8"))
+        if receipt.get("output_sha256") == out_sha:
+            digest = receipt.get("input_sha256")
+    source = next((p for p in sorted(exports.glob("geocode_input*.csv")) if digest and _sha256(p) == digest), None)
+    return out_sha, source
+
+
+def build_geocodes() -> None:
+    """Census pins, each bound to the address it was geocoded from (geocode_binding).
+    No verified binding, no pins."""
+    rows = []
+    output = EXPORTS / "geocode_output.csv"
+    _, source = geocode_binding(EXPORTS)
+    digest = _sha256(source) if source else None
+    if output.exists() and source is None:
+        print("  WARNING: geocode_output.csv has no receipt naming it and its input; no pins used")
+    if source is not None:
+        with source.open(encoding="utf-8-sig") as f:
+            asked = {r["geo_id"]: r for r in csv.DictReader(f)}
+        with output.open(encoding="utf-8-sig") as f:
+            for r in csv.DictReader(f):
+                a = asked.get(r["geo_id"])
+                if a is None:
+                    continue
+                subject_type, subject_id = r["geo_id"].split(":", 1)
+                rows.append({**r, "subject_type": subject_type, "subject_id": subject_id,
+                             "geocoded_street": a["street"], "geocoded_city": a["city"],
+                             "geocoded_zip": a["zip"], "input_sha256": digest})
+    write("geocodes.csv", GEOCODE_COLS, rows)
+
+
 def build_dedup() -> None:
     with (ROOT / "dedup_report.csv").open(encoding="utf-8") as f:
         rows = list(csv.DictReader(f))
@@ -707,6 +770,7 @@ def main() -> None:
               f"ask again: {', '.join(f'{t}:{i}' for t, i in sorted(STALE_W))}")
     build_reviews()
     build_dedup()
+    build_geocodes()
 
 
 if __name__ == "__main__":

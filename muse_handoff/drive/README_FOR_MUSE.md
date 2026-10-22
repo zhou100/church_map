@@ -2,7 +2,7 @@
 
 This folder is a work queue. We put work packages in `outbox/`. You do them and put the results in `returns/`. Nobody needs to send a message for work to move: we check this folder several times a day.
 
-**All research rules are in `reference/BRIEF_v3.md` (v3.2) and still apply.** This file covers only how work moves through the folder.
+**All research rules are in `reference/BRIEF_v3.md` (v3.3) and still apply.** v3.3 makes the deeper search in its section A required: events, news, sermons, bulletins and the church's Facebook Page, before any row is `unresolved`. This file covers only how work moves through the folder.
 
 ## Who writes where
 
