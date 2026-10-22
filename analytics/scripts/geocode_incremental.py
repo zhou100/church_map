@@ -29,6 +29,7 @@ import urllib.request
 
 from geocode_census import EXPORTS, FIELDS, classify, fetch, validate_clusters
 from geocode_census import STREET_DIRECTION, complete_street_key
+from muse_handoff.validate_returns import UNIT_WORDS, street_tokens
 from review_geocodes_census import EVIDENCE, census_table, competing_ranges
 
 LEDGER = EXPORTS / "geocode_ledger.csv"
@@ -151,8 +152,8 @@ def tiger_file(kind: str, county: str, fetch_allowed: bool) -> Path | None:
     return path
 
 
-def county_tables(county: str, fetch_allowed: bool, cache: dict) -> tuple[dict, list] | None:
-    """(TLID -> every name on it, every address range) for one California county."""
+def county_tables(county: str, fetch_allowed: bool, cache: dict) -> tuple[dict, list, dict] | None:
+    """(TLID -> every name on it, every address range, {file: sha256}) for one county."""
     if county not in cache:
         addr, feat = tiger_file("addr", county, fetch_allowed), tiger_file("featnames", county, fetch_allowed)
         if not (addr and feat):
@@ -160,32 +161,61 @@ def county_tables(county: str, fetch_allowed: bool, cache: dict) -> tuple[dict, 
         names: dict[str, list[str]] = {}
         for r in census_table(feat):
             names.setdefault(r["TLID"], []).append(r["FULLNAME"])
-        cache[county] = (names, list(census_table(addr)))
+        files = {p.name: json.loads(p.with_suffix(".metadata.json").read_text(encoding="utf-8"))["sha256"]
+                 for p in (addr, feat)}
+        cache[county] = (names, list(census_table(addr)), files)
     return cache[county]
 
 
-def prove_direction(entry: dict, raw: list[str], tables: tuple[dict, list]) -> tuple[bool, dict]:
+def stated_directions(street: str) -> set[str]:
+    """Every direction the street states, before the name ("N Main St") or after the
+    suffix ("Main St S"), up to a unit word. street_key stops at the suffix, so it can't
+    see a post-direction."""
+    directions, out = set(STREET_DIRECTION.values()), set()
+    for tok in street_tokens(street)[1:]:
+        if tok in UNIT_WORDS:
+            break
+        if tok in directions:
+            out.add(tok.upper())
+    return out
+
+
+def prove_direction(entry: dict, raw: list[str], tables: tuple) -> tuple[bool, dict]:
     """The direction-only rule (assess_street, first applied in review_geocodes_census):
     Census's ZIP equals the input ZIP, and in the county's complete ranges the matched
     segment is the only one in that ZIP covering this house number for this street name
     in any direction. Then no competing N/S (E/W) segment exists."""
     census_zip = raw[4].rsplit(",", 1)[-1].strip()
     input_zip = (entry["zip"] or "").strip()[:5]
-    found = competing_ranges(entry["street"], input_zip, *tables) if census_zip == input_zip else []
+    # competing_ranges compares numeric house numbers with TIGER's numeric ranges; a
+    # "306A" can't be placed in a range that way, so it stays needs_review.
+    house = (complete_street_key(entry["street"]) or ("",))[0]
+    numeric = house.isdigit()
+    found = competing_ranges(entry["street"], input_zip, *tables[:2]) if census_zip == input_zip and numeric else []
     tlids = sorted({f["range"]["TLID"] for f in found})
     # Only a direction one side leaves out is settled here. "271 W Edmundson" against
-    # "271 E EDMUNDSON" is two stated directions that disagree: the source or the map is
-    # wrong, and a unique segment doesn't say which. That stays a person's call.
-    directions = set(STREET_DIRECTION.values())
-    stated = lambda street: {t.upper() for t in (complete_street_key(street) or ("", ()))[1] if t in directions}
-    said, census = stated(entry["street"]), stated(raw[4].split(",")[0])
+    # "271 E EDMUNDSON" (or "100 N Main St" against "100 MAIN ST S") is two stated
+    # directions that disagree: the source or the map is wrong, and a unique segment
+    # doesn't say which. That stays a person's call.
+    said, census = stated_directions(entry["street"]), stated_directions(raw[4].split(",")[0])
     contradicts = bool(said and census and said != census)
-    proven = census_zip == input_zip and tlids == [raw[6]] and not contradicts
+    proven = census_zip == input_zip and numeric and tlids == [raw[6]] and not contradicts
     return proven, {"county": f"06{raw[9]}", "census_zip": census_zip, "input_zip": input_zip,
+                    "house_number": house, "house_number_supported": numeric,
                     "input_direction": sorted(said), "census_direction": sorted(census), "contradicts": contradicts,
                     "matched_tlid": raw[6], "segments_covering_house": tlids,
                     "ranges": [{"TLID": f["range"]["TLID"], "FROMHN": f["range"]["FROMHN"], "TOHN": f["range"]["TOHN"],
                                 "ZIP": f["range"]["ZIP"], "names": f["names"]} for f in found]}
+
+
+def forget_reviews(raw_name: str) -> None:
+    """Drop the saved direction reviews of rows from one Census batch."""
+    if not DIRECTION_REVIEWS.exists():
+        return
+    reviews = json.loads(DIRECTION_REVIEWS.read_text(encoding="utf-8"))
+    kept = {k: v for k, v in reviews.items() if v.get("raw_file") != raw_name}
+    if len(kept) != len(reviews):
+        DIRECTION_REVIEWS.write_text(json.dumps(kept, indent=2) + "\n", encoding="utf-8")
 
 
 def review_directions(rows: list[dict], ledger: list[dict], fetch_allowed: bool) -> list[dict]:
@@ -206,9 +236,7 @@ def review_directions(rows: list[dict], ledger: list[dict], fetch_allowed: bool)
         if tables is None:
             continue  # no cached ranges and no --fetch: try again on a fetching run
         proven, evidence = prove_direction(entry, raw, tables)
-        files = {p.name: json.loads(p.with_suffix(".metadata.json").read_text(encoding="utf-8"))["sha256"]
-                 for p in (EVIDENCE / f"tl_{TIGER_YEAR}_06{raw[9]}_addr.zip", EVIDENCE / f"tl_{TIGER_YEAR}_06{raw[9]}_featnames.zip")}
-        reviews[rk] = {**evidence, "proven": proven, "evidence_files": files, "raw_file": entry["source"],
+        reviews[rk] = {**evidence, "proven": proven, "evidence_files": tables[2], "raw_file": entry["source"],
                        "reviewed_at": dt.datetime.now(dt.timezone.utc).isoformat(timespec="seconds")}
         ranges = "; ".join(f"{r['TLID']} {r['FROMHN']}-{r['TOHN']} ({', '.join(r['names'])})" for r in evidence["ranges"]) or "none"
         if proven:
@@ -219,6 +247,8 @@ def review_directions(rows: list[dict], ledger: list[dict], fetch_allowed: bool)
         else:
             out = {k2: entry[k2] for k2 in FIELDS}
             why = ("Census ZIP differs from the input ZIP" if evidence["census_zip"] != evidence["input_zip"] else
+                   f"house number {evidence['house_number']!r} can't be compared with TIGER's numeric ranges"
+                   if not evidence["house_number_supported"] else
                    f"the input says {'/'.join(evidence['input_direction'])} and Census says "
                    f"{'/'.join(evidence['census_direction'])} ({ranges})" if evidence["contradicts"] else
                    f"segments covering the house in ZIP {evidence['input_zip']}: {ranges}")
@@ -267,6 +297,9 @@ def main() -> int:
                     ask.update({k: current[entry["geo_id"]][k] for k in ("current_lat", "current_lon")})
                 ledger[i] = {**entry, **classify(ask, raw[entry["geo_id"]], meta["geocoded_at"])}
         write_csv(LEDGER, LEDGER_COLS, ledger)
+        # classify() ran without direction_proven, so this batch's direction proofs no
+        # longer show in the ledger: forget their reviews and let review_directions redo them.
+        forget_reviews(raw_path.name)
     known = {key(r): r for r in ledger}
     pending = [r for r in rows if key(r) not in known]
     print(f"{input_path.name}: {len(rows)} rows, {len(rows) - len(pending)} with a result, {len(pending)} pending")
