@@ -443,6 +443,16 @@ def test_out_of_scope_by_name_needs_a_note_not_a_url(tmp_path, monkeypatch):
     assert "outcome closed needs evidence_url" in "\n".join(ds.check_leads("WP-0003", out, None))
 
 
+
+def test_a_lead_outcome_cannot_rest_on_a_directory_listing(tmp_path, monkeypatch):
+    # Brief S5: a churchfinder listing doesn't show a congregation meets today.
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    _leads_pkg(tmp_path, n=1)
+    out = tmp_path / "o.csv"
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="closed",
+                         evidence_url="https://www.churchfinder.com/churches/ca/oakland/grace")])
+    assert "evidence_url is a church directory" in "\n".join(ds.check_leads("WP-0003", out, None))
+
 # --- Re-check packages: every unresolved new congregation, one row back per ref ----------
 
 def test_recheck_selects_unresolved_new_congregations_closest_to_the_map_first(tmp_path):

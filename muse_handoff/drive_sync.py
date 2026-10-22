@@ -541,6 +541,8 @@ def check_recheck(wp_id: str, cands: Path) -> list[str]:
 
 
 def check_leads(wp_id: str, outcomes: Path, cands: Path | None) -> list[str]:
+    sys.path.insert(0, str(HANDOFF))
+    from validate_returns import is_directory_url  # noqa: PLC0415
     """Every lead exactly once with a known outcome; every active lead has a candidate row."""
     leads = {r["lead_id"] for r in read_csv(OUTBOX / wp_id / "leads.csv")}
     rows = read_csv(outcomes)
@@ -560,6 +562,8 @@ def check_leads(wp_id: str, outcomes: Path, cands: Path | None) -> list[str]:
             errs.append(f"ERROR {lid}: outcome active but no new_candidates row with candidate_ref {lid}")
         if outcome == "already_known" and not r.get("known_id"):
             errs.append(f"ERROR {lid}: outcome already_known needs known_id")
+        if is_directory_url(r.get("evidence_url", "")):
+            errs.append(f"ERROR {lid}: evidence_url is a church directory (brief S5: locate-only); cite the church's own page")
         if outcome in ("active", "closed", "not_a_congregation") and not r.get("evidence_url"):
             fallback = " (if no source can be found again, the outcome is no_trace)" if outcome == "closed" else ""
             errs.append(f"ERROR {lid}: outcome {outcome} needs evidence_url{fallback}")

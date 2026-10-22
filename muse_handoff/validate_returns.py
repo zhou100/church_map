@@ -573,6 +573,9 @@ def check_common(where: str, r: dict, received_at: datetime | None) -> None:
             err(where, f"{col} contains an email address")
         if val and col.endswith("excerpt") and TOOL_OUTPUT_RE.search(val):
             err(where, f"{col} reads like search/places-tool output, not text from the cited page")
+        # Every format that cites a source (results, candidates v2/v3, service fixes) passes here.
+        if val and col.endswith("source_url") and is_directory_url(val):
+            err(where, f"{col} is a church directory (brief S5: locate-only); cite the church's own page")
         if val and col.endswith("source_url") and any(h in val for h in THIRD_PARTY_HOSTS):
             warn(where, f"{col} is a third-party listing ({urlparse(val).netloc})")
     if r.get("official_url") and is_fb(r["official_url"]):
@@ -612,8 +615,6 @@ def check_fact_groups(w: str, r: dict) -> None:
             err(w, f"{g} fact without {', '.join(missing)}")
         if r[f"{g}_source_type"] and r[f"{g}_source_type"] not in ENUMS["source_type"]:
             err(w, f"{g}_source_type={r[f'{g}_source_type']!r} not allowed")
-        if is_directory_url(r[f"{g}_source_url"]):
-            err(w, f"{g}_source_url is a church directory (brief S5: locate-only); cite the church's own page")
         if r[f"{g}_source_url"] and urlparse(r[f"{g}_source_url"]).path in ("", "/") \
                 and r[f"{g}_source_type"] == "denomination":
             warn(w, f"{g}_source_url is a bare homepage; cannot locate the cited listing")
