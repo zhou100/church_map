@@ -20,6 +20,55 @@ from psycopg.rows import dict_row
 
 # ----- Churches ------------------------------------------------------------
 
+# How much a newcomer can learn about a church before a first visit: what
+# people say, when to go, and what the church says about itself. The landing
+# page asks for a city in this order and takes its "Start here" picks from the
+# top, so the whole ranking (score, then distance) has to happen here, before
+# LIMIT; frontend/src/churchProfile.js only drops rows it won't recommend.
+STARTING_POINT_SCORE = """(
+      CASE WHEN COUNT(r.review_id) > 0 THEN 3 ELSE 0 END
+    + CASE WHEN BTRIM(COALESCE(c.service_times, '')) <> '' THEN 2 ELSE 0 END
+    + CASE WHEN BTRIM(COALESCE(c.website_summary, '')) <> '' THEN 2 ELSE 0 END
+    + CASE WHEN jsonb_typeof(c.extracted_tags->'service_languages') = 'array'
+            AND jsonb_array_length(c.extracted_tags->'service_languages') > 0 THEN 1 ELSE 0 END
+    + CASE WHEN COALESCE(c.extracted_tags->>'worship_style', '') <> '' THEN 1 ELSE 0 END
+    + CASE WHEN jsonb_typeof(c.extracted_tags->'programs') = 'array'
+            AND jsonb_array_length(c.extracted_tags->'programs') > 0 THEN 1 ELSE 0 END
+    + CASE WHEN COALESCE(c.extracted_tags->>'theological_stance', '') <> ''
+            OR (jsonb_typeof(c.extracted_tags->'statement_of_faith') = 'array'
+                AND jsonb_array_length(c.extracted_tags->'statement_of_faith') > 0)
+           THEN 1 ELSE 0 END
+)"""
+
+
+
+def _city_median(axis: str) -> str:
+    """Median church latitude or longitude in the listed city: the middle of
+    the city, where ties between equally documented churches go. Uncorrelated,
+    so Postgres evaluates it once per query. Binds (city, state)."""
+    return f"""(
+            SELECT percentile_disc(0.5) WITHIN GROUP (ORDER BY m.{axis})
+              FROM churches m
+             WHERE LOWER(m.city) = LOWER(%s) AND LOWER(m.state) = LOWER(%s)
+               AND m.latitude IS NOT NULL AND m.longitude IS NOT NULL
+        )"""
+
+
+# ORDER BY clauses for a city listing, keyed by the `sort` query param, with
+# how many (city, state) pairs each binds. Literal SQL only; the router
+# rejects any key not in this map.
+CITY_ORDERINGS = {
+    "default": ("""
+        (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
+        review_count DESC,
+        c.name ASC""", 0),
+    "starting_point": (f"""
+        {STARTING_POINT_SCORE} DESC,
+        SQRT(POWER(c.latitude - {_city_median("latitude")}, 2)
+           + POWER(c.longitude - {_city_median("longitude")}, 2)) ASC NULLS LAST,
+        c.name ASC""", 2),
+}
+
 # `_DIM_QUERY` produces the fields routers expect, including review aggregates.
 # LEFT JOIN keeps churches with zero reviews; AVG returns NULL when no rows
 # exist on the right side, matching the SQLite behavior the routers already
@@ -142,20 +191,20 @@ class ChurchRepository:
             return await cur.fetchall()
 
     async def list_by_city_state(
-        self, city: str, state: str, limit: int, offset: int, **filters
+        self, city: str, state: str, limit: int, offset: int,
+        sort: str = "default", **filters
     ) -> list[dict]:
         where, fparams = extracted_filters(**filters)
+        order_by, city_pairs = CITY_ORDERINGS[sort]
         sql = _DIM_SELECT + f"""
             WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s){where}
             GROUP BY c.church_id
-            ORDER BY
-                (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
-                review_count DESC,
-                c.name ASC
+            ORDER BY {order_by}
             LIMIT %s OFFSET %s
         """
+        order_params = (city, state) * city_pairs
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, (city, state, *fparams, limit, offset))
+            await cur.execute(sql, (city, state, *fparams, *order_params, limit, offset))
             return await cur.fetchall()
 
     async def search_by_name(

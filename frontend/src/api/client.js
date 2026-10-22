@@ -17,8 +17,9 @@ async function request(path, options = {}) {
   return response.json()
 }
 
-export function listChurches(search, { limit = 50, offset = 0 } = {}) {
+export function listChurches(search, { limit = 50, offset = 0, sort } = {}) {
   const params = new URLSearchParams({ limit: String(limit), offset: String(offset) })
+  if (sort) params.set('sort', sort)
   if (search.type === 'name') {
     params.set('name', search.name)
   } else {

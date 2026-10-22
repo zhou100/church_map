@@ -73,6 +73,7 @@ Four distinct types — never mix styles:
 
 ## Layout
 - **Approach:** Grid-disciplined with editorial touches on detail pages
+- **Landing page:** Map-first. The first screen is a live map of the visitor's last-searched or IP-detected city, with a floating search card (headline, `City, ST` input, "Use my location", and three "Start here" churches ranked by how much a newcomer can learn before visiting: reviews, service times, website summary, then extracted details, with ties going to the middle of the city; the API ranks the whole city before its row limit). Non-Christian houses of worship stay on the map but are never recommended. The map doesn't capture scroll-wheel zoom, so the page still scrolls past it. Editorial sections sit below the fold.
 - **Search page:** Full-viewport split-pane — list panel (380px fixed) + map panel (flex: 1). No page scroll — each panel scrolls independently.
 - **List panel cards:** Horizontal row layout (not grid) — left accent border (4–5px, denomination-coded) + body. No photo placeholder. Data is the hero.
 - **Detail page:** Max-width 720px, centered. Map strip at top (180–220px), content below.
@@ -126,3 +127,4 @@ The bars are a primary data feature — make them visible and beautiful.
 | 2026-07-27 | Identify website-enriched churches on result cards | Users need to know which cards open into richer detail; a compact sourced row preserves that signal without implying community consensus |
 | 2026-07-27 | Separate location and church-name search modes | Explicit modes make the search scope predictable; global name results include city/state to disambiguate churches |
 | 2026-07-27 | Make the ChurchMap wordmark return to default discovery | A persistent home action gives users a reliable way to reset search and restore their detected location |
+| 2026-10-22 | Map-first landing page | Back to the core job: someone new to a city should see real churches near them on the first screen, not a pitch. The search card stays readable on top of the map; explanation moves below the fold |
