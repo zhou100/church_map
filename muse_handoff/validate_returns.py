@@ -34,6 +34,16 @@ ACTIVITY_LINE_RE = re.compile(r"activity checked:(.*)", re.I)
 DATE_RE = re.compile(r"(?<!\d)20\d\d(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?!\d)"
                      r"|(?<!\d)\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)|(?<!\d)\d{1,2}/\d{1,2}(?!\d)"
                      r"|\d{1,2}\s*月\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}", re.I)
+# Brief v3.4 S5: multi-church directories are locate-only, never a fact's source.
+DIRECTORY_HOSTS = ("churchfinder.com", "oursweb.net", "church.org")
+LEAD_URL_RE = re.compile(r"lead:\s*https?://", re.I)
+
+
+def is_directory_url(url: str) -> bool:
+    host = urlparse(url or "").netloc.lower().split(":")[0]
+    return any(host == h or host.endswith("." + h) for h in DIRECTORY_HOSTS)
+
+
 COPYRIGHT_RE = re.compile(r"©|\(c\)\s*20\d\d|copyright", re.I)
 
 
@@ -70,7 +80,8 @@ ENUMS = {
     "address_is_worship_location": {"yes", "no", "unknown"},
     "pin_check": {"matches", "off", "unknown"},
     "match_confidence": {"high", "medium", "low"},
-    "found_via": {"fb_page_search", "fb_group_lead", "web_search", "denomination_directory", "host_church_site"},
+    "found_via": {"fb_page_search", "fb_group_lead", "web_search", "denomination_directory", "host_church_site",
+                  "church_directory"},
 }
 
 # ZIPs -> USPS city names for San Mateo County and the South Bay (a ZIP may serve several).
@@ -562,6 +573,9 @@ def check_common(where: str, r: dict, received_at: datetime | None) -> None:
             err(where, f"{col} contains an email address")
         if val and col.endswith("excerpt") and TOOL_OUTPUT_RE.search(val):
             err(where, f"{col} reads like search/places-tool output, not text from the cited page")
+        # Every format that cites a source (results, candidates v2/v3, service fixes) passes here.
+        if val and col.endswith("source_url") and is_directory_url(val):
+            err(where, f"{col} is a church directory (brief S5: locate-only); cite the church's own page")
         if val and col.endswith("source_url") and any(h in val for h in THIRD_PARTY_HOSTS):
             warn(where, f"{col} is a third-party listing ({urlparse(val).netloc})")
     if r.get("official_url") and is_fb(r["official_url"]):
@@ -709,6 +723,8 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
             err(w, f"task={r['task']!r} not allowed")
         if r["status"] and r["status"] not in ENUMS["candidate_status"]:
             err(w, f"status={r['status']!r} not allowed (candidates: active or unresolved)")
+        if r["found_via"] == "church_directory" and not LEAD_URL_RE.search(r["notes"]):
+            err(w, "found_via=church_directory without 'lead: <listing URL>' in notes (brief S5)")
         if r["found_via"] and r["found_via"] not in ENUMS["found_via"]:
             err(w, f"found_via={r['found_via']!r} not allowed")
         if r["match_confidence"] and r["match_confidence"] not in ENUMS["match_confidence"]:

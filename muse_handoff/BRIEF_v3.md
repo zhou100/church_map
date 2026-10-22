@@ -2,6 +2,11 @@
 
 **This file replaces `BRIEF_v2.md` and `BRIEF_FB_pass.md`.** It holds every rule in one place. Rules that are new in v3 are marked **[v3]**.
 
+> **v3.4 (2026-10-22, after WP-0019). Sweep the church directories; applies from WP-0020.** Marked **[v3.4]**:
+> - Discovery now starts from the multi-church directories (S5): the churchfinder.com city page and the church.oursweb.net search for every city in the package. Web search alone missed many congregations in big cities.
+> - A congregation found there has `found_via = church_directory`, with the listing URL in `notes` as `lead: <url>`. Directories are locate-only: every fact still comes from S1–S3, and section A still applies.
+> - `run_log.md` reports the sweep per city (D12). Our intake rejects a discovery package whose run log has no sweep.
+>
 > **v3.3 (2026-10-21, after WP-0010). Search deeper; applies from WP-0011.** Marked **[v3.3]**:
 > - Reading the homepage is not enough. Before a row may be `unresolved`, or a fact left blank, you must search the pages where churches put dates and details: events, news, sermons, bulletins, and the church's Facebook Page (A1–A6).
 > - `unresolved` rows must say in `notes` exactly what was checked (A4). Our validator rejects them otherwise.
@@ -67,6 +72,11 @@ Rules for this task:
 - **S2.** The congregation's own Facebook Page (rules F1–F5).
 - **S3.** Denomination or diocese directory page, including the directory pages of Chinese church associations and networks.
 - **S4.** Another official listing (government, nonprofit registry).
+- **[v3.4] S5. Church directories** list many congregations at once. They are **locate-only**, like map sites: use them to find congregations, never cite them as `<group>_source_url` or quote them in an excerpt. A detail seen there (an address, a time) goes in `notes` as a lead until the church's own source states it.
+  - **churchfinder.com:** one page per city, `https://www.churchfinder.com/churches/ca/<city>` (for example `/churches/ca/sacramento`; multi-word cities use hyphens, `/churches/ca/san-jose`). Open every page of the city's list. Its `/search/` path is closed to robots (N4): use the city pages.
+  - **church.oursweb.net (華人教會名錄):** search by city or address, and by the city's Chinese name if it has one (for example 洛杉磯, 舊金山, 聖荷西). Its `/html/` path is closed to robots.
+  - **church.org "Find a Church"** (`app.church.org/find-a-church`) works only with JavaScript. Use it if you can render pages; otherwise say so once in `run_log.md`.
+  - Other directories you meet (a denomination's finder is S3, not S5) may be used the same way.
 
 **Using the sources:**
 - **Locate-only.** The following may be used to find S1–S4, but never as a fact source or excerpt:
@@ -126,6 +136,12 @@ Every row, discovery or verification, goes through this search. It is required, 
 - **D8.** Time box: about 10 minutes per verification row. For discovery, stop at the per-city cap. **[v3.3]** About 8 minutes per discovered congregation (A6); the caps are maximums.
 - **D9.** Before reporting done, re-open each output file from disk. List each file's path, row count, and sha256 in the run log.
 - **[v3.2] D11.** A `candidate_ref` is permanent once delivered. If a row is merged or removed, leave its ref unused and say so in the run log. In round 4, CN-038 to CN-040 were renumbered after a merge, which breaks every reference to them.
+- **[v3.4] D12. Directory sweep (discovery packages).** For every city in the package, before web search:
+  1. go through the churchfinder.com city list and the church.oursweb.net results for that city;
+  2. compare each listed congregation with `known_congregations.csv` and your own rows (D4); skip the known ones;
+  3. research every new one as section A requires, until the city's cap is reached. A listing is not evidence that the church meets today: closed and moved churches stay listed for years.
+
+  Then search the web for what the directories missed. In `run_log.md`, report per city one line per directory: `<city> — churchfinder: listed N, already known K, reported R; oursweb: listed N, already known K, reported R` (and `cap reached` when it stopped you).
 - **[v3] D10.** Use the **USPS city name** that matches the ZIP (e.g. "Los Altos" for a Loyola address in 94024). The ZIP must belong to that city.
 
 ## Do not (N)
@@ -190,7 +206,7 @@ Definitions unchanged from v2:
 | `service_times_verbatim`, `service_languages` + service companions | **[v3.2]** `service_excerpt` must contain the times. If the languages are stated in a different place on the same page, join both verbatim pieces with ` … ` (for example `Sunday Worship 10:00 AM … English · 中文 · 한국어`). Times without a time in the excerpt are not published. Languages only as stated. **[v3.1]** Use English names joined by `;` with no spaces, e.g. `Mandarin;Cantonese;English` (`Chinese` only when the source doesn't say which). |
 | `kids_program_verbatim` + kids companions | As in results |
 | `possible_match_id`, `match_note` | `known_id` from the known list if it may be the same congregation, and why |
-| `found_via` | `fb_page_search`, `fb_group_lead`, `web_search`, `denomination_directory`, `host_church_site` |
+| `found_via` | `fb_page_search`, `fb_group_lead`, `web_search`, `denomination_directory`, `host_church_site`, **[v3.4]** `church_directory` (S5; listing URL in `notes`) |
 | `match_confidence` | Identity confidence, defined as in results |
 | `notes`, `checked_at`, `minutes_spent` | As in results |
 

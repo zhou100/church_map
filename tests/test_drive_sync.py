@@ -141,7 +141,7 @@ def test_known_list_uses_the_pins_around_the_named_cities(tmp_path):
 
 def test_new_discovery_numbers_packages_and_writes_the_task(tmp_path, monkeypatch, queue):
     monkeypatch.setattr(ds, "known_congregations", lambda *a: [])
-    args = type("A", (), dict(title="Marin County", state="CA", cities="San Rafael=25, Novato=20",
+    args = type("A", (), dict(title="Marin County", state="CA", cities="San Rafael=25, Novato=20", note="",
                               other="Any other Marin city=10", db="", seeds=""))
     ds.cmd_new_discovery(args)  # WP-0001 is taken in status.csv
     task = (ds.OUTBOX / "WP-0002" / "TASK.md").read_text()
@@ -443,6 +443,16 @@ def test_out_of_scope_by_name_needs_a_note_not_a_url(tmp_path, monkeypatch):
     assert "outcome closed needs evidence_url" in "\n".join(ds.check_leads("WP-0003", out, None))
 
 
+
+def test_a_lead_outcome_cannot_rest_on_a_directory_listing(tmp_path, monkeypatch):
+    # Brief S5: a churchfinder listing doesn't show a congregation meets today.
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    _leads_pkg(tmp_path, n=1)
+    out = tmp_path / "o.csv"
+    _outcomes(out, [dict(lead_id="WP0003-001", outcome="closed",
+                         evidence_url="https://www.churchfinder.com/churches/ca/oakland/grace")])
+    assert "evidence_url is a church directory" in "\n".join(ds.check_leads("WP-0003", out, None))
+
 # --- Re-check packages: every unresolved new congregation, one row back per ref ----------
 
 def test_recheck_selects_unresolved_new_congregations_closest_to_the_map_first(tmp_path):
@@ -524,3 +534,32 @@ def test_an_interrupted_publication_then_a_delivery_still_ends_with_the_pins(que
     assert ds.load_status()["WP-0001"]["state"] == "ingested"
     assert seed_builds == [0, 1]  # the package's build had no binding; the receipt repair rebuilt with the pin
     assert ds.cmd_pull(args) == 0 and seed_builds == [0, 1]  # nothing changed since: no rebuild
+
+
+# --- v3.4 D12: discovery packages report their directory sweep -------------------------
+
+def test_check_sweep_needs_both_directories(tmp_path):
+    log = tmp_path / "run_log.md"
+    assert ds.check_sweep(log) == "run_log.md is missing"
+    log.write_text("Sacramento — churchfinder: listed 212, already known 140, reported 25\n")
+    assert "oursweb" in ds.check_sweep(log)
+    log.write_text("Sacramento — Churchfinder: listed 212, already known 140, reported 25; "
+                   "oursweb: listed 9, already known 6, reported 2\n")
+    assert ds.check_sweep(log) == ""
+
+
+def test_only_discovery_packages_from_wp0020_are_held_to_the_sweep(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    for wp, files in (("WP-0020", ["known_congregations.csv"]), ("WP-0021", ["known_congregations.csv", "leads.csv"]),
+                      ("WP-0022", ["recheck_input.csv"])):
+        (tmp_path / wp).mkdir()
+        for f in files:
+            (tmp_path / wp / f).write_text("x\n")
+    assert ds.is_discovery("WP-0020") and not ds.is_discovery("WP-0021") and not ds.is_discovery("WP-0022")
+
+
+def test_the_discovery_template_asks_for_the_sweep():
+    text = ds.DISCOVERY_TASK.format(wp_id="WP-0099", task="WP0099", title="t", city_rows="| A | 1 |", known_n=1,
+                                    known_sha="x", note="")
+    assert "(v3.4)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
+    assert "churchfinder: listed N" in text and "church_directory" in text
