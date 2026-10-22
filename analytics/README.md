@@ -88,6 +88,10 @@ analytics/.venv/bin/python analytics/scripts/geocode_incremental.py --fetch   # 
   - For San Francisco, Santa Clara, San Mateo and the listed Alameda cities, Census must return the expected county.
   - Elsewhere, the matched ZIP must equal the input ZIP, or, without an input ZIP, the matched city must equal the input city.
 - After a rule change, `--reclassify census_<time>_raw.csv` re-applies the rules to a saved batch without resubmitting it.
+- **Direction-only matches** (input "W Eaton Ave", Census "EATON AVE") are settled from the county's Census TIGER/Line address ranges and feature names, cached in `exports/geocode_review_evidence/` with their hashes:
+  - A match is accepted when the ZIPs agree and Census's segment is the only one in that ZIP that covers the house number for that street name, in any direction.
+  - Two stated directions that disagree ("W" against "E") stay `needs_review`.
+  - Each decision and its evidence are in `geocode_direction_reviews.json`, once per exact address.
 - `reconcile_geocodes_census.py` and `review_geocodes_census.py` describe the first 196-row run and are kept as history. Don't re-run them: they overwrite `geocode_output.csv`.
 
 `build_seeds.py` merges every pass it finds, so files that haven't arrived yet are simply skipped. The merge order:

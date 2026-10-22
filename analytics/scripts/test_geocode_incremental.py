@@ -66,5 +66,60 @@ class PublishTests(unittest.TestCase):
         self.assertIsNone(gi.bound_input())
 
 
+class DirectionProofTests(unittest.TestCase):
+    """Direction-only rows: accepted only when the county's complete ranges leave no
+    competing directional segment for the house in the input ZIP."""
+
+    ENTRY = {"street": "306 W Eaton Ave", "zip": "95376"}
+    RAW = ["candidate:X-1", "306 W Eaton Ave, Tracy, CA, 95376", "Match", "Exact",
+           "306 EATON AVE, TRACY, CA, 95376", "-121.43,37.73", "111", "L", "06", "077", "1", "1"]
+
+    def tables(self, extra=()):
+        names = {"111": ["Eaton Ave"], "222": ["E Eaton Ave"], "333": ["Grant Line Rd"]}
+        ranges = [{"TLID": "111", "FROMHN": "300", "TOHN": "398", "ZIP": "95376"},
+                  {"TLID": "333", "FROMHN": "300", "TOHN": "398", "ZIP": "95376"},  # other street
+                  {"TLID": "111", "FROMHN": "301", "TOHN": "399", "ZIP": "95376"}]  # odd side
+        return names, ranges + list(extra)
+
+    def test_the_only_segment_covering_the_house_proves_it(self):
+        proven, ev = gi.prove_direction(self.ENTRY, self.RAW, self.tables())
+        self.assertTrue(proven)
+        self.assertEqual(ev["segments_covering_house"], ["111"])
+
+    def test_a_competing_directional_segment_blocks_it(self):
+        extra = [{"TLID": "222", "FROMHN": "300", "TOHN": "350", "ZIP": "95376"}]
+        proven, ev = gi.prove_direction(self.ENTRY, self.RAW, self.tables(extra))
+        self.assertFalse(proven)
+        self.assertEqual(ev["segments_covering_house"], ["111", "222"])
+
+    def test_a_census_zip_other_than_the_input_zip_blocks_it(self):
+        proven, _ = gi.prove_direction({**self.ENTRY, "zip": "95377"}, self.RAW, self.tables())
+        self.assertFalse(proven)
+
+    def test_a_segment_in_another_zip_does_not_compete(self):
+        extra = [{"TLID": "222", "FROMHN": "300", "TOHN": "350", "ZIP": "95304"}]
+        self.assertTrue(gi.prove_direction(self.ENTRY, self.RAW, self.tables(extra))[0])
+
+
+    def test_two_stated_directions_that_disagree_stay_in_review(self):
+        raw = list(self.RAW)
+        raw[4] = "306 E EATON AVE, TRACY, CA, 95376"
+        names, ranges = self.tables()
+        names["111"] = ["E Eaton Ave"]
+        proven, ev = gi.prove_direction(self.ENTRY, raw, (names, ranges))
+        self.assertFalse(proven)
+        self.assertTrue(ev["contradicts"])
+        self.assertEqual((ev["input_direction"], ev["census_direction"]), (["W"], ["E"]))
+
+    def test_a_direction_only_census_states_can_be_proven(self):
+        raw = list(self.RAW)
+        raw[4] = "3700 N PACIFIC AVE, STOCKTON, CA, 95204"
+        names = {"111": ["N Pacific Ave"]}
+        ranges = [{"TLID": "111", "FROMHN": "3700", "TOHN": "3798", "ZIP": "95204"}]
+        proven, ev = gi.prove_direction({"street": "3700 Pacific Avenue", "zip": "95204"}, raw, (names, ranges))
+        self.assertTrue(proven)
+        self.assertFalse(ev["contradicts"])
+
+
 if __name__ == "__main__":
     unittest.main()

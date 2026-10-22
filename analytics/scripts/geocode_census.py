@@ -139,7 +139,8 @@ def fetch(rows, digest, raw_path=None, metadata_path=None):
         "raw_sha256": hashlib.sha256(content).hexdigest()}, indent=2)+"\n", encoding="utf-8")
 
 
-def classify(row, raw, timestamp):
+def classify(row, raw, timestamp, direction_proven=False):
+    """direction_proven: see assess_street; set only from complete Census range evidence."""
     out = dict.fromkeys(FIELDS, "")
     out.update(geo_id=row["geo_id"], geocoder="census", benchmark=BENCHMARK,
                geocoded_at=timestamp, status="failed")
@@ -158,7 +159,7 @@ def classify(row, raw, timestamp):
     problems = []
     if match not in ("Exact", "Non_Exact"):
         problems.append(f"Unrecognized Census match type {match!r}")
-    street_status, street_note = assess_street(raw[4], row["street"])
+    street_status, street_note = assess_street(raw[4], row["street"], direction_proven)
     if street_status == "failed":
         out.update(status="failed", notes=street_note)
         return out
