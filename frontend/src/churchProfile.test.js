@@ -1,6 +1,7 @@
 import assert from 'node:assert/strict'
+import { readFileSync } from 'node:fs'
 import { test } from 'node:test'
-import { rankStartingPoints, startingPointScore } from './churchProfile.js'
+import { isChurch, rankStartingPoints, startingPointScore } from './churchProfile.js'
 
 function church(overrides) {
   return {
@@ -51,4 +52,39 @@ test('a church without coordinates can still be picked, after located ties', () 
     church({ name: 'Mapped', ...READ }),
   ], 2)
   assert.deepEqual(picks.map(c => c.name), ['Mapped', 'Unmapped'])
+})
+
+test('a visitor location wins the tiebreak over the middle of the city', () => {
+  const picks = rankStartingPoints([
+    church({ name: 'Middle', ...READ, latitude: 40.68, longitude: -73.97 }),
+    church({ name: 'By the visitor', ...READ, latitude: 40.60, longitude: -74.05 }),
+    church({ name: 'Elsewhere', ...READ, latitude: 40.75, longitude: -73.90 }),
+  ], 1, { lat: 40.61, lon: -74.04 })
+  assert.deepEqual(picks.map(c => c.name), ['By the visitor'])
+})
+
+test('skips every out-of-scope label in the dbt denomination scope seed', () => {
+  const seed = readFileSync(
+    new URL('../../analytics/dbt/seeds/denomination_scope.csv', import.meta.url),
+    'utf8',
+  )
+  const rows = seed.trim().split('\n').slice(1).map(line => line.split(','))
+  const labels = status => rows.filter(row => row[1] === status).map(row => row[0])
+
+  assert.ok(labels('out_of_scope').length > 0)
+  for (const denomination of labels('out_of_scope')) {
+    assert.equal(isChurch({ denomination }), false, `${denomination} should be skipped`)
+  }
+  for (const denomination of labels('in_scope_labeled')) {
+    assert.equal(isChurch({ denomination }), true, `${denomination} should stay`)
+  }
+})
+
+test('skips houses of worship the seed does not list yet', () => {
+  for (const denomination of ['Ethical', 'Krishna', 'Rastafarian', 'Scientologist']) {
+    assert.equal(isChurch({ denomination }), false, denomination)
+  }
+  for (const denomination of ['Christian Science', 'Roman Catholic', 'Non-denominational']) {
+    assert.equal(isChurch({ denomination }), true, denomination)
+  }
 })

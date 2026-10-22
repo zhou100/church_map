@@ -1,4 +1,4 @@
-import { useEffect } from 'react'
+import { useEffect, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { churchMarkerIcon } from './mapMarker'
@@ -27,7 +27,12 @@ function FitChurches({ churches, overlayRef }) {
 }
 
 export default function LandingMap({ churches, hoveredId, onHover, overlayRef }) {
-  const mappable = churches.filter(c => c.latitude && c.longitude)
+  // Stable across hover and typing, so FitChurches only refits when the
+  // churches change and never undoes a visitor's own pan or zoom.
+  const mappable = useMemo(
+    () => churches.filter(c => c.latitude && c.longitude),
+    [churches],
+  )
   return (
     <MapContainer
       center={[39.5, -98.35]}

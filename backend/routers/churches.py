@@ -16,7 +16,7 @@ from psycopg.rows import dict_row
 
 from backend import enrichment
 from backend.db import pool
-from backend.db.repository import ChurchRepository, _normalize_extracted_tags
+from backend.db.repository import CITY_ORDERINGS, ChurchRepository, _normalize_extracted_tags
 from backend.scrapers_v2.prompts.website_v3 import THEOLOGICAL_STANCES, WORSHIP_STYLES
 from backend.utils import compute_tags
 
@@ -86,6 +86,7 @@ async def list_churches(
     language: str = "",
     worship_style: str = "",
     stance: str = "",
+    sort: str = "",
     limit: int = 50,
     offset: int = 0,
 ):
@@ -100,6 +101,10 @@ async def list_churches(
     schema. Silently returning zero results for a typo'd bucket would be
     indistinguishable from "no churches like that near you", which is a much
     worse answer than saying the filter was wrong.
+
+    `sort` orders a city listing (`default` or `starting_point`; see
+    `CITY_ORDERINGS`). Name search keeps its relevance order and ZIP search
+    its default order, so `sort` only applies to city/state.
     """
     name_query = name.strip()
     if name_query and len(name_query) < 2:
@@ -119,6 +124,13 @@ async def list_churches(
             detail=f"unknown stance; expected one of {sorted(THEOLOGICAL_STANCES)}",
         )
 
+    sort_key = sort.lower() or "default"
+    if sort_key not in CITY_ORDERINGS:
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown sort; expected one of {sorted(CITY_ORDERINGS)}",
+        )
+
     filters = {"language": language, "worship_style": worship_style, "stance": stance}
     async with pool.acquire() as con:
         repo = ChurchRepository(con)
@@ -127,7 +139,9 @@ async def list_churches(
         elif zip_code:
             rows = await repo.list_by_zip(zip_code, limit, offset, **filters)
         else:
-            rows = await repo.list_by_city_state(city, state, limit, offset, **filters)
+            rows = await repo.list_by_city_state(
+                city, state, limit, offset, sort=sort_key, **filters
+            )
     return [_row_to_church(r) for r in rows]
 
 

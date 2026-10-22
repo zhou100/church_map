@@ -15,14 +15,20 @@ export function byProfileUsefulness(a, b) {
 
 // The directory's source lists (IRS, OSM) include every house of worship.
 // They stay on the map, but they are not where we point someone looking for
-// a church. Matched against `denomination` as lowercase substrings.
+// a church. Matched against `denomination` as lowercase substrings, so this
+// covers every `out_of_scope` label in analytics/dbt/seeds/denomination_scope.csv
+// (churchProfile.test.js checks that) plus labels the seed doesn't list yet.
+// Substrings must not hit an in-scope label: 'scientolog', never 'scientist',
+// which would catch Christian Science.
 const NOT_A_CHURCH = [
   'jewish', 'judaism', 'synagogue', 'islam', 'muslim', 'mosque', 'hindu',
-  'krishna', 'buddhist', 'sikh', 'jain', 'baha', 'ethical', 'rastafari',
-  'scientology', 'pagan', 'wicca', 'zoroastrian', 'shinto', 'taoist',
+  'krishna', 'buddhist', 'sikh', 'jain', 'baha', 'taoist', 'shinto',
+  'zoroastrian', 'pagan', 'wicca', 'falun gong', 'scientolog',
+  'spiritualist', 'spiritual science', 'religious science',
+  'unitarian universalist', 'ethical', 'rastafari',
 ]
 
-function isChurch(church) {
+export function isChurch(church) {
   const denomination = (church.denomination || '').toLowerCase()
   return !NOT_A_CHURCH.some(word => denomination.includes(word))
 }
@@ -52,13 +58,16 @@ function median(values) {
 }
 
 // Picks for the landing page: the most complete church profiles, with ties
-// going to the ones nearest the middle of the city's churches, which is
-// reachable for the most people when we don't know where the visitor lives.
-export function rankStartingPoints(churches, count) {
+// going to the ones nearest the visitor or, when we don't know where they
+// are, nearest the middle of the city's churches. `churches` should come
+// from `sort=starting_point`, so a large city's best profiles are in it.
+export function rankStartingPoints(churches, count, visitor = null) {
   const located = churches.filter(c => c.latitude && c.longitude)
-  const center = located.length
-    ? [median(located.map(c => c.latitude)), median(located.map(c => c.longitude))]
-    : null
+  const center = visitor
+    ? [visitor.lat, visitor.lon]
+    : located.length
+      ? [median(located.map(c => c.latitude)), median(located.map(c => c.longitude))]
+      : null
   const distance = church => (center && church.latitude && church.longitude)
     ? Math.hypot(church.latitude - center[0], church.longitude - center[1])
     : Infinity

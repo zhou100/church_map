@@ -73,7 +73,7 @@ Four distinct types — never mix styles:
 
 ## Layout
 - **Approach:** Grid-disciplined with editorial touches on detail pages
-- **Landing page:** Map-first. The first screen is a live map of the visitor's last-searched or IP-detected city, with a floating search card (headline, `City, ST` input, "Use my location", and three "Start here" churches ranked by how much a newcomer can learn before visiting: reviews, service times, website summary, then extracted details, with ties going to the middle of the city). Non-Christian houses of worship stay on the map but are never recommended. The map doesn't capture scroll-wheel zoom, so the page still scrolls past it. Editorial sections sit below the fold.
+- **Landing page:** Map-first. The first screen is a live map of the visitor's last-searched or IP-detected city, with a floating search card (headline, `City, ST` input, "Use my location", and three "Start here" churches ranked by how much a newcomer can learn before visiting: reviews, service times, website summary, then extracted details, with ties going to the church nearest the visitor, or the middle of the city when we only know the city). Non-Christian houses of worship stay on the map but are never recommended. The map doesn't capture scroll-wheel zoom, so the page still scrolls past it. Editorial sections sit below the fold.
 - **Search page:** Full-viewport split-pane — list panel (380px fixed) + map panel (flex: 1). No page scroll — each panel scrolls independently.
 - **List panel cards:** Horizontal row layout (not grid) — left accent border (4–5px, denomination-coded) + body. No photo placeholder. Data is the hero.
 - **Detail page:** Max-width 720px, centered. Map strip at top (180–220px), content below.

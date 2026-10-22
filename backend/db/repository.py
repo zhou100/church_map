@@ -20,6 +20,40 @@ from psycopg.rows import dict_row
 
 # ----- Churches ------------------------------------------------------------
 
+# How much a newcomer can learn about a church before a first visit: what
+# people say, when to go, and what the church says about itself. The landing
+# page asks for a city in this order so its "Start here" picks are chosen from
+# the best-documented churches, not the first page alphabetically.
+# frontend/src/churchProfile.js startingPointScore re-ranks the returned rows
+# with the same weights; change both together.
+STARTING_POINT_SCORE = """(
+      CASE WHEN COUNT(r.review_id) > 0 THEN 3 ELSE 0 END
+    + CASE WHEN BTRIM(COALESCE(c.service_times, '')) <> '' THEN 2 ELSE 0 END
+    + CASE WHEN BTRIM(COALESCE(c.website_summary, '')) <> '' THEN 2 ELSE 0 END
+    + CASE WHEN jsonb_typeof(c.extracted_tags->'service_languages') = 'array'
+            AND jsonb_array_length(c.extracted_tags->'service_languages') > 0 THEN 1 ELSE 0 END
+    + CASE WHEN COALESCE(c.extracted_tags->>'worship_style', '') <> '' THEN 1 ELSE 0 END
+    + CASE WHEN jsonb_typeof(c.extracted_tags->'programs') = 'array'
+            AND jsonb_array_length(c.extracted_tags->'programs') > 0 THEN 1 ELSE 0 END
+    + CASE WHEN COALESCE(c.extracted_tags->>'theological_stance', '') <> ''
+            OR (jsonb_typeof(c.extracted_tags->'statement_of_faith') = 'array'
+                AND jsonb_array_length(c.extracted_tags->'statement_of_faith') > 0)
+           THEN 1 ELSE 0 END
+)"""
+
+# ORDER BY clauses for a city listing, keyed by the `sort` query param.
+# Literal SQL only; the router rejects any key not in this map.
+CITY_ORDERINGS = {
+    "default": """
+        (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
+        review_count DESC,
+        c.name ASC""",
+    "starting_point": f"""
+        {STARTING_POINT_SCORE} DESC,
+        review_count DESC,
+        c.name ASC""",
+}
+
 # `_DIM_QUERY` produces the fields routers expect, including review aggregates.
 # LEFT JOIN keeps churches with zero reviews; AVG returns NULL when no rows
 # exist on the right side, matching the SQLite behavior the routers already
@@ -142,16 +176,14 @@ class ChurchRepository:
             return await cur.fetchall()
 
     async def list_by_city_state(
-        self, city: str, state: str, limit: int, offset: int, **filters
+        self, city: str, state: str, limit: int, offset: int,
+        sort: str = "default", **filters
     ) -> list[dict]:
         where, fparams = extracted_filters(**filters)
         sql = _DIM_SELECT + f"""
             WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s){where}
             GROUP BY c.church_id
-            ORDER BY
-                (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
-                review_count DESC,
-                c.name ASC
+            ORDER BY {CITY_ORDERINGS[sort]}
             LIMIT %s OFFSET %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:

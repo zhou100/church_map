@@ -7,6 +7,7 @@ import { detectLocation, getStats, listChurches } from '../api/client'
 import { hasWebsiteProfile, rankStartingPoints } from '../churchProfile'
 
 const PREVIEW_LIMIT = 100
+const NO_CHURCHES = []
 const TOP_PICKS = 3
 const AUDITED_COVERAGE = { withSummary: 4332, total: 133939 }
 const DEMO_DIMENSIONS = {
@@ -47,7 +48,10 @@ export default function Landing({ exampleChurch }) {
     setPreview(place)
     if (!userEdited.current) setLocation(`${place.city}, ${place.state}`)
     setPreviewStatus('loading')
-    listChurches({ type: 'location', ...place }, { limit: PREVIEW_LIMIT })
+    listChurches(
+      { type: 'location', city: place.city, state: place.state },
+      { limit: PREVIEW_LIMIT, sort: 'starting_point' },
+    )
       .then(data => {
         setPreviewChurches(data)
         setPreviewStatus(data.length ? 'ready' : 'empty')
@@ -85,7 +89,7 @@ export default function Landing({ exampleChurch }) {
       showPreview({ city: stored.city, state: stored.state })
     } else {
       detectLocation()
-        .then(data => showPreview({ city: data.city, state: data.state }))
+        .then(showPreview)
         .catch(() => {})
     }
   }, [])
@@ -112,7 +116,10 @@ export default function Landing({ exampleChurch }) {
     }
   }
 
-  const topPicks = rankStartingPoints(previewChurches || [], TOP_PICKS)
+  // The IP lookup's coordinates, when there are any, make "nearest" mean
+  // nearest to the visitor rather than to the middle of the city.
+  const visitor = preview?.lat && preview?.lon ? { lat: preview.lat, lon: preview.lon } : null
+  const topPicks = rankStartingPoints(previewChurches || NO_CHURCHES, TOP_PICKS, visitor)
 
   return (
     <div className="landing-page">
@@ -135,7 +142,7 @@ export default function Landing({ exampleChurch }) {
             {LandingMap
               ? (
                 <LandingMap
-                  churches={previewChurches || []}
+                  churches={previewChurches || NO_CHURCHES}
                   hoveredId={hoveredId}
                   onHover={setHoveredId}
                   overlayRef={heroCard}
