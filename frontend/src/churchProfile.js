@@ -39,50 +39,29 @@ export function isChurch(church) {
 }
 
 function hasValue(value) {
-  return Array.isArray(value) ? value.length > 0 : Boolean(value)
+  return Array.isArray(value)
+    ? value.length > 0
+    : typeof value === 'string' ? value.trim() !== '' : Boolean(value)
 }
 
-// How much of what a newcomer needs before a first visit we can show:
-// what people say about it, when to go, and what the church says about itself.
-export function startingPointScore(church) {
+// Anything a newcomer could read before a first visit: what people say, when
+// to go, or what the church says about itself. The same fields score above
+// zero in STARTING_POINT_SCORE (backend/db/repository.py).
+function hasSomethingToShow(church) {
   const extracted = church.extracted_tags || {}
-  return (
-    ((church.review_count ?? 0) > 0 ? 3 : 0) +
-    (hasValue(church.service_times) ? 2 : 0) +
-    (church.website_summary ? 2 : 0) +
-    (hasValue(extracted.service_languages) ? 1 : 0) +
-    (hasValue(extracted.worship_style) ? 1 : 0) +
-    (hasValue(extracted.programs) ? 1 : 0) +
-    (hasValue(extracted.theological_stance) || hasValue(extracted.statement_of_faith) ? 1 : 0)
-  )
+  return (church.review_count ?? 0) > 0
+    || hasValue(church.service_times)
+    || hasValue(church.website_summary)
+    || ['service_languages', 'worship_style', 'programs', 'theological_stance', 'statement_of_faith']
+      .some(field => hasValue(extracted[field]))
 }
 
-function median(values) {
-  const sorted = [...values].sort((a, b) => a - b)
-  return sorted[Math.floor(sorted.length / 2)]
-}
-
-// Picks for the landing page: the most complete church profiles, with ties
-// going to the ones nearest the visitor or, when we don't know where they
-// are, nearest the middle of the city's churches. `churches` should come
-// from `sort=starting_point`, so a large city's best profiles are in it.
-export function rankStartingPoints(churches, count, visitor = null) {
-  const located = churches.filter(c => c.latitude && c.longitude)
-  const center = visitor
-    ? [visitor.lat, visitor.lon]
-    : located.length
-      ? [median(located.map(c => c.latitude)), median(located.map(c => c.longitude))]
-      : null
-  const distance = church => (center && church.latitude && church.longitude)
-    ? Math.hypot(church.latitude - center[0], church.longitude - center[1])
-    : Infinity
-
+// Picks for the landing page. `churches` must come from
+// `sort=starting_point`, which ranks the whole city (best documented first,
+// ties toward the middle of the city) before its row limit; this keeps that
+// order and only drops what we shouldn't recommend.
+export function pickStartingPoints(churches, count) {
   return churches
-    .filter(church => isChurch(church) && startingPointScore(church) > 0)
-    .map(church => ({ church, score: startingPointScore(church), distance: distance(church) }))
-    .sort((a, b) => (b.score - a.score)
-      || (a.distance - b.distance)
-      || a.church.name.localeCompare(b.church.name))
+    .filter(church => isChurch(church) && hasSomethingToShow(church))
     .slice(0, count)
-    .map(({ church }) => church)
 }

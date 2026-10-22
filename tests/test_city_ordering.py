@@ -28,12 +28,14 @@ def test_default_order_is_unchanged():
     assert cursor.params == ("Brooklyn", "NY", 100, 0)
 
 
-def test_starting_point_order_scores_before_the_limit():
+def test_starting_point_ranks_score_then_distance_before_the_limit():
     cursor = _city_sql(sort="starting_point")
     order_by = cursor.sql.split("ORDER BY", 1)[1]
     assert "COUNT(r.review_id) > 0 THEN 3" in order_by
-    assert order_by.index("jsonb_array_length") < order_by.index("LIMIT")
-    assert cursor.params == ("Brooklyn", "NY", 100, 0)
+    assert order_by.index("jsonb_array_length") < order_by.index("percentile_disc")
+    assert order_by.index("percentile_disc") < order_by.index("LIMIT")
+    # the two city medians bind the city again, after the WHERE params
+    assert cursor.params == ("Brooklyn", "NY", "Brooklyn", "NY", "Brooklyn", "NY", 100, 0)
 
 
 def test_unknown_sort_is_rejected():
@@ -59,39 +61,64 @@ FULL_TAGS = {
 }
 
 
-@pg
-def test_starting_point_puts_the_richest_profile_first():
-    """Default order is profile presence, then name, so a summary-only "a…"
-    church beats a fully documented "z…" one. The landing order must not."""
+SUMMARY = "A neighborhood church."
+
+
+def _ranked_names(seed, limit):
+    """Insert `seed` rows into Orderville, ZZ and return the names in default
+    and starting_point order, each cut at `limit`. Rolled back afterwards."""
     from psycopg import AsyncConnection
 
     async def go():
         con = await AsyncConnection.connect(os.environ["DATABASE_URL"])
         try:
             async with con.cursor() as cur:
-                for name, summary, times, tags in [
-                    ("ord a summary only", "A neighborhood church.", None, None),
-                    ("ord z full", "A neighborhood church.", "Sun 10am", FULL_TAGS),
-                    ("ord aaa empty", None, None, None),
-                ]:
+                for name, summary, times, tags, lat, lon in seed:
                     await cur.execute(
                         """
-                        INSERT INTO churches
-                            (name, city, state, website_summary, service_times, extracted_tags)
-                        VALUES (%s, 'Orderville', 'ZZ', %s, %s, %s::jsonb)
+                        INSERT INTO churches (name, city, state, website_summary,
+                                              service_times, extracted_tags, latitude, longitude)
+                        VALUES (%s, 'Orderville', 'ZZ', %s, %s, %s::jsonb, %s, %s)
                         """,
-                        (name, summary, times, json.dumps(tags) if tags else None),
+                        (name, summary, times, json.dumps(tags) if tags else None, lat, lon),
                     )
             repo = ChurchRepository(con)
-            default = await repo.list_by_city_state("Orderville", "ZZ", 50, 0)
+            default = await repo.list_by_city_state("Orderville", "ZZ", limit, 0)
             ranked = await repo.list_by_city_state(
-                "Orderville", "ZZ", 50, 0, sort="starting_point"
+                "Orderville", "ZZ", limit, 0, sort="starting_point"
             )
             return [r["name"] for r in default], [r["name"] for r in ranked]
         finally:
             await con.rollback()
             await con.close()
 
-    default, ranked = asyncio.run(go())
+    return asyncio.run(go())
+
+
+@pg
+def test_starting_point_puts_the_richest_profile_first():
+    """Default order is profile presence, then name, so a summary-only "a…"
+    church beats a fully documented "z…" one. The landing order must not."""
+    default, ranked = _ranked_names([
+        ("ord a summary only", SUMMARY, None, None, None, None),
+        ("ord z full", SUMMARY, "Sun 10am", FULL_TAGS, None, None),
+        ("ord aaa empty", None, None, None, None, None),
+    ], limit=50)
     assert default == ["ord a summary only", "ord z full", "ord aaa empty"]
     assert ranked == ["ord z full", "ord a summary only", "ord aaa empty"]
+
+
+@pg
+def test_starting_point_breaks_ties_toward_the_middle_before_the_limit():
+    """Equal scores: the church at the city's median coordinates must survive
+    LIMIT even though every other one sorts ahead of it by name. An unmapped
+    church ties last."""
+    seed = [
+        ("tie a west", SUMMARY, None, None, 40.50, -74.20),
+        ("tie b east", SUMMARY, None, None, 40.90, -73.70),
+        ("tie c unmapped", SUMMARY, None, None, None, None),
+        ("tie z middle", SUMMARY, None, None, 40.70, -73.95),
+    ]
+    assert _ranked_names(seed, limit=1) == (["tie a west"], ["tie z middle"])
+    _, ranked = _ranked_names(seed, limit=4)
+    assert ranked[-1] == "tie c unmapped"

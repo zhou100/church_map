@@ -4,7 +4,7 @@ import DimensionBars from '../components/DimensionBars'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { detectLocation, getStats, listChurches } from '../api/client'
-import { hasWebsiteProfile, rankStartingPoints } from '../churchProfile'
+import { hasWebsiteProfile, pickStartingPoints } from '../churchProfile'
 
 const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
@@ -89,7 +89,7 @@ export default function Landing({ exampleChurch }) {
       showPreview({ city: stored.city, state: stored.state })
     } else {
       detectLocation()
-        .then(showPreview)
+        .then(data => showPreview({ city: data.city, state: data.state }))
         .catch(() => {})
     }
   }, [])
@@ -116,10 +116,7 @@ export default function Landing({ exampleChurch }) {
     }
   }
 
-  // The IP lookup's coordinates, when there are any, make "nearest" mean
-  // nearest to the visitor rather than to the middle of the city.
-  const visitor = preview?.lat && preview?.lon ? { lat: preview.lat, lon: preview.lon } : null
-  const topPicks = rankStartingPoints(previewChurches || NO_CHURCHES, TOP_PICKS, visitor)
+  const topPicks = pickStartingPoints(previewChurches || NO_CHURCHES, TOP_PICKS)
 
   return (
     <div className="landing-page">
