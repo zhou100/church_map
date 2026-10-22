@@ -80,11 +80,22 @@ test('skips every out-of-scope label in the dbt denomination scope seed', () => 
   }
 })
 
-test('skips houses of worship the seed does not list yet', () => {
-  for (const denomination of ['Ethical', 'Krishna', 'Rastafarian', 'Scientologist']) {
+test('skips labels from the snapshot, including ones the seed may not list yet', () => {
+  for (const denomination of [
+    'Ethical', 'Krishna', 'Hare Krishna', 'Vaishnavism', 'Rastafarian', 'Scientologist',
+    'Zen', 'Spiritist', 'Eckankar', 'Shamanic', 'Voodoo', 'Tenrikyo', 'Confucian',
+    'Kabbalah', 'Ahmadiyya', "Bahá'í",
+  ]) {
     assert.equal(isChurch({ denomination }), false, denomination)
   }
-  for (const denomination of ['Christian Science', 'Roman Catholic', 'Non-denominational']) {
+})
+
+test('keeps Christian labels that share words with excluded ones', () => {
+  for (const denomination of [
+    'Christian Science', 'Roman Catholic', 'Non-denominational', 'Nazarene',
+    'Messianic Jewish', 'Messianic Judaism', 'Jews for Jesus',
+    'Universal Church of the Kingdom of God', 'Metropolitan Community',
+  ]) {
     assert.equal(isChurch({ denomination }), true, denomination)
   }
 })

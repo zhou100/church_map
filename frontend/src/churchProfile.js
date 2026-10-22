@@ -15,22 +15,27 @@ export function byProfileUsefulness(a, b) {
 
 // The directory's source lists (IRS, OSM) include every house of worship.
 // They stay on the map, but they are not where we point someone looking for
-// a church. Matched against `denomination` as lowercase substrings, so this
+// a church. Each entry matches the start of a word in `denomination`, so this
 // covers every `out_of_scope` label in analytics/dbt/seeds/denomination_scope.csv
 // (churchProfile.test.js checks that) plus labels the seed doesn't list yet.
-// Substrings must not hit an in-scope label: 'scientolog', never 'scientist',
+// Entries must not hit an in-scope label: 'scientolog', never 'scientist',
 // which would catch Christian Science.
 const NOT_A_CHURCH = [
-  'jewish', 'judaism', 'synagogue', 'islam', 'muslim', 'mosque', 'hindu',
-  'krishna', 'buddhist', 'sikh', 'jain', 'baha', 'taoist', 'shinto',
-  'zoroastrian', 'pagan', 'wicca', 'falun gong', 'scientolog',
-  'spiritualist', 'spiritual science', 'religious science',
-  'unitarian universalist', 'ethical', 'rastafari',
+  'jewish', 'judaism', 'synagogue', 'kabbalah', 'islam', 'muslim', 'mosque',
+  'ahmadi', 'hindu', 'krishna', 'vaishnav', 'buddhist', 'zen', 'sikh', 'jain',
+  'baha', 'bahá', 'taoist', 'confucian', 'shinto', 'tenrikyo', 'zoroastrian',
+  'pagan', 'wicca', 'shaman', 'voodoo', 'vodou', 'eckankar', 'falun gong',
+  'scientolog', 'spiritualist', 'spiritist', 'spiritual science',
+  'religious science', 'unitarian universalist', 'ethical', 'rastafari',
 ]
+const NOT_A_CHURCH_PATTERN = new RegExp(`(^|[^a-z])(${NOT_A_CHURCH.join('|')})`)
+
+// D-1 keeps Messianic Jewish congregations in scope; 'jewish' alone would not.
+const MESSIANIC = /messianic|jews for jesus|hebrew christian/
 
 export function isChurch(church) {
   const denomination = (church.denomination || '').toLowerCase()
-  return !NOT_A_CHURCH.some(word => denomination.includes(word))
+  return MESSIANIC.test(denomination) || !NOT_A_CHURCH_PATTERN.test(denomination)
 }
 
 function hasValue(value) {
