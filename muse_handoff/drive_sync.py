@@ -186,12 +186,13 @@ def known_congregations(state: str, cities: list[str], db: Path, seeds: Path) ->
 
 DISCOVERY_TASK = """# {wp_id} — find congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.4) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
 Find Christian congregations that meet in the cities below and are **not** in `known_congregations.csv`. **A row we can use has dated activity within 12 months, an address, and a way to reach the church.** Search each one as brief section A requires (events, news, sermons, bulletin, Facebook Page) before marking it `unresolved` or leaving a fact blank. The caps are maximums, not targets.
 
+- **Start from the church directories (S5, D12):** for every city, go through the churchfinder.com city page and the church.oursweb.net results, skip the congregations already known, and research each new one (section A). Then search the web for what they missed. Directory finds have `found_via = church_directory` and `lead: <listing URL>` in `notes`; never cite a directory as a source.
 - Report every language the church states (N5).
 - De-duplicate by name **and** by address (D4), against `known_congregations.csv` and against your own rows. A known congregation is worth a row only if you add language, service, or children's facts; then set `possible_match_id` to its `known_id`.
 - Facts come from the congregation's own site or Page (S1/S2) or its denomination (S3); never from another congregation's site.
@@ -200,7 +201,7 @@ Find Christian congregations that meet in the cities below and are **not** in `k
 | City | Cap |
 |---|---:|
 {city_rows}
-
+{note}
 ## Inputs
 
 | File | Rows | sha256 |
@@ -213,7 +214,7 @@ Find Christian congregations that meet in the cities below and are **not** in `k
 | File | Contents |
 |---|---|
 | `new_candidates.csv` | `new_candidates_TEMPLATE_v3.csv` columns; `task = {task}`; `candidate_ref` `{task}-001`, `{task}-002`, … |
-| `run_log.md` | D9 manifest; sources searched per city; counts per city (found, already known, with kids program, by stated language, Facebook-only); blocked sites; hard rows |
+| `run_log.md` | D9 manifest; **the directory sweep per city (D12): `<city> — churchfinder: listed N, already known K, reported R; oursweb: listed N, already known K, reported R`**; other sources searched per city; counts per city (found, already known, with kids program, by stated language, Facebook-only); blocked sites; hard rows |
 | `DONE.md` | written last; see `README_FOR_MUSE.md` |
 
 ## Check before delivering
@@ -248,6 +249,7 @@ def cmd_new_discovery(args) -> int:
     city_rows = "\n".join(f"| {c} | {n} |" for c, n in cities + other)
     (pkg / "TASK.md").write_text(DISCOVERY_TASK.format(
         wp_id=wp_id, task=task, title=args.title, city_rows=city_rows, known_n=len(known),
+        note=f"\n## Why this package\n\n{args.note}\n" if args.note else "",
         known_sha=sha256(pkg / "known_congregations.csv")), encoding="utf-8")
     print(f"{wp_id}: {args.title}; {len(cities) + len(other)} areas, cap {sum(n for _, n in cities + other)}; "
           f"{len(known)} known congregations -> {pkg}")
@@ -504,6 +506,24 @@ def cmd_new_recheck(args) -> int:
     return 0
 
 
+SWEEP_FROM = 20  # brief v3.4 D12 (directory sweep) applies to discovery packages from WP-0020
+
+
+def is_discovery(wp_id: str) -> bool:
+    pkg = OUTBOX / wp_id
+    return (pkg / "known_congregations.csv").exists() and not (pkg / "leads.csv").exists() \
+        and not (pkg / "recheck_input.csv").exists()
+
+
+def check_sweep(run_log: Path) -> str:
+    """What the run log is missing of the D12 sweep report ("" when complete)."""
+    if not run_log.exists():
+        return "run_log.md is missing"
+    text = run_log.read_text(encoding="utf-8", errors="replace").lower()
+    gone = [d for d in ("churchfinder", "oursweb") if not re.search(rf"{d}\s*:\s*listed\s+\d+", text)]
+    return f"no '{' / '.join(gone)}: listed N' lines" if gone else ""
+
+
 def check_recheck(wp_id: str, cands: Path) -> list[str]:
     """Exactly one row per input candidate_ref, nothing else, all under this package's task
     (so the v3.3 section A checks apply to every row)."""
@@ -697,6 +717,12 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         errs = check_leads(wp_id, stage / f"lead_outcomes_{tag}.csv", cands if cands.exists() else None)
         if errs:
             problems.append("## `lead_outcomes.csv`\n\n```\n" + "\n".join(errs) + "\n```\n")
+    if is_discovery(wp_id) and int(wp_id[3:]) >= SWEEP_FROM:
+        missing = check_sweep(wp_dir / "run_log.md")
+        if missing:
+            problems.append(f"## `run_log.md`\n\nNo directory sweep (brief D12): {missing}. Report, per city, "
+                            "`<city> — churchfinder: listed N, already known K, reported R; oursweb: listed N, "
+                            "already known K, reported R`.\n")
     if (OUTBOX / wp_id / "recheck_input.csv").exists() and "new_candidates.csv" not in outputs:
         problems.append("## `new_candidates.csv`\n\nMissing: this package asks for one row per input `candidate_ref`.\n")
     elif (OUTBOX / wp_id / "recheck_input.csv").exists():
@@ -830,6 +856,7 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--other", default="", help="extra rows without a known list, e.g. 'Any other Marin city=10'")
     p.add_argument("--db", default=str(ROOT / "holyhub.db"), help="local directory snapshot (read only)")
     p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
+    p.add_argument("--note", default="", help="a 'Why this package' paragraph for TASK.md")
     p.set_defaults(fn=cmd_new_discovery)
     p = sub.add_parser("new-leads", help="build a lead-checking package from a leads CSV (irs_leads.py)")
     p.add_argument("--title", required=True)

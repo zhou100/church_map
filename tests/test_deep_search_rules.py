@@ -59,3 +59,32 @@ def test_a_facebook_page_needs_its_last_post_date():
     page = "https://www.facebook.com/gracechurch"
     assert any("fb_last_post_date" in m for m in errors(notes=FULL, facebook_page_url=page))
     assert errors(notes=FULL, facebook_page_url=page, fb_last_post_date="2026-10-01") == []
+
+
+# --- v3.4 S5: church directories are locate-only ---------------------------------------
+
+@pytest.mark.parametrize("url,is_dir", [("https://www.churchfinder.com/churches/ca/sacramento", True),
+                                        ("https://church.oursweb.net/x", True), ("https://app.church.org/find-a-church", True),
+                                        ("https://gracechurch.org/visit", False), ("https://church.org.example.com/", False)])
+def test_directory_hosts(url, is_dir):
+    assert vr.is_directory_url(url) is is_dir
+
+
+def _fact_errors(**row):
+    vr.problems.clear()
+    vr.check_fact_groups("w", {**{f"{g}_{c}": "" for g in vr.FACT_GROUPS for c in ("source_url", "source_type", "excerpt")},
+                               "street_address": "", "phone": "", "service_times_verbatim": "", "service_languages": "",
+                               "kids_program_verbatim": "",
+                               "status": "", **row})
+    msgs = [m for level, _, m in vr.problems if level == "ERROR"]
+    vr.problems.clear()
+    return msgs
+
+
+def test_a_directory_is_never_a_facts_source():
+    msgs = _fact_errors(phone="(916) 555-0100", phone_source_url="https://www.churchfinder.com/churches/ca/sacramento/grace",
+                        phone_source_type="other", phone_excerpt="(916) 555-0100")
+    assert any("church directory" in m for m in msgs)
+    assert not any("church directory" in m for m in _fact_errors(
+        phone="(916) 555-0100", phone_source_url="https://grace.example.org/contact", phone_source_type="own_site",
+        phone_excerpt="Office (916) 555-0100"))

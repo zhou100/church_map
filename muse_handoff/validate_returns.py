@@ -34,6 +34,16 @@ ACTIVITY_LINE_RE = re.compile(r"activity checked:(.*)", re.I)
 DATE_RE = re.compile(r"(?<!\d)20\d\d(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?!\d)"
                      r"|(?<!\d)\d{1,2}\s+(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)|(?<!\d)\d{1,2}/\d{1,2}(?!\d)"
                      r"|\d{1,2}\s*月\s*\d{1,2}|\d{1,2}\s*월\s*\d{1,2}", re.I)
+# Brief v3.4 S5: multi-church directories are locate-only, never a fact's source.
+DIRECTORY_HOSTS = ("churchfinder.com", "oursweb.net", "church.org")
+LEAD_URL_RE = re.compile(r"lead:\s*https?://", re.I)
+
+
+def is_directory_url(url: str) -> bool:
+    host = urlparse(url or "").netloc.lower().split(":")[0]
+    return any(host == h or host.endswith("." + h) for h in DIRECTORY_HOSTS)
+
+
 COPYRIGHT_RE = re.compile(r"©|\(c\)\s*20\d\d|copyright", re.I)
 
 
@@ -70,7 +80,8 @@ ENUMS = {
     "address_is_worship_location": {"yes", "no", "unknown"},
     "pin_check": {"matches", "off", "unknown"},
     "match_confidence": {"high", "medium", "low"},
-    "found_via": {"fb_page_search", "fb_group_lead", "web_search", "denomination_directory", "host_church_site"},
+    "found_via": {"fb_page_search", "fb_group_lead", "web_search", "denomination_directory", "host_church_site",
+                  "church_directory"},
 }
 
 # ZIPs -> USPS city names for San Mateo County and the South Bay (a ZIP may serve several).
@@ -601,6 +612,8 @@ def check_fact_groups(w: str, r: dict) -> None:
             err(w, f"{g} fact without {', '.join(missing)}")
         if r[f"{g}_source_type"] and r[f"{g}_source_type"] not in ENUMS["source_type"]:
             err(w, f"{g}_source_type={r[f'{g}_source_type']!r} not allowed")
+        if is_directory_url(r[f"{g}_source_url"]):
+            err(w, f"{g}_source_url is a church directory (brief S5: locate-only); cite the church's own page")
         if r[f"{g}_source_url"] and urlparse(r[f"{g}_source_url"]).path in ("", "/") \
                 and r[f"{g}_source_type"] == "denomination":
             warn(w, f"{g}_source_url is a bare homepage; cannot locate the cited listing")
@@ -709,6 +722,8 @@ def check_candidates_v3(rows: list[dict], received_at: datetime | None) -> None:
             err(w, f"task={r['task']!r} not allowed")
         if r["status"] and r["status"] not in ENUMS["candidate_status"]:
             err(w, f"status={r['status']!r} not allowed (candidates: active or unresolved)")
+        if r["found_via"] == "church_directory" and not LEAD_URL_RE.search(r["notes"]):
+            err(w, "found_via=church_directory without 'lead: <listing URL>' in notes (brief S5)")
         if r["found_via"] and r["found_via"] not in ENUMS["found_via"]:
             err(w, f"found_via={r['found_via']!r} not allowed")
         if r["match_confidence"] and r["match_confidence"] not in ENUMS["match_confidence"]:
