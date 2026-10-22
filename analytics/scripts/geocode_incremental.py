@@ -167,16 +167,28 @@ def county_tables(county: str, fetch_allowed: bool, cache: dict) -> tuple[dict, 
     return cache[county]
 
 
+# Intercardinal directions as street_tokens leaves them ("SW", "Southwest", "N.E." -> "ne").
+INTERCARDINAL = {"ne": "NE", "nw": "NW", "se": "SE", "sw": "SW",
+                 "northeast": "NE", "northwest": "NW", "southeast": "SE", "southwest": "SW"}
+
+
 def stated_directions(street: str) -> set[str]:
     """Every direction the street states, before the name ("N Main St") or after the
-    suffix ("Main St S"), up to a unit word. street_key stops at the suffix, so it can't
-    see a post-direction."""
-    directions, out = set(STREET_DIRECTION.values()), set()
-    for tok in street_tokens(street)[1:]:
-        if tok in UNIT_WORDS:
-            break
-        if tok in directions:
+    suffix ("Main St S"), up to a unit word, intercardinals included ("Main St SW",
+    "North East Main St" = NE). street_key stops at the suffix, so it can't see a
+    post-direction."""
+    cardinal = set(STREET_DIRECTION.values())
+    toks, out, i = street_tokens(street)[1:], set(), 0
+    while i < len(toks) and toks[i] not in UNIT_WORDS:
+        tok, nxt = toks[i], toks[i + 1] if i + 1 < len(toks) else ""
+        if tok in INTERCARDINAL:
+            out.add(INTERCARDINAL[tok])
+        elif tok in ("n", "s") and nxt in ("e", "w"):  # "North East" tokenizes as n, e
+            out.add((tok + nxt).upper())
+            i += 1
+        elif tok in cardinal:
             out.add(tok.upper())
+        i += 1
     return out
 
 

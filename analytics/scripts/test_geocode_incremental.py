@@ -113,6 +113,23 @@ class DirectionProofTests(unittest.TestCase):
         self.assertFalse(proven)
         self.assertEqual((ev["input_direction"], ev["census_direction"], ev["contradicts"]), (["N"], ["S"], True))
 
+    def test_an_intercardinal_post_direction_contradicting_a_prefix_stays_in_review(self):
+        # Review of 80a54e5: "MAIN ST SW" read as no direction, so N vs SW passed.
+        raw = list(self.RAW)
+        raw[4] = "100 MAIN ST SW, TRACY, CA, 95376"
+        names = {"111": ["Main St SW"]}
+        ranges = [{"TLID": "111", "FROMHN": "100", "TOHN": "198", "ZIP": "95376"}]
+        proven, ev = gi.prove_direction({"street": "100 N Main St", "zip": "95376"}, raw, (names, ranges))
+        self.assertFalse(proven)
+        self.assertEqual((ev["input_direction"], ev["census_direction"], ev["contradicts"]), (["N"], ["SW"], True))
+
+    def test_intercardinal_spellings_read_the_same(self):
+        for street in ("100 Main St SW", "100 Main St Southwest", "100 S.W. Main St", "100 South West Main St"):
+            with self.subTest(street=street):
+                self.assertEqual(gi.stated_directions(street), {"SW"})
+        self.assertEqual(gi.stated_directions("100 N Main St"), {"N"})
+        self.assertEqual(gi.stated_directions("100 Main St Suite S"), set())
+
     def test_an_alphanumeric_house_number_stays_in_review_without_raising(self):
         # Review of 59b5cad: competing_ranges int()s the house number; "306A" aborted the run.
         raw = list(self.RAW)
