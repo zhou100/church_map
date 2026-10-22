@@ -30,6 +30,7 @@ from __future__ import annotations
 import argparse
 import csv
 import hashlib
+import importlib.util
 import os
 import re
 import shutil
@@ -728,19 +729,25 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     return row["state"]
 
 
-def geocode_output_sha() -> str:
-    output = ROOT / "analytics/exports/geocode_output.csv"
-    return sha256(output) if output.exists() else ""
+def geocode_build_key() -> str:
+    """What a rebuild turns into pins: the geocode output and the input its receipt
+    validly binds it to (build_seeds.geocode_binding, the rule build_seeds applies).
+    'unbound' when there is none, so a later receipt fix changes the key and rebuilds."""
+    spec = importlib.util.spec_from_file_location("build_seeds", HANDOFF.parent / "analytics/scripts/build_seeds.py")
+    bs = importlib.util.module_from_spec(spec)
+    spec.loader.exec_module(bs)
+    out_sha, source = bs.geocode_binding(ROOT / "analytics/exports")
+    return f"{out_sha}|{sha256(source) if source else 'unbound'}"
 
 
 def built_marker() -> Path:
-    """sha256 of the geocode output the last successful rebuild read."""
+    """geocode_build_key() as the last successful rebuild read it."""
     return ROOT / "analytics/exports/geocode_output.built_sha256"
 
 
 def rebuild() -> str:
     """Rebuild seeds and dbt. Returns "" on success, else what failed."""
-    reading = geocode_output_sha()
+    reading = geocode_build_key()
     if subprocess.run([sys.executable, str(ROOT / "analytics/scripts/build_seeds.py")]).returncode != 0:
         return "build_seeds.py failed"
     env = {**os.environ, "DBT_PROFILES_DIR": str(ROOT / "analytics/dbt")}
@@ -754,15 +761,17 @@ def rebuild() -> str:
 
 def geocode() -> str:
     """Census-geocode addresses that have no pin yet; rebuild unless the last successful
-    rebuild already read this output. Compared with the last build, not with the output
-    before this run: a rebuild that failed after a change is retried on the next pull.
+    rebuild already read this output with this binding. Compared with the last build, not
+    with the output before this run: a rebuild that failed after a change is retried, and
+    a receipt fixed after a build that found no binding (no pins) rebuilds even though
+    the output is unchanged.
     Returns "" on success (or nothing to do), else what failed."""
     p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"),
                         str(ROOT / "analytics/scripts/geocode_incremental.py"), "--fetch"])
     if p.returncode != 0:
         return "geocode_incremental.py failed"
     marker = built_marker()
-    current = geocode_output_sha()
+    current = geocode_build_key()
     if marker.exists() and marker.read_text(encoding="utf-8").strip() == current:
         return ""
     failed = rebuild()

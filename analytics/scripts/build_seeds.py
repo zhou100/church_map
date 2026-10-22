@@ -701,21 +701,31 @@ def _sha256(path: Path) -> str:
     return hashlib.sha256(path.read_bytes()).hexdigest()
 
 
+def geocode_binding(exports: Path) -> tuple[str, Path | None]:
+    """(output sha256, the input file it is bound to, or None). The input is the one
+    whose sha256 the receipt records, and only if the receipt names this exact output.
+    A receipt for another output (an interrupted write) proves nothing about this one;
+    the batch metadata authenticates its raw response, not the output. drive_sync keys
+    its "already built" marker on this pair, so fixing only the receipt still rebuilds."""
+    output, recon = exports / "geocode_output.csv", exports / "geocode_reconciliation.json"
+    if not output.exists():
+        return "", None
+    out_sha, digest = _sha256(output), None
+    if recon.exists():
+        receipt = json.loads(recon.read_text(encoding="utf-8"))
+        if receipt.get("output_sha256") == out_sha:
+            digest = receipt.get("input_sha256")
+    source = next((p for p in sorted(exports.glob("geocode_input*.csv")) if digest and _sha256(p) == digest), None)
+    return out_sha, source
+
+
 def build_geocodes() -> None:
-    """Census pins, each bound to the address it was geocoded from. The input is the
-    one whose sha256 the receipt records, and only if the receipt names this exact
-    output. A receipt for another output (an interrupted write) proves nothing about
-    this one; the batch metadata authenticates its raw response, not the output. No
-    verified binding, no pins."""
+    """Census pins, each bound to the address it was geocoded from (geocode_binding).
+    No verified binding, no pins."""
     rows = []
     output = EXPORTS / "geocode_output.csv"
-    recon = EXPORTS / "geocode_reconciliation.json"
-    digest = None
-    if output.exists() and recon.exists():
-        receipt = json.loads(recon.read_text(encoding="utf-8"))
-        if receipt.get("output_sha256") == _sha256(output):
-            digest = receipt["input_sha256"]
-    source = next((p for p in sorted(EXPORTS.glob("geocode_input*.csv")) if digest and _sha256(p) == digest), None)
+    _, source = geocode_binding(EXPORTS)
+    digest = _sha256(source) if source else None
     if output.exists() and source is None:
         print("  WARNING: geocode_output.csv has no receipt naming it and its input; no pins used")
     if source is not None:
