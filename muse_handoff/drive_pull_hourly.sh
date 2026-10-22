@@ -26,8 +26,10 @@ echo "== $(date -u +%FT%TZ)"
 DRIVE="${CHURCHMAP_DRIVE:-/mnt/f/My Drive/churchmap-handoff}"
 [[ -d $DRIVE ]] || { echo "Drive folder not available: $DRIVE"; exit 0; }
 
+# 9>&-: the server outlives this script and must not inherit the lock's descriptor,
+# or it holds the lock and every later pull reports "previous pull still running".
 pg_isready -h localhost -p 5433 -q || /usr/lib/postgresql/14/bin/pg_ctl -D analytics/.pgdata \
-    -o "-p 5433 -k $REPO/analytics/.pgdata -c listen_addresses=localhost" -l analytics/.pgdata/server.log start
+    -o "-p 5433 -k $REPO/analytics/.pgdata -c listen_addresses=localhost" -l analytics/.pgdata/server.log start 9>&-
 for _ in $(seq 60); do pg_isready -h localhost -p 5433 -q && break; sleep 1; done
 
 python3 muse_handoff/drive_sync.py pull
