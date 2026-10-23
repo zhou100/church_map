@@ -563,3 +563,24 @@ def test_the_discovery_template_asks_for_the_sweep():
                                     known_sha="x", note="")
     assert "(v3.4)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
     assert "churchfinder: listed N" in text and "church_directory" in text
+
+
+def test_recheck_can_be_limited_to_the_packages_that_first_reported_the_rows(tmp_path):
+    cols = ["candidate_id", "task", "candidate_name", "city", "status", "street_address", "official_url",
+            "duplicate_of_church_id", "possible_match_church_id", "possible_match_candidate_id"]
+    rows = [dict(candidate_id="WP0011-001", task="WP0011", status="unresolved"),
+            dict(candidate_id="WP0006-001", task="WP0006", status="unresolved"),  # re-checked by WP0019 already
+            dict(candidate_id="WP0012-001", task="WP0012", status="unresolved")]
+    with (tmp_path / "muse_candidates.csv").open("w", newline="", encoding="utf-8") as f:
+        w = csv.DictWriter(f, fieldnames=cols, restval="")
+        w.writeheader()
+        w.writerows(rows)
+    assert [r["candidate_ref"] for r in ds.recheck_rows(tmp_path, {"WP0011", "WP0012"})] == ["WP0011-001", "WP0012-001"]
+    assert len(ds.recheck_rows(tmp_path)) == 3
+
+
+def test_the_recheck_template_carries_the_note():
+    text = ds.RECHECK_TASK.format(wp_id="WP-0099", task="WP0099", title="t", n=1, sha="x",
+                                  note="\n**Why these rows:** Facebook pass.\n")
+    assert "(v3.4)" in text and "**Why these rows:** Facebook pass." in text
+    assert "**Why these rows**" not in ds.RECHECK_TASK.format(wp_id="WP-0099", task="WP0099", title="t", n=1, sha="x", note="")
