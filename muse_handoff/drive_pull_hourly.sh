@@ -3,16 +3,16 @@
 #
 #   conhost.exe --headless wsl.exe -d Ubuntu -u root -- bash <repo>/muse_handoff/drive_pull_hourly.sh
 #
-# As root it only mounts Google Drive for desktop (F:) if WSL lost the mount, then
+# As root it only mounts Google Drive for desktop (G:) if WSL lost the mount, then
 # re-runs itself as the repo owner. Output goes to muse_handoff/returns/drive_pull.log.
 set -uo pipefail
 REPO="$(cd "$(dirname "$0")/.." && pwd)"
 OWNER="$(stat -c %U "$REPO")"
 
 if [[ $(id -u) == 0 ]]; then
-    if ! mountpoint -q /mnt/f; then
-        mkdir -p /mnt/f
-        mount -t drvfs F: /mnt/f -o "uid=$(id -u "$OWNER"),gid=$(id -g "$OWNER")" || true
+    if ! mountpoint -q /mnt/g; then
+        mkdir -p /mnt/g
+        mount -t drvfs G: /mnt/g -o "uid=$(id -u "$OWNER"),gid=$(id -g "$OWNER")" || true
     fi
     exec runuser -u "$OWNER" -- bash "$0"
 fi
@@ -23,7 +23,7 @@ exec 9>muse_handoff/returns/.drive_pull.lock
 flock -n 9 || { echo "$(date -u +%FT%TZ) previous pull still running"; exit 0; }
 echo "== $(date -u +%FT%TZ)"
 
-DRIVE="${CHURCHMAP_DRIVE:-/mnt/f/My Drive/churchmap-handoff}"
+DRIVE="${CHURCHMAP_DRIVE:-/mnt/g/My Drive/churchmap-handoff}"
 [[ -d $DRIVE ]] || { echo "Drive folder not available: $DRIVE"; exit 0; }
 
 # 9>&-: the server outlives this script and must not inherit the lock's descriptor,
