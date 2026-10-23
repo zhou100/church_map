@@ -51,12 +51,33 @@ def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
         "tags": compute_tags(dims, row.get("review_count") or 0),
         "website_summary": row.get("website_summary") or None,
         "extracted_tags": _normalize_extracted_tags(row.get("extracted_tags")),
+        # Verified facts (scripts/publish_verified.py): stated by the church's own
+        # site, denomination or Facebook Page, and re-checked on that page.
+        "kids_program": row.get("kids_program") or None,
+        "facebook_url": row.get("facebook_url") or None,
+        "service_languages": _split_languages(row.get("service_languages")),
+        "display_tradition": row.get("display_tradition") or None,
+        "verified_at": _iso(row.get("verified_at")),
     }
     if include_dims:
         church["dimensions"] = {
             k: (round(v, 2) if v is not None else None) for k, v in dims.items()
         }
     return church
+
+
+def _split_languages(value: str | None) -> list[str]:
+    return [lang.strip() for lang in (value or "").split(";") if lang.strip()]
+
+
+def _iso(value) -> str | None:
+    return value.isoformat() if value is not None else None
+
+
+def _fact_sources(rows: list[dict]) -> dict:
+    """field -> {source_url, source_type, checked_at}, for "Checked <date>" links."""
+    return {r["field"]: {"source_url": r["source_url"], "source_type": r["source_type"],
+                         "checked_at": _iso(r["checked_at"])} for r in rows}
 
 
 def _row_to_prerender_church(row: dict) -> dict:
@@ -166,9 +187,12 @@ async def get_church(church_id: int):
     async with pool.acquire() as con:
         repo = ChurchRepository(con)
         row = await repo.get(church_id)
+        sources = await repo.fact_sources(church_id) if row else []
     if not row:
         raise HTTPException(status_code=404, detail="Church not found")
-    return _row_to_church(row, include_dims=True)
+    church = _row_to_church(row, include_dims=True)
+    church["fact_sources"] = _fact_sources(sources)
+    return church
 
 
 @router.get("/churches/{church_id}/similar")

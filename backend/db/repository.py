@@ -90,6 +90,11 @@ _DIM_SELECT = """
         c.extracted_tags,
         c.latitude,
         c.longitude,
+        c.kids_program,
+        c.facebook_url,
+        c.service_languages,
+        c.display_tradition,
+        c.verified_at,
         ROUND(AVG(r.rating)::numeric, 1)::float8   AS avg_rating,
         COUNT(r.review_id)                         AS review_count,
         AVG(r.worship_energy)                      AS avg_worship_energy,
@@ -101,6 +106,11 @@ _DIM_SELECT = """
     FROM churches c
     LEFT JOIN reviews r ON c.church_id = r.church_id
 """
+
+# Decision D-1: churches found out of scope (non-Christian places, convents,
+# businesses), duplicates and pending rows leave every public read, but are never
+# deleted. NULL is legacy (not yet reviewed) and stays visible.
+VISIBLE = "(c.scope_status IS NULL OR c.scope_status IN ('in_scope', 'in_scope_labeled'))"
 
 
 def _normalize_extracted_tags(value: Any) -> Any:
@@ -182,7 +192,7 @@ class ChurchRepository:
     ) -> list[dict]:
         where, fparams = extracted_filters(**filters)
         sql = _DIM_SELECT + f"""
-            WHERE c.zip_code = %s{where}
+            WHERE c.zip_code = %s AND {VISIBLE}{where}
             GROUP BY c.church_id
             LIMIT %s OFFSET %s
         """
@@ -197,7 +207,7 @@ class ChurchRepository:
         where, fparams = extracted_filters(**filters)
         order_by, city_pairs = CITY_ORDERINGS[sort]
         sql = _DIM_SELECT + f"""
-            WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s){where}
+            WHERE LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s) AND {VISIBLE}{where}
             GROUP BY c.church_id
             ORDER BY {order_by}
             LIMIT %s OFFSET %s
@@ -213,7 +223,7 @@ class ChurchRepository:
         """Search church names across every location, ranked by relevance."""
         where, fparams = extracted_filters(**filters)
         sql = _DIM_SELECT + f"""
-            WHERE STRPOS(LOWER(c.name), LOWER(%s)) > 0{where}
+            WHERE STRPOS(LOWER(c.name), LOWER(%s)) > 0 AND {VISIBLE}{where}
             GROUP BY c.church_id
             ORDER BY
                 CASE
@@ -236,8 +246,8 @@ class ChurchRepository:
             return await cur.fetchall()
 
     async def get(self, church_id: int) -> dict | None:
-        sql = _DIM_SELECT + """
-            WHERE c.church_id = %s
+        sql = _DIM_SELECT + f"""
+            WHERE c.church_id = %s AND {VISIBLE}
             GROUP BY c.church_id
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
@@ -251,7 +261,7 @@ class ChurchRepository:
         useful minimum for a search result and stricter than `extracted_at`,
         which is also stamped on failed extraction attempts.
         """
-        sql = """
+        sql = f"""
             SELECT
                 c.church_id AS id,
                 c.name,
@@ -267,6 +277,7 @@ class ChurchRepository:
                 c.longitude
              FROM churches c
              WHERE c.church_id > %s
+               AND {VISIBLE}
                AND c.website_summary IS NOT NULL
                AND BTRIM(c.website_summary) <> ''
              ORDER BY c.church_id
@@ -281,7 +292,7 @@ class ChurchRepository:
         # church vs. every other church with at least one review. Inlined
         # rather than using pgvector because reviews aren't embeddings and
         # this keeps the query close to the SQLite original.
-        sql = """
+        sql = f"""
             WITH t AS (
                 SELECT
                     COALESCE(AVG(worship_energy),       0) AS we,
@@ -316,13 +327,25 @@ class ChurchRepository:
             FROM churches c
             JOIN reviews r ON c.church_id = r.church_id
             CROSS JOIN t
-            WHERE c.church_id <> %s
+            WHERE c.church_id <> %s AND {VISIBLE}
             GROUP BY c.church_id, t.we, t.cw, t.sd, t.cp, t.to_, t.fac
             ORDER BY dist_sq ASC
             LIMIT %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
             await cur.execute(sql, (church_id, church_id, k))
+            return await cur.fetchall()
+
+    async def fact_sources(self, church_id: int) -> list[dict]:
+        """Where each published fact was stated and when it was checked (no excerpts)."""
+        sql = """
+            SELECT field, source_url, source_type, checked_at
+              FROM church_fact_sources
+             WHERE church_id = %s
+             ORDER BY field
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, (church_id,))
             return await cur.fetchall()
 
     async def get_enrichment_cache(self, church_id: int) -> dict | None:
