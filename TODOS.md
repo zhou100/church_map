@@ -371,6 +371,17 @@ long tail of website-less churches never gets extracted at all.
       state. That half is coupled to F3 (facet counts need server-side
       filtering to be accurate), so do them together.
 
+- [ ] **F6. Move "For you" matching server-side.** Depends on F3. Phase 1 of
+      [the fit-preferences plan](docs/plans/landing_fit_preferences_plan.md)
+      re-ranks client-side: the landing preview's 100 `starting_point` rows,
+      and Search's loaded page. In a large city, a matching church past those
+      rows never surfaces, and the mobile `Show churches that fit` button can't
+      carry a count because a count over loaded rows would be wrong. Once F3
+      puts filters in the URL, score preferences in SQL next to
+      `STARTING_POINT_SCORE` (`backend/db/repository.py`), reusing the
+      `language` / `worship_style` params, and then add the count. Ranking stays
+      a ranking. Never filter on these fields (F4: unknown is not absence).
+
 - [x] **F5. Define a treatment for machine-extracted data.** Decided
       2026-07-27: website-derived content sits in a warm-surface,
       sienna-bordered section labeled "From this church's website"; extracted

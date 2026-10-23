@@ -1,10 +1,19 @@
 import { useEffect, useRef, useState } from 'react'
 import AboutSection from '../components/AboutSection'
 import DimensionBars from '../components/DimensionBars'
+import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { detectLocation, getStats, listChurches } from '../api/client'
-import { hasWebsiteProfile, pickStartingPoints } from '../churchProfile'
+import {
+  cityLanguageChips,
+  fitReason,
+  hasWebsiteProfile,
+  pickStartingPoints,
+  rankForYou,
+  zeroMatchSentence,
+} from '../churchProfile'
+import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 
 const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
@@ -41,6 +50,9 @@ export default function Landing({ exampleChurch }) {
   const [previewChurches, setPreviewChurches] = useState(null)
   const [previewStatus, setPreviewStatus] = useState('idle')
   const [hoveredId, setHoveredId] = useState(null)
+  // Read after hydration (below), never during render: `/` is prerendered
+  // and the first paint must match it.
+  const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
   const userEdited = useRef(false)
   const heroCard = useRef(null)
 
@@ -76,6 +88,8 @@ export default function Landing({ exampleChurch }) {
         total: data.churches.total,
       }))
       .catch(() => {})
+
+    setPrefs(loadPreferences())
 
     // Someone coming back sees the city they were last looking at; a first
     // visit starts wherever the IP lookup places them.
@@ -116,7 +130,15 @@ export default function Landing({ exampleChurch }) {
     }
   }
 
-  const topPicks = pickStartingPoints(previewChurches || NO_CHURCHES, TOP_PICKS)
+  function updatePrefs(next) {
+    setPrefs(next)
+    savePreferences(next)
+  }
+
+  const rows = previewChurches || NO_CHURCHES
+  const topPicks = pickStartingPoints(rankForYou(rows, prefs), TOP_PICKS)
+  const zeroMatch = preview && zeroMatchSentence(rows, prefs, { city: preview.city, limit: PREVIEW_LIMIT })
+  const forYou = hasPreferences(prefs) && !zeroMatch
 
   return (
     <div className="landing-page">
@@ -192,7 +214,10 @@ export default function Landing({ exampleChurch }) {
             )}
             {preview && previewStatus === 'ready' && (
               <div className="map-hero-picks">
-                {topPicks.length > 0 && <p className="eyebrow">Start here in {preview.city}</p>}
+                {topPicks.length > 0 && (
+                  <p className="eyebrow">Start here in {preview.city}{forYou && ' — for you'}</p>
+                )}
+                {topPicks.length > 0 && zeroMatch && <p className="map-hero-nomatch">{zeroMatch}</p>}
                 <ul>
                   {topPicks.map(church => (
                     <li key={church.id}>
@@ -209,10 +234,22 @@ export default function Landing({ exampleChurch }) {
                           {church.denomination || 'Church'}
                           {hasWebsiteProfile(church) && <> · <Icon name="check" size={12} /> Website read</>}
                         </span>
+                        {fitReason(church, prefs) && <span className="pick-fit">{fitReason(church, prefs)}</span>}
                       </a>
                     </li>
                   ))}
                 </ul>
+                {topPicks.length > 0 && (
+                  <FitPreferences
+                    prefs={prefs}
+                    onChange={updatePrefs}
+                    languageChips={cityLanguageChips(rows, prefs.languages)}
+                    sheetAction={{
+                      label: 'Show churches that fit',
+                      onClick: () => window.location.assign(searchUrl(preview)),
+                    }}
+                  />
+                )}
                 <a className="map-hero-all" href={searchUrl(preview)}>
                   See every church in {preview.city} <Icon name="arrow" />
                 </a>
