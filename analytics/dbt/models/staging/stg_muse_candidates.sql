@@ -14,6 +14,7 @@ select
     nullif(fb_page_evidence, '')                             as fb_page_evidence,
     fb_last_post_date,
     nullif(status, '')                                       as muse_status,
+    nullif(status_source_type, '')                           as status_source_type,
     nullif(street_address, '')                               as street_address,
     nullif(address_source_type, '')                          as address_source_type,
     nullif(address_is_worship_location, '')                  as address_is_worship_location,

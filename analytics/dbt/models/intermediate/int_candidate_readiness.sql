@@ -7,6 +7,7 @@ with cand as (
 ),
 checks as (
     select subject_id as candidate_id,
+           bool_or(fact_group = 'status'  and is_verified) as status_source_verified,
            bool_or(fact_group = 'address' and is_verified) as address_source_verified,
            bool_or(fact_group = 'phone'   and is_verified) as phone_source_verified,
            bool_or(fact_group = 'service' and is_verified) as service_source_verified,
@@ -30,7 +31,14 @@ joined as (
         coalesce(p.pin_usable, false)                                    as pin_usable,
         case when p.pin_usable then p.latitude end                       as latitude,
         case when p.pin_usable then p.longitude end                      as longitude,
-        coalesce(cand.muse_status = 'active', false)                     as verified_active,
+        -- Active only on evidence that holds up: the dated activity quote re-verified on
+        -- the church's own page or its denomination's, or (D-3) the church's own Facebook
+        -- Page with a post in the last 12 months. Muse's label alone is not enough: 78
+        -- map-ready congregations had a quote our re-check could not find.
+        coalesce({{ displayable("cand.muse_status = 'active'", 'cand.status_source_type',
+                                  'coalesce(k.status_source_verified, false)', 'true',
+                                  'coalesce(cand.fb_last_post_date >= a.as_of_date - 365, false)') }}, false)
+                                                                         as verified_active,
         coalesce(cand.fb_last_post_date >= a.as_of_date - 365, false)    as fb_page_fresh,
         coalesce(k.address_source_verified, false)                       as address_source_verified,
         coalesce(k.phone_source_verified, false)                         as phone_source_verified,
