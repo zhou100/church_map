@@ -579,8 +579,35 @@ def test_recheck_can_be_limited_to_the_packages_that_first_reported_the_rows(tmp
     assert len(ds.recheck_rows(tmp_path)) == 3
 
 
-def test_the_recheck_template_carries_the_note():
-    text = ds.RECHECK_TASK.format(wp_id="WP-0099", task="WP0099", title="t", n=1, sha="x",
+def test_the_recheck_template_carries_the_note_and_the_intro():
+    fmt = dict(wp_id="WP-0099", task="WP0099", title="t", n=1, sha="x")
+    text = ds.RECHECK_TASK.format(**fmt, intro=ds.RECHECK_INTRO["unverified_active"].format(n=1),
                                   note="\n**Why these rows:** Facebook pass.\n")
-    assert "(v3.4)" in text and "**Why these rows:** Facebook pass." in text
-    assert "**Why these rows**" not in ds.RECHECK_TASK.format(wp_id="WP-0099", task="WP0099", title="t", n=1, sha="x", note="")
+    assert "(v3.4)" in text and "**Why these rows:** Facebook pass." in text and "`activity_check`" in text
+    plain = ds.RECHECK_TASK.format(**fmt, intro=ds.RECHECK_INTRO["unresolved"].format(n=1), note="")
+    assert "**Why these rows**" not in plain and "`status = unresolved`" in plain
+
+
+def test_unverified_active_mode_selects_active_rows_whose_evidence_did_not_hold_up(tmp_path):
+    cols = ["candidate_id", "task", "candidate_name", "city", "status", "status_source_type", "street_address",
+            "official_url", "duplicate_of_church_id", "possible_match_church_id", "possible_match_candidate_id"]
+    rows = [dict(candidate_id="A-1", task="F", status="active", status_source_type="own_site"),  # verified
+            dict(candidate_id="A-2", task="F", status="active", status_source_type="own_site"),  # not_found
+            dict(candidate_id="A-3", task="F", status="active", status_source_type="fb_page"),   # D-3, left out
+            dict(candidate_id="A-4", task="F", status="active", status_source_type="other"),     # aggregator
+            dict(candidate_id="A-5", task="F", status="unresolved", status_source_type="own_site"),
+            dict(candidate_id="A-6", task="F", status="active", status_source_type="denomination")]  # no check
+    for name, header, body in (("muse_candidates.csv", cols, rows),
+                               ("source_checks.csv", ["subject_type", "subject_id", "fact_group", "verdict"],
+                                [dict(subject_type="candidate", subject_id="A-1", fact_group="status", verdict="verified"),
+                                 dict(subject_type="candidate", subject_id="A-2", fact_group="status", verdict="not_found"),
+                                 dict(subject_type="candidate", subject_id="A-4", fact_group="status", verdict="verified"),
+                                 dict(subject_type="candidate", subject_id="A-2", fact_group="address", verdict="verified")])):
+        with (tmp_path / name).open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=header, restval="")
+            w.writeheader()
+            w.writerows(body)
+    out = ds.recheck_rows(tmp_path, mode="unverified_active")
+    assert [(r["candidate_ref"], r["activity_check"]) for r in out] == \
+        [("A-2", "not_found"), ("A-4", "other_source"), ("A-6", "no_check")]
+    assert [r["candidate_ref"] for r in ds.recheck_rows(tmp_path)] == ["A-5"]
