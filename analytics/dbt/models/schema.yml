@@ -147,6 +147,27 @@ models:
       directory address, or the same Census match). Must be empty; tested by
       assert_new_congregations_are_not_in_the_directory.
 
+  - name: mart_publish_churches
+    description: >
+      Directory churches scripts/publish_verified.py writes to production: the D-1
+      scope flag, and for in-scope churches only rule-passing facts with their source
+      URLs and a corrected pin (pin_check off, usable Census pin, > 50 m). NULL = write nothing.
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+
+  - name: mart_publish_new
+    description: >
+      Map-ready new congregations scripts/publish_verified.py inserts (source = 'muse',
+      external_id = candidate_id) or updates on a re-run.
+    columns:
+      - name: external_id
+        tests: [unique, not_null]
+      - name: latitude
+        tests: [not_null]
+      - name: address
+        tests: [not_null]
+
   - name: mart_language_supply
     description: Stated service language x city x origin; congregations, active, shown facts, ready.
     tests:

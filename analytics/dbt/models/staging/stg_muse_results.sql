@@ -5,6 +5,7 @@ select
     entity_type,
     status                                                   as muse_status,
     nullif(status_source_type, '')                           as status_source_type,
+    nullif(status_source_url, '')                            as status_source_url,
     nullif(current_name, '')                                 as current_name,
     nullif(official_url, '')                                 as official_url,
     nullif(url_evidence, '')                                 as url_evidence,
