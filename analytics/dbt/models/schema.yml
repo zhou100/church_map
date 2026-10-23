@@ -61,7 +61,7 @@ models:
           - accepted_values: {values: ['yes', 'no', 'unknown']}
       - name: found_via
         tests:
-          - accepted_values: {values: [fb_page_search, fb_group_lead, web_search, denomination_directory, host_church_site]}
+          - accepted_values: {values: [fb_page_search, fb_group_lead, web_search, denomination_directory, host_church_site, church_directory]}
       - name: host_church_id
         tests:
           - relationships: {to: ref('stg_churches'), field: church_id}
