@@ -13,6 +13,7 @@ returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
         --leads muse_handoff/outbox/irs_leads_bay_sample100.csv      # from analytics/scripts/irs_leads.py
     python3 muse_handoff/drive_sync.py new-service-fixes --title "Re-quote 20 schedules" --ids 76632,C-063
     python3 muse_handoff/drive_sync.py new-recheck --title "Unresolved congregations"   # 100 per package
+    python3 muse_handoff/drive_sync.py new-recheck --title "Central coast" --tasks WP0011 --note "..."
     python3 muse_handoff/drive_sync.py publish WP-0001
     python3 muse_handoff/drive_sync.py pull [--no-recheck] [--no-build] [--no-geocode]
 
@@ -435,16 +436,26 @@ def cmd_new_service_fixes(args) -> int:
 RECHECK_INPUT_COLS = ["candidate_ref", "origin_task", "candidate_name", "current_name_native", "denomination_stated",
                       "city", "zip", "official_url", "facebook_page_url", "fb_last_post_date", "status_source_url",
                       "street_address", "address_is_worship_location", "phone", "service_times_verbatim",
-                      "service_languages", "kids_program_verbatim"]
+                      "service_languages", "kids_program_verbatim", "activity_check"]
 
-RECHECK_TASK = """# {wp_id} — re-check unresolved congregations: {title}
+RECHECK_INTRO = {
+    "unresolved": "You reported these {n} congregations earlier with `status = unresolved`, almost always because "
+                  "the homepage you fetched carried no date.",
+    "unverified_active": "You reported these {n} congregations as `active`, but our re-check could not verify the dated "
+                         "quote you cited for it: `activity_check` says what happened (`not_found`: the quote isn't on "
+                         "that page; `partial`; `not_an_excerpt`; `fetch_failed` / `robots_blocked`: our checker can't "
+                         "read that page, so cite one it can; `other_source`: an aggregator, not the church's own "
+                         "source). Cite a page that states the date verbatim.",
+}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
+RECHECK_TASK = """# {wp_id} — re-check congregations: {title}
+
+**Rules:** `reference/BRIEF_v3.md` (v3.4) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
-You reported these {n} congregations earlier with `status = unresolved`, almost always because the homepage you fetched carried no date. That keeps them off the map. Re-check each one with the full section A search:
-
+{intro} That keeps them off the map. Re-check each one with the full section A search:
+{note}
 1. **Activity (A1–A3):** open the church's events, news, sermons/media and bulletin pages, and its **Facebook Page** (newest posts, events, About; search Facebook by name and city if no Page is known). Find a date tied to its activity within 12 months, cite that page in `status_source_url`, and copy the date into `status_excerpt`.
 2. **Missing facts (A5):** from the same pages, fill what is blank: the street address where it meets (`address_is_worship_location`), service times and languages, children's program, office phone.
 3. **Keep what was right:** re-cite every fact you keep, with its own source URL and a verbatim excerpt (the input shows our current values, without excerpts). Blank a fact only if its source no longer states it, and say so in `notes`.
@@ -476,21 +487,43 @@ Zero `ERROR` lines is required. We also check that every input `candidate_ref` h
 """
 
 
-def recheck_rows(seeds: Path) -> list[dict]:
-    """Unresolved new congregations (the dbt rule: no duplicate, no possible match), the
-    ones closest to the map first: an address, then a website."""
+def recheck_rows(seeds: Path, tasks: set[str] | None = None, mode: str = "unresolved") -> list[dict]:
+    """New congregations (the dbt rule: no duplicate, no possible match) to send back, the
+    ones closest to the map first: an address, then a website.
+    - mode "unresolved": Muse found no dated activity.
+    - mode "unverified_active": Muse said active, but the dbt rule doesn't count it: its
+      activity quote didn't verify on its own site or denomination page (the `status`
+      check), or it rests on an "other" source. Facebook-sourced rows are left out: our
+      checker can't fetch Facebook, and D-3 judges those by the Page's post date.
+    `tasks` keeps only rows first reported by these packages (the `task` a re-check preserves)."""
+    checks = {r["subject_id"]: r["verdict"] for r in read_csv(seeds / "source_checks.csv")
+              if r["subject_type"] == "candidate" and r["fact_group"] == "status"}
+
+    def activity_check(r: dict) -> str:
+        if r["status"] != "active":
+            return ""
+        if r["status_source_type"] == "other":
+            return "other_source"
+        return checks.get(r["candidate_id"], "no_check")
+
+    def wanted(r: dict) -> bool:
+        if mode == "unresolved":
+            return r["status"] == "unresolved"
+        return r["status"] == "active" and r["status_source_type"] != "fb_page" and activity_check(r) != "verified"
     rows = [r for r in read_csv(seeds / "muse_candidates.csv")
-            if r["status"] == "unresolved" and not r["duplicate_of_church_id"]
-            and not r["possible_match_church_id"] and not r["possible_match_candidate_id"]]
+            if wanted(r) and not r["duplicate_of_church_id"]
+            and not r["possible_match_church_id"] and not r["possible_match_candidate_id"]
+            and (tasks is None or r["task"] in tasks)]
     rows.sort(key=lambda r: (not r["street_address"], not r["official_url"], r["candidate_id"]))
     return [{**{c: r.get(c, "") for c in RECHECK_INPUT_COLS}, "candidate_ref": r["candidate_id"],
-             "origin_task": r["task"]} for r in rows]
+             "origin_task": r["task"], "activity_check": activity_check(r)} for r in rows]
 
 
 def cmd_new_recheck(args) -> int:
-    rows = recheck_rows(Path(args.seeds))
+    tasks = {t.strip() for t in args.tasks.split(",") if t.strip()} if args.tasks else None
+    rows = recheck_rows(Path(args.seeds), tasks, args.mode)
     if not rows:
-        raise SystemExit("no unresolved new congregations")
+        raise SystemExit("no unresolved new congregations" + (f" from {', '.join(sorted(tasks))}" if tasks else ""))
     parts = [rows[i:i + args.size] for i in range(0, len(rows), args.size)]
     for i, part in enumerate(parts, 1):
         wp_id = next_wp_id()
@@ -500,7 +533,9 @@ def cmd_new_recheck(args) -> int:
         title = f"{args.title} (part {i} of {len(parts)})" if len(parts) > 1 else args.title
         (pkg / "TASK.md").write_text(RECHECK_TASK.format(
             wp_id=wp_id, task=wp_id.replace("-", ""), title=title, n=len(part),
-            sha=sha256(pkg / "recheck_input.csv")), encoding="utf-8")
+            intro=RECHECK_INTRO[args.mode].format(n=len(part)),
+            sha=sha256(pkg / "recheck_input.csv"),
+            note=f"\n**Why these rows:** {args.note}\n" if args.note else ""), encoding="utf-8")
         print(f"{wp_id}: {title}; {len(part)} congregations -> {pkg}")
     print("review each TASK.md, then publish them")
     return 0
@@ -877,6 +912,10 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("new-recheck", help="ask Muse to re-check every unresolved new congregation (brief section A)")
     p.add_argument("--title", required=True)
     p.add_argument("--size", type=int, default=100, help="congregations per package")
+    p.add_argument("--tasks", default="", help="only rows first reported by these packages, e.g. WP0011,WP0012")
+    p.add_argument("--mode", choices=sorted(RECHECK_INTRO), default="unresolved",
+                   help="unresolved (default), or unverified_active: active rows whose activity quote didn't verify")
+    p.add_argument("--note", default="", help="a 'Why these rows' paragraph for TASK.md")
     p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
     p.set_defaults(fn=cmd_new_recheck)
     p = sub.add_parser("publish", help="copy a package to the Drive outbox and queue it")
