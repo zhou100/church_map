@@ -1,6 +1,7 @@
 import { useEffect, useState } from 'react'
 import { useParams, useNavigate } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker } from 'react-leaflet'
+import AccountButton from '../components/AccountButton'
 import DimensionBars from '../components/DimensionBars'
 import ReviewForm from '../components/ReviewForm'
 import ChurchCard from '../components/ChurchCard'
@@ -115,7 +116,10 @@ export default function ChurchDetail() {
             canonicalPath={`/church/${id}`}
           />
         )}
-      <button className="back-link" onClick={() => navigate(-1)}>← Back to search</button>
+      <div className="detail-topbar">
+        <button className="back-link" onClick={() => navigate(-1)}>← Back to search</button>
+        <AccountButton />
+      </div>
 
       {churchError
         ? <p className="error-msg">{churchError}</p>

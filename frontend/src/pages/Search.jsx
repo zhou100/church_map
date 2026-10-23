@@ -2,6 +2,7 @@ import { useState, useEffect, useRef } from 'react'
 import { useSearchParams } from 'react-router-dom'
 import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
 import L from 'leaflet'
+import AccountButton from '../components/AccountButton'
 import ChurchCard from '../components/ChurchCard'
 import ChurchDetailPanel from '../components/ChurchDetailPanel'
 import Icon from '../components/Icon'
@@ -12,14 +13,20 @@ import { byProfileUsefulness } from '../churchProfile'
 
 const PAGE = 50
 
+// Refit only when the set of churches changes (a new search, a filter, more
+// results). The list is rebuilt on every render, so keying on it would refit
+// on each hover or re-sort and undo the visitor's own pan and zoom.
 function MapBounds({ churches }) {
   const map = useMap()
+  const latest = useRef(churches)
+  latest.current = churches
+  const idSet = churches.map(c => c.id).sort((a, b) => a - b).join(',')
   useEffect(() => {
-    const pts = churches.filter(c => c.latitude && c.longitude)
+    const pts = latest.current.filter(c => c.latitude && c.longitude)
     if (pts.length === 0) return
     const bounds = L.latLngBounds(pts.map(c => [c.latitude, c.longitude]))
     map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 })
-  }, [churches, map])
+  }, [idSet, map])
   return null
 }
 
@@ -256,10 +263,13 @@ export default function Search() {
       />
       <div className="search-top">
         <header>
-          <a href="/" className="wordmark" aria-label="ChurchMap home">
-            ChurchMap
-          </a>
-          <p>Know what a Sunday is actually like before you walk in.</p>
+          <div>
+            <a href="/" className="wordmark" aria-label="ChurchMap home">
+              ChurchMap
+            </a>
+            <p>Know what a Sunday is actually like before you walk in.</p>
+          </div>
+          <AccountButton />
         </header>
 
         <div className="search-mode-tabs" role="tablist" aria-label="Search by">
