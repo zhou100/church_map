@@ -1,7 +1,7 @@
 """Work queue between ChurchMap and Muse through a shared Google Drive folder.
 
 Muse has no API, but it reads and writes a Drive folder that Google Drive for
-desktop mirrors locally (default /mnt/f/My Drive/churchmap-handoff; override with
+desktop mirrors locally (default /mnt/g/My Drive/churchmap-handoff; override with
 CHURCHMAP_DRIVE). The protocol is in drive/README_FOR_MUSE.md. In short: we write
 outbox/WP-xxxx/, status.csv, feedback/ and reference/; Muse writes only
 returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
@@ -43,7 +43,7 @@ from pathlib import Path
 
 HANDOFF = Path(__file__).resolve().parent
 ROOT = HANDOFF.parent
-DRIVE = Path(os.environ.get("CHURCHMAP_DRIVE", "/mnt/f/My Drive/churchmap-handoff"))
+DRIVE = Path(os.environ.get("CHURCHMAP_DRIVE", "/mnt/g/My Drive/churchmap-handoff"))
 OUTBOX = HANDOFF / "outbox"
 RET = HANDOFF / "returns"
 STATUS = OUTBOX / "status.csv"  # master copy; mirrored read-only to the Drive root
