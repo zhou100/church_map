@@ -20,15 +20,18 @@ unit_tests:
           - {church_id: 3, scope_status: in_scope}
       - input: ref('stg_muse_results')
         rows:
-          - {church_id: 1, muse_batch: A_calibration, muse_status: active, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'yes'}
-          - {church_id: 2, muse_batch: A_calibration, muse_status: active, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'no'}
-          - {church_id: 3, muse_batch: A_calibration, muse_status: active, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: unknown}
+          - {church_id: 1, muse_batch: A_calibration, muse_status: active, status_source_type: own_site, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'yes'}
+          - {church_id: 2, muse_batch: A_calibration, muse_status: active, status_source_type: own_site, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'no'}
+          - {church_id: 3, muse_batch: A_calibration, muse_status: active, status_source_type: own_site, pin_check: matches, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: unknown}
       - input: ref('stg_source_checks')
         rows:
+          - {subject_type: church, subject_id: '1', fact_group: status, is_verified: true}
           - {subject_type: church, subject_id: '1', fact_group: address, is_verified: true}
           - {subject_type: church, subject_id: '1', fact_group: phone, is_verified: true}
+          - {subject_type: church, subject_id: '2', fact_group: status, is_verified: true}
           - {subject_type: church, subject_id: '2', fact_group: address, is_verified: true}
           - {subject_type: church, subject_id: '2', fact_group: phone, is_verified: true}
+          - {subject_type: church, subject_id: '3', fact_group: status, is_verified: true}
           - {subject_type: church, subject_id: '3', fact_group: address, is_verified: true}
           - {subject_type: church, subject_id: '3', fact_group: phone, is_verified: true}
       - input: ref('fact_holds')
@@ -52,15 +55,18 @@ unit_tests:
     given:
       - input: ref('stg_muse_candidates')
         rows:
-          - {candidate_id: X-1, is_new_congregation: true, muse_status: active, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'yes'}
-          - {candidate_id: X-2, is_new_congregation: true, muse_status: active, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'no'}
-          - {candidate_id: X-3, is_new_congregation: true, muse_status: active, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: unknown}
+          - {candidate_id: X-1, is_new_congregation: true, muse_status: active, status_source_type: own_site, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'yes'}
+          - {candidate_id: X-2, is_new_congregation: true, muse_status: active, status_source_type: own_site, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: 'no'}
+          - {candidate_id: X-3, is_new_congregation: true, muse_status: active, status_source_type: own_site, street_address: 100 Main St, address_source_type: own_site, phone: '650-555-0100', phone_source_type: own_site, address_is_worship_location: unknown}
       - input: ref('stg_source_checks')
         rows:
+          - {subject_type: candidate, subject_id: X-1, fact_group: status, is_verified: true}
           - {subject_type: candidate, subject_id: X-1, fact_group: address, is_verified: true}
           - {subject_type: candidate, subject_id: X-1, fact_group: phone, is_verified: true}
+          - {subject_type: candidate, subject_id: X-2, fact_group: status, is_verified: true}
           - {subject_type: candidate, subject_id: X-2, fact_group: address, is_verified: true}
           - {subject_type: candidate, subject_id: X-2, fact_group: phone, is_verified: true}
+          - {subject_type: candidate, subject_id: X-3, fact_group: status, is_verified: true}
           - {subject_type: candidate, subject_id: X-3, fact_group: address, is_verified: true}
           - {subject_type: candidate, subject_id: X-3, fact_group: phone, is_verified: true}
       - input: ref('int_geocodes')
@@ -166,3 +172,38 @@ unit_tests:
         - {church_id: 4, scope_status: out_of_scope, scope_basis: denomination}
         - {church_id: 5, scope_status: in_scope_labeled, scope_basis: denomination}
         - {church_id: 6, scope_status: in_scope, scope_basis: muse}
+
+  - name: active_needs_activity_evidence_that_holds_up
+    description: >
+      Muse's "active" counts only with a dated quote our re-check verified on the church's
+      own page, or (D-3) the church's own Facebook Page with a post in the last 12 months.
+      A-1 verified, A-2 quote not found, A-3 Facebook and fresh, A-4 Facebook but stale,
+      A-5 an "other" source (aggregators need review).
+    model: int_candidate_readiness
+    overrides:
+      vars:
+        as_of_date: '2026-10-22'
+    given:
+      - input: ref('stg_muse_candidates')
+        rows:
+          - {candidate_id: A-1, is_new_congregation: true, muse_status: active, status_source_type: own_site}
+          - {candidate_id: A-2, is_new_congregation: true, muse_status: active, status_source_type: own_site}
+          - {candidate_id: A-3, is_new_congregation: true, muse_status: active, status_source_type: fb_page, fb_last_post_date: '2026-10-01'}
+          - {candidate_id: A-4, is_new_congregation: true, muse_status: active, status_source_type: fb_page, fb_last_post_date: '2025-06-01'}
+          - {candidate_id: A-5, is_new_congregation: true, muse_status: active, status_source_type: other}
+      - input: ref('stg_source_checks')
+        rows:
+          - {subject_type: candidate, subject_id: A-1, fact_group: status, is_verified: true}
+          - {subject_type: candidate, subject_id: A-2, fact_group: status, is_verified: false}
+          - {subject_type: candidate, subject_id: A-5, fact_group: status, is_verified: true}
+      - input: ref('int_geocodes')
+        format: sql
+        rows: "select null::text as subject_type, null::text as subject_id, null::text as geocode_status, null::boolean as pin_usable, null::float8 as latitude, null::float8 as longitude where false"
+    expect:
+      rows:
+        - {candidate_id: A-1, verified_active: true}
+        - {candidate_id: A-2, verified_active: false}
+        - {candidate_id: A-3, verified_active: true}
+        - {candidate_id: A-4, verified_active: false}
+        - {candidate_id: A-5, verified_active: false}
+
