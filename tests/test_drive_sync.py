@@ -519,6 +519,34 @@ def test_recheck_return_needs_exactly_the_input_refs_under_this_task(tmp_path, m
     assert "WP0014-001: not in recheck_input.csv" in errs and "task='D', want WP0014" in errs
 
 
+def test_activity_recheck_rejects_the_robots_blocked_page_again(tmp_path, monkeypatch):
+    monkeypatch.setattr(ds, "OUTBOX", tmp_path)
+    (tmp_path / "WP-0039").mkdir()
+    barred, other = "https://a.example/events", "https://a.example/news/1"
+    ds.write_csv(tmp_path / "WP-0039" / "recheck_input.csv", ds.ACTIVITY_INPUT_COLS,
+                 [dict(candidate_ref="A-1", status_source_url=barred, activity_check="robots_blocked"),
+                  dict(candidate_ref="A-2", status_source_url=barred, activity_check="not_found")])
+    out = tmp_path / "new_candidates.csv"
+    cols = ["candidate_ref", "task", "status", "status_source_url"]
+    ds.write_csv(out, cols, [dict(candidate_ref="A-1", task="WP0039", status="active", status_source_url=barred),
+                             dict(candidate_ref="A-2", task="WP0039", status="active", status_source_url=barred)])
+    errs = ds.check_recheck("WP-0039", out)
+    assert len(errs) == 1 and errs[0].startswith("ERROR A-1: status_source_url is the page robots.txt")
+    # The same page written differently is still the same page (PR #58 review).
+    for same in ("https://a.example/events#october-25", "HTTPS://A.Example/events", " https://a.example/events "):
+        ds.write_csv(out, cols, [dict(candidate_ref="A-1", task="WP0039", status="active", status_source_url=same),
+                                 dict(candidate_ref="A-2", task="WP0039", status="unresolved")])
+        assert len(ds.check_recheck("WP-0039", out)) == 1, same
+    # A row cut short after status gives None for the URL: no crash, no false match.
+    out.write_text("candidate_ref,task,status,status_source_url\nA-1,WP0039,active\nA-2,WP0039,unresolved,\n",
+                   encoding="utf-8")
+    assert ds.check_recheck("WP-0039", out) == []
+    # Another page, or the same page left unresolved, is fine.
+    ds.write_csv(out, cols, [dict(candidate_ref="A-1", task="WP0039", status="active", status_source_url=other),
+                             dict(candidate_ref="A-2", task="WP0039", status="unresolved", status_source_url=barred)])
+    assert ds.check_recheck("WP-0039", out) == []
+
+
 def test_an_interrupted_publication_then_a_delivery_still_ends_with_the_pins(queue, tmp_path, monkeypatch):
     # Review of 0b692bf, end to end through cmd_pull(): publish() was interrupted (new
     # output, stale receipt). The pull first rebuilds for the delivered package, which
@@ -589,7 +617,7 @@ def test_only_discovery_packages_from_wp0020_are_held_to_the_sweep(tmp_path, mon
 def test_the_discovery_template_asks_for_the_sweep():
     text = ds.DISCOVERY_TASK.format(wp_id="WP-0099", task="WP0099", title="t", city_rows="| A | 1 |", known_n=1,
                                     known_sha="x", note="")
-    assert "(v3.4)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
+    assert "(v3.5)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
     assert "churchfinder: listed N" in text and "church_directory" in text
 
 
