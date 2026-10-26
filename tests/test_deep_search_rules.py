@@ -130,3 +130,21 @@ def test_a_service_fix_citing_a_directory_is_rejected(tmp_path):
     msgs = [m for level, _, m in vr.problems if level == "ERROR"]
     vr.problems.clear()
     assert any("service_source_url is a church directory" in m for m in msgs)
+
+
+# --- v3.5 (WP0034 on): the status quote must be something our checker can read --------
+
+ACTIVE = dict(status="active", status_excerpt="Published: 2026-09-18T19:18:23+00:00",
+              status_source_url="https://x.org/2026/09/18/post/")
+
+
+@pytest.mark.parametrize("task,flagged", [("WP0034", True), ("WP0033", False)])
+def test_a_metadata_timestamp_is_not_a_quote_from_wp0034(task, flagged):
+    assert any("metadata timestamp" in m for m in errors(task=task, **ACTIVE)) is flagged
+
+
+@pytest.mark.parametrize("url,flagged", [("https://www.youtube.com/@church", True), ("https://youtu.be/abc", True),
+                                         ("https://x.org/sermons/oct-18", False)])
+def test_a_video_channel_is_a_lead_not_a_citation(url, flagged):
+    msgs = errors(task="WP0034", status="active", status_excerpt="Sunday, October 18, 2026", status_source_url=url)
+    assert any("video page" in m for m in msgs) is flagged

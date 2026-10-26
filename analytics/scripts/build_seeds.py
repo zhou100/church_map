@@ -155,8 +155,11 @@ CAND_COLS = [
 # C-030 and C-064: same name, address and website as a directory church; found when
 # their Census pins landed on that church's pin (dbt assert_new_congregations_are_not_in_the_directory).
 # WP0026-004 and WP0026-026: same name and street as a directory church (same dbt test).
+# WP0028-015 and WP0028-018: same street and website as a directory church in the
+# known list Muse was given (same dbt test).
 CANDIDATE_DUPLICATES = {"CN-025": "78022", "C-030": "76688", "C-064": "77437",
-                        "WP0026-004": "76313", "WP0026-026": "76294"}
+                        "WP0026-004": "76313", "WP0026-026": "76294",
+                        "WP0028-015": "76396", "WP0028-018": "77612"}
 CANDIDATE_DUPLICATES_BY_NAME = {("B", "Bridge City Church"): "76692"}
 
 LANGUAGE_NAMES = {
