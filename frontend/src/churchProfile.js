@@ -47,15 +47,25 @@ function hasValue(value) {
 }
 
 // Anything a newcomer could read before a first visit: what people say, when
-// to go, or what the church says about itself. The same fields score above
-// zero in STARTING_POINT_SCORE (backend/db/repository.py).
+// to go, what the church says about itself, or a fact we verified. The
+// non-verified fields are the ones that score above zero in
+// STARTING_POINT_SCORE (backend/db/repository.py).
 function hasSomethingToShow(church) {
   const extracted = church.extracted_tags || {}
   return (church.review_count ?? 0) > 0
     || hasValue(church.service_times)
     || hasValue(church.website_summary)
+    || hasValue(church.kids_program)
+    || hasValue(church.service_languages)
     || ['service_languages', 'worship_style', 'programs', 'theological_stance', 'statement_of_faith']
       .some(field => hasValue(extracted[field]))
+}
+
+// Whether the landing page may recommend this church. Picks and the landing
+// zero-match check both use it, so a match is never counted that the picks
+// then drop.
+export function isStartingPoint(church) {
+  return isChurch(church) && hasSomethingToShow(church)
 }
 
 // Picks for the landing page. `churches` must come from
@@ -63,9 +73,7 @@ function hasSomethingToShow(church) {
 // ties toward the middle of the city) before its row limit; this keeps that
 // order and only drops what we shouldn't recommend.
 export function pickStartingPoints(churches, count) {
-  return churches
-    .filter(church => isChurch(church) && hasSomethingToShow(church))
-    .slice(0, count)
+  return churches.filter(isStartingPoint).slice(0, count)
 }
 
 // ── Fit to what a visitor asked for ("Make these fit you") ──────────────────
@@ -165,10 +173,11 @@ export function rankForYou(churches, prefs) {
 
 // When nothing in the loaded rows matches, say what we don't know instead of
 // implying the city has no such church (TODOS F4). The count is only exact
-// when the whole city fit under the row limit.
-export function zeroMatchSentence(churches, prefs, { city, limit }) {
+// when the whole city fit under the row limit. `eligible` is which rows the
+// page can show: every church on Search, only `isStartingPoint` on Landing.
+export function zeroMatchSentence(churches, prefs, { city, limit, eligible = isChurch }) {
   if (!hasPreferences(prefs)) return null
-  if (churches.some(church => isChurch(church) && fitScore(church, prefs) > 0)) return null
+  if (churches.some(church => eligible(church) && fitScore(church, prefs) > 0)) return null
   const phrase = preferencePhrase(prefs, 'or')
   const known = churches.filter(church => isChurch(church) && hasFitDetails(church)).length
   if (known === 0) {

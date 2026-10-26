@@ -9,6 +9,7 @@ import {
   cityLanguageChips,
   fitReason,
   hasWebsiteProfile,
+  isStartingPoint,
   pickStartingPoints,
   rankForYou,
   zeroMatchSentence,
@@ -137,7 +138,11 @@ export default function Landing({ exampleChurch }) {
 
   const rows = previewChurches || NO_CHURCHES
   const topPicks = pickStartingPoints(rankForYou(rows, prefs), TOP_PICKS)
-  const zeroMatch = preview && zeroMatchSentence(rows, prefs, { city: preview.city, limit: PREVIEW_LIMIT })
+  const zeroMatch = preview && zeroMatchSentence(rows, prefs, {
+    city: preview.city,
+    limit: PREVIEW_LIMIT,
+    eligible: isStartingPoint,
+  })
   const forYou = hasPreferences(prefs) && !zeroMatch
 
   return (

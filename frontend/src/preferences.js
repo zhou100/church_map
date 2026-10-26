@@ -55,22 +55,26 @@ export function hasPreferences(prefs) {
   return Boolean(prefs && (prefs.languages.length || prefs.worship.length || prefs.kids))
 }
 
-// Storage can throw (private windows, blocked site data). Then preferences
-// last for this page view only, and nothing is said about it.
-export function loadPreferences(storage = globalThis.localStorage) {
+// Storage can throw (private windows, blocked site data), and so can reading
+// `localStorage` itself, which is why it is looked up inside the try and not
+// as a default parameter. Then preferences last for this page view only, and
+// nothing is said about it.
+export function loadPreferences(storage) {
   try {
-    return normalizePreferences(JSON.parse(storage.getItem(PREFERENCES_KEY)))
+    const store = storage ?? globalThis.localStorage
+    return normalizePreferences(JSON.parse(store.getItem(PREFERENCES_KEY)))
   } catch {
     return { ...EMPTY_PREFERENCES }
   }
 }
 
-export function savePreferences(prefs, storage = globalThis.localStorage) {
+export function savePreferences(prefs, storage) {
   try {
+    const store = storage ?? globalThis.localStorage
     if (hasPreferences(prefs)) {
-      storage.setItem(PREFERENCES_KEY, JSON.stringify({ ...prefs, updated_at: new Date().toISOString() }))
+      store.setItem(PREFERENCES_KEY, JSON.stringify({ ...prefs, updated_at: new Date().toISOString() }))
     } else {
-      storage.removeItem(PREFERENCES_KEY)
+      store.removeItem(PREFERENCES_KEY)
     }
   } catch {
     // Kept in memory for this page view.

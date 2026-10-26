@@ -41,6 +41,25 @@ test('blocked storage never throws, on read or on write', () => {
   assert.doesNotThrow(() => savePreferences(EMPTY_PREFERENCES, throwingStorage))
 })
 
+// Some browsers throw on the `localStorage` property itself when site data is
+// blocked. Search calls loadPreferences() before every search, name searches
+// included, so this must not throw either.
+test('a throwing localStorage getter never throws, on read or on write', () => {
+  const original = Object.getOwnPropertyDescriptor(globalThis, 'localStorage')
+  Object.defineProperty(globalThis, 'localStorage', {
+    configurable: true,
+    get() { throw new Error('SecurityError') },
+  })
+  try {
+    assert.deepEqual(loadPreferences(), EMPTY_PREFERENCES)
+    assert.doesNotThrow(() => savePreferences({ languages: ['Spanish'], worship: [], kids: true }))
+    assert.doesNotThrow(() => savePreferences(EMPTY_PREFERENCES))
+  } finally {
+    if (original) Object.defineProperty(globalThis, 'localStorage', original)
+    else delete globalThis.localStorage
+  }
+})
+
 test('save then load round-trips, and clearing removes the key', () => {
   const storage = memoryStorage()
   const prefs = { languages: ['Spanish'], worship: ['contemporary'], kids: true }

@@ -8,6 +8,7 @@ import {
   fitScore,
   fitSignals,
   isChurch,
+  isStartingPoint,
   languageSignals,
   pickStartingPoints,
   rankForYou,
@@ -225,4 +226,37 @@ test('language chips: English and Spanish first, then the city, six at most, pic
   assert.deepEqual(cityLanguageChips(rows), ['English', 'Spanish', 'Korean', 'Tagalog', 'Amharic', 'Russian'])
   assert.deepEqual(cityLanguageChips(rows, ['Haitian Creole', 'korean']).slice(-1), ['Haitian Creole'])
   assert.deepEqual(cityLanguageChips([]), ['English', 'Spanish'])
+})
+
+// What Landing.jsx renders from the rows it loaded: the picks, and whether
+// they are labeled "for you" (a match was found) or explained (none was).
+function landingView(rows, asked, limit = 100) {
+  const picks = pickStartingPoints(rankForYou(rows, asked), 3)
+  const zeroMatch = zeroMatchSentence(rows, asked, { city: 'Fresno', limit, eligible: isStartingPoint })
+  return { picks: picks.map(c => c.name), zeroMatch }
+}
+
+test('landing: a church whose only fact is a verified kids program is picked first', () => {
+  const rows = [
+    church({ name: 'A', website_summary: 'A neighborhood church.' }),
+    church({ name: 'B', website_summary: 'A neighborhood church.' }),
+    church({ name: 'C', website_summary: 'A neighborhood church.' }),
+    church({ name: 'Kids', kids_program: 'Sunday school at 9' }),
+  ]
+  const view = landingView(rows, prefs({ kids: true }))
+  assert.deepEqual(view.picks, ['Kids', 'A', 'B'])
+  assert.equal(view.zeroMatch, null)
+})
+
+test('landing: a match the picks would drop does not count, so the picks are explained', () => {
+  const rows = [
+    church({ name: 'A', website_summary: 'A neighborhood church.' }),
+    church({ name: 'B', website_summary: 'A neighborhood church.' }),
+    church({ name: 'Directory only', language: 'Korean' }),
+  ]
+  const view = landingView(rows, prefs({ languages: ['Korean'] }))
+  assert.deepEqual(view.picks, ['A', 'B'])
+  assert.ok(view.zeroMatch)
+  // Search lists every church, so there the same row is a match.
+  assert.equal(zeroMatchSentence(rows, prefs({ languages: ['Korean'] }), { city: 'Fresno', limit: 100 }), null)
 })
