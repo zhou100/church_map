@@ -414,14 +414,6 @@ export default function Search() {
               ))}
             </div>
 
-            <FitPreferences
-              className="search-fit"
-              prefs={prefs}
-              onChange={updatePrefs}
-              languageChips={cityLanguageChips(churches, prefs.languages)}
-            />
-            {sortBy === 'forYou' && forYouZeroMatch && <p className="search-fit-nomatch">{forYouZeroMatch}</p>}
-
             {(availableTags.length > 0 || availableLangs.length > 0) && (
               <div className="tag-filter-bar">
                 {availableLangs.map(lang => (
@@ -484,47 +476,61 @@ export default function Search() {
                 onBack={() => { setSelectedChurchId(null); setHoveredId(null) }}
                 onSelect={handleSelectChurch}
               />
-            ) : visibleChurches?.length === 0 ? (
-              <div className="empty-state">
-                {churches.length === 0
-                  ? activeSearch?.type === 'name'
-                    ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
-                    : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>
-                  : <p>No churches match the selected filters.</p>
-                }
-              </div>
             ) : (
               <>
-                <div className="church-list">
-                  {visibleChurches?.map(c => (
-                    <div
-                      key={c.id}
-                      className={`card-wrapper${hoveredId === c.id ? ' card-wrapper-active' : ''}`}
-                      onMouseEnter={() => setHoveredId(c.id)}
-                      onMouseLeave={() => setHoveredId(null)}
-                    >
-                      <ChurchCard
-                        church={c}
-                        userLat={userCoords?.lat}
-                        userLon={userCoords?.lon}
-                        showLocation={activeSearch?.type === 'name'}
-                        fitReason={fitReason(c, prefs)}
-                        onSelect={handleSelectChurch}
-                      />
-                    </div>
-                  ))}
-                </div>
-                {hasMore && selectedTags.length === 0 && (
-                  <div className="load-more-row">
-                    <button
-                      type="button"
-                      className="load-more-btn"
-                      onClick={handleLoadMore}
-                      disabled={loadingMore}
-                    >
-                      {loadingMore ? 'Loading…' : 'Load more churches'}
-                    </button>
+                {/* In the list column, so opening the panel on desktop grows
+                    the list, not the header above both panes. */}
+                <FitPreferences
+                  className="search-fit"
+                  prefs={prefs}
+                  onChange={updatePrefs}
+                  languageChips={cityLanguageChips(churches, prefs.languages)}
+                  phoneMediaQuery="(max-width: 839px)"
+                />
+                {sortBy === 'forYou' && forYouZeroMatch && <p className="search-fit-nomatch">{forYouZeroMatch}</p>}
+                {visibleChurches?.length === 0 ? (
+                  <div className="empty-state">
+                    {churches.length === 0
+                      ? activeSearch?.type === 'name'
+                        ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
+                        : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>
+                      : <p>No churches match the selected filters.</p>
+                    }
                   </div>
+                ) : (
+                  <>
+                    <div className="church-list">
+                      {visibleChurches?.map(c => (
+                        <div
+                          key={c.id}
+                          className={`card-wrapper${hoveredId === c.id ? ' card-wrapper-active' : ''}`}
+                          onMouseEnter={() => setHoveredId(c.id)}
+                          onMouseLeave={() => setHoveredId(null)}
+                        >
+                          <ChurchCard
+                            church={c}
+                            userLat={userCoords?.lat}
+                            userLon={userCoords?.lon}
+                            showLocation={activeSearch?.type === 'name'}
+                            fitReason={fitReason(c, prefs)}
+                            onSelect={handleSelectChurch}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {hasMore && selectedTags.length === 0 && (
+                      <div className="load-more-row">
+                        <button
+                          type="button"
+                          className="load-more-btn"
+                          onClick={handleLoadMore}
+                          disabled={loadingMore}
+                        >
+                          {loadingMore ? 'Loading…' : 'Load more churches'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

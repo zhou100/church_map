@@ -1167,10 +1167,44 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   white-space: nowrap;
   border: 0;
 }
-.map-hero-picks .pick-fit {
+/* Reason line ("Spanish service · Kids program"): a small badge so it reads
+   apart from the denomination row and the card's profile status. Sienna, not
+   gold: gold is kept for stars, the active pin and dimension bars. */
+.map-hero-picks .pick-fit,
+.card-fit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  align-self: flex-start;
+  padding: 0.18rem 0.55rem;
   color: var(--sienna);
-  font-size: 0.76rem;
+  background: var(--warm-surface);
+  border-left: 2px solid var(--sienna);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.75rem;
   font-weight: 600;
+}
+.map-hero-picks .pick-fit { margin-top: 0.2rem; }
+.map-hero-picks .pick-fit .icon { color: currentColor; }
+/* Panel open on desktop: one row per pick (name, then reason) so all three
+   stay above the panel and a re-rank can't move the chips under the cursor. */
+@media (min-width: 761px) {
+  .map-hero-picks-compact li a {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.6rem;
+  }
+  .map-hero-picks-compact li a > span:not(.pick-fit) { display: none; }
+  .map-hero-picks-compact li strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .map-hero-picks-compact .pick-fit { flex: 0 1 auto; max-width: 62%; margin-top: 0; }
 }
 .map-hero-nomatch {
   margin: 0 0 0.6rem;
@@ -1189,22 +1223,34 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   font-weight: 700;
   cursor: pointer;
 }
-.fit-entry {
-  display: inline-flex;
+/* Entry and summary share one bar, so pressing the first chip swaps the text
+   without moving the panel below it. */
+.fit-entry,
+.fit-summary {
+  display: flex;
   align-items: center;
-  gap: 0.4rem;
-  min-height: 44px;
-  font-size: 0.86rem;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.45rem 0.75rem;
+  background: var(--warm-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
 }
+.fit-entry {
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.fit-entry:hover { border-color: var(--sienna); }
 .fit-entry-hint { color: var(--text-2); font-weight: 500; font-size: 0.8rem; }
+.fit-dot { color: var(--text-3); font-weight: 400; }
 .fit-entry:hover,
 .fit-edit:hover { color: var(--sienna-dark); }
 .fit-summary {
-  display: flex;
   flex-wrap: wrap;
-  align-items: center;
   gap: 0.35rem;
-  min-height: 44px;
   margin: 0;
   color: var(--text-2);
   font-size: 0.84rem;
@@ -1275,15 +1321,16 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 .fit-sheet::backdrop { background: rgba(28, 25, 23, 0.35); }
 @keyframes fit-sheet-in { from { transform: translateY(24px); opacity: 0; } }
 .fit-sheet-head {
+  position: relative;
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 14px 16px 6px;
+  padding: 20px 16px 8px;
 }
 .fit-sheet-head::before {
   content: '';
   position: absolute;
-  top: 6px;
+  top: 8px;
   left: 50%;
   width: 36px;
   height: 4px;
@@ -1291,7 +1338,11 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   background: var(--border);
   border-radius: 9999px;
 }
-.fit-sheet-head h2 { margin: 0; font-size: 1.15rem; }
+.fit-sheet-head h2 {
+  margin: 0;
+  font: 650 1.2rem/1.2 'Fraunces', Georgia, serif;
+  font-optical-sizing: auto;
+}
 .fit-sheet-close {
   width: 44px;
   height: 44px;
@@ -1314,20 +1365,16 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 }
 .fit-sheet-primary { flex: 1; min-height: 48px; }
 
-/* Search page: summary/entry above the filter pills, reason line on cards. */
-.search-fit { margin: 0.35rem 0 0; }
+/* Search page: summary/entry at the top of the list column, reason line on cards. */
+.search-fit { margin: 0 0 0.6rem; }
+.search-fit .fit-panel { margin-bottom: 0.4rem; }
 .search-fit-nomatch {
-  margin: 0.25rem 0 0.4rem;
+  margin: 0 0 0.6rem;
   color: var(--text-2);
   font-size: 0.8rem;
   line-height: 1.45;
 }
-.card-fit {
-  margin: 0 0 0.35rem;
-  color: var(--sienna);
-  font-size: 0.76rem;
-  font-weight: 600;
-}
+.card-fit { margin: 0.35rem 0 0.1rem; }
 
 @media (prefers-reduced-motion: reduce) {
   .fit-sheet[open] { animation: none; }
@@ -1580,12 +1627,19 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   .landing-search { margin-top: 0.9rem; }
   .landing-search > label { display: none; }
   .map-hero-card h1 { font-size: 1.5rem; }
-  .map-hero-picks { margin-top: 0.75rem; padding-top: 0.6rem; }
+  /* "See every church" first, "Make these fit you" as the line under it. */
+  .map-hero-picks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.6rem;
+  }
   .map-hero-picks .eyebrow,
   .map-hero-picks ul,
   .map-hero-nomatch { display: none; }
-  .map-hero-picks .fit-preferences { margin-top: 0; }
-  .map-hero-all { margin-top: 0; }
+  .map-hero-all { order: 1; align-self: flex-start; margin-top: 0; }
+  .map-hero-picks .fit-preferences { order: 2; margin-top: 0; }
   .landing-search-row { flex-wrap: wrap; }
   .landing-search-row button { width: 100%; justify-content: center; }
   .profile-showcase { margin-top: 56px; }

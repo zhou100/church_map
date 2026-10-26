@@ -55,6 +55,9 @@ export default function Landing({ exampleChurch }) {
   // Read after hydration (below), never during render: `/` is prerendered
   // and the first paint must match it.
   const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
+  // While the inline panel is open (desktop), the picks shrink to one line
+  // each so all three stay in view above it.
+  const [fitPanelOpen, setFitPanelOpen] = useState(false)
   const userEdited = useRef(false)
   const heroCard = useRef(null)
 
@@ -220,7 +223,7 @@ export default function Landing({ exampleChurch }) {
               </p>
             )}
             {preview && previewStatus === 'ready' && (
-              <div className="map-hero-picks">
+              <div className={`map-hero-picks${fitPanelOpen ? ' map-hero-picks-compact' : ''}`}>
                 {topPicks.length > 0 && (
                   <p className="eyebrow">Start here in {preview.city}{forYou && ' — for you'}</p>
                 )}
@@ -241,7 +244,12 @@ export default function Landing({ exampleChurch }) {
                           {church.denomination || 'Church'}
                           {hasWebsiteProfile(church) && <> · <Icon name="check" size={12} /> Website read</>}
                         </span>
-                        {fitReason(church, prefs) && <span className="pick-fit">{fitReason(church, prefs)}</span>}
+                        {fitReason(church, prefs) && (
+                          <span className="pick-fit">
+                            <Icon name="check" size={12} />
+                            {fitReason(church, prefs)}
+                          </span>
+                        )}
                       </a>
                     </li>
                   ))}
@@ -251,8 +259,9 @@ export default function Landing({ exampleChurch }) {
                     prefs={prefs}
                     onChange={updatePrefs}
                     languageChips={cityLanguageChips(rows, prefs.languages)}
+                    onOpenChange={setFitPanelOpen}
                     sheetAction={{
-                      label: 'Show churches that fit',
+                      label: hasPreferences(prefs) ? 'Show churches that fit' : `Show churches in ${preview.city}`,
                       onClick: () => window.location.assign(searchUrl(preview)),
                     }}
                   />

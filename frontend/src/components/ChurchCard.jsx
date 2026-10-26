@@ -86,7 +86,12 @@ function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
         )}
         <Distance church={church} userLat={userLat} userLon={userLon} />
       </div>
-      {fitReason && <p className="card-fit">{fitReason}</p>}
+      {fitReason && (
+        <p className="card-fit">
+          <Icon name="check" size={12} />
+          {fitReason}
+        </p>
+      )}
       <div className="tag-list">
         {languageTags.map(language => (
           <span key={language} className="tag tag-lang">{language}</span>

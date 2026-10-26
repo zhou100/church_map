@@ -13,8 +13,6 @@ import {
 // brings focus trapping, Esc and an inert page with it. Controlled: the page
 // owns `prefs` and saves them. Plan: docs/plans/landing_fit_preferences_plan.md.
 
-const PHONE = '(max-width: 760px)'
-
 function toggle(list, value) {
   return list.includes(value) ? list.filter(item => item !== value) : [...list, value]
 }
@@ -82,14 +80,30 @@ function Questions({ prefs, languageChips, onChange }) {
   )
 }
 
-export default function FitPreferences({ prefs, onChange, languageChips, sheetAction, className = '' }) {
-  const [open, setOpen] = useState(false)
+// `phoneMediaQuery` is where the sheet takes over from the inline panel: the
+// landing card's breakpoint by default, Search's own (839px) there.
+// `onOpenChange` hears only the inline panel; the sheet covers the page.
+export default function FitPreferences({
+  prefs,
+  onChange,
+  languageChips,
+  sheetAction,
+  onOpenChange,
+  phoneMediaQuery = '(max-width: 760px)',
+  className = '',
+}) {
+  const [open, setOpenState] = useState(false)
   const [announcement, setAnnouncement] = useState('')
   const panelId = useId()
   const opener = useRef(null)
   const dialog = useRef(null)
   const panel = useRef(null)
   const active = hasPreferences(prefs)
+
+  function setOpen(next) {
+    setOpenState(next)
+    onOpenChange?.(next)
+  }
 
   function change(next) {
     onChange(next)
@@ -104,7 +118,7 @@ export default function FitPreferences({ prefs, onChange, languageChips, sheetAc
 
   function handleOpen() {
     const sheet = dialog.current
-    const phone = typeof window.matchMedia === 'function' && window.matchMedia(PHONE).matches
+    const phone = typeof window.matchMedia === 'function' && window.matchMedia(phoneMediaQuery).matches
     if (phone && typeof sheet?.showModal === 'function') {
       sheet.showModal()
       return
@@ -141,6 +155,7 @@ export default function FitPreferences({ prefs, onChange, languageChips, sheetAc
       {active ? (
         <p className="fit-summary">
           <span>For you:</span> <strong>{preferenceSummary(prefs)}</strong>
+          <span className="fit-dot" aria-hidden="true">·</span>
           <button
             type="button"
             ref={opener}
@@ -162,6 +177,7 @@ export default function FitPreferences({ prefs, onChange, languageChips, sheetAc
           onClick={handleOpen}
         >
           Make these fit you
+          <span className="fit-dot" aria-hidden="true">·</span>
           <span className="fit-entry-hint">language, worship, kids</span>
           <Icon name="arrow" size={13} />
         </button>
@@ -184,7 +200,14 @@ export default function FitPreferences({ prefs, onChange, languageChips, sheetAc
         </div>
       )}
 
-      <dialog ref={dialog} className="fit-sheet" aria-labelledby={`${panelId}-title`}>
+      {/* A click whose target is the <dialog> itself landed on the backdrop:
+          the head, body and foot cover the whole sheet. */}
+      <dialog
+        ref={dialog}
+        className="fit-sheet"
+        aria-labelledby={`${panelId}-title`}
+        onClick={event => { if (event.target === dialog.current) closeSheet() }}
+      >
         <div className="fit-sheet-head">
           <h2 id={`${panelId}-title`}>What matters to you?</h2>
           <button type="button" className="fit-sheet-close" aria-label="Close" onClick={closeSheet}>
