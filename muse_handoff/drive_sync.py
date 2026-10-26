@@ -186,7 +186,7 @@ def known_congregations(state: str, cities: list[str], db: Path, seeds: Path) ->
 
 DISCOVERY_TASK = """# {wp_id} — find congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.4) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -259,7 +259,7 @@ def cmd_new_discovery(args) -> int:
 
 LEADS_TASK = """# {wp_id} — check leads: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -338,7 +338,7 @@ FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "official_url", 
 
 SERVICE_FIX_TASK = """# {wp_id} — re-quote service times: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 {note}
 ## What
 
@@ -554,8 +554,10 @@ def check_sweep(run_log: Path) -> str:
 
 def check_recheck(wp_id: str, cands: Path) -> list[str]:
     """Exactly one row per input candidate_ref, nothing else, all under this package's task
-    (so the v3.3 section A checks apply to every row)."""
-    want = {r["candidate_ref"] for r in read_csv(OUTBOX / wp_id / "recheck_input.csv")}
+    (so the v3.3 section A checks apply to every row). An active row may not cite the page
+    our checker is barred from by robots.txt: that quote can never verify (WP-0039)."""
+    inputs = {r["candidate_ref"]: r for r in read_csv(OUTBOX / wp_id / "recheck_input.csv")}
+    want = set(inputs)
     rows = read_csv(cands)
     seen = Counter(r.get("candidate_ref", "") for r in rows)
     task = wp_id.replace("-", "")
@@ -565,6 +567,12 @@ def check_recheck(wp_id: str, cands: Path) -> list[str]:
              for ref in sorted(set(seen) - want)]
     errs += [f"ERROR {r.get('candidate_ref', '')}: task={r.get('task', '')!r}, want {task}"
              for r in rows if r.get("task") != task]
+    for r in rows:
+        given = inputs.get(r.get("candidate_ref", ""), {})
+        if (r.get("status") == "active" and given.get("activity_check") == "robots_blocked"
+                and r.get("status_source_url", "").strip() == given.get("status_source_url", "").strip()):
+            errs.append(f"ERROR {r['candidate_ref']}: status_source_url is the page robots.txt bars our "
+                        "checker from (activity_check = robots_blocked); cite another page or the Facebook Page")
     return errs
 
 
