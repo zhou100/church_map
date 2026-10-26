@@ -92,7 +92,7 @@ Rules for this task:
 
   A useful detail from them may go in `notes`, labelled "lead".
 - **Exact page.** `<group>_source_url` is the exact page or document (or Facebook post permalink, or the Page's About URL) that contains the excerpt. Never a bare homepage when the text is on a sub-page, and never truncated.
-- **Source age.** Prefer sources dated within 24 months. If you must use an older one, give its date in `notes`. **Service times and children's programs from a source older than 12 months:** report them, and put the source date in `notes`.
+- **Source age.** **[v3.5]** A fact stated only in a source older than 12 months is not current: leave it blank, and give that source and its date in `notes` (N6). This covers every fact — address, phone, service times and children's programs alike.
 - **Conflicts.** When sources disagree, report the more recent value. Put the other value and both dates in `notes`.
 - **Freshness.** If the newest evidence from any source is older than 12 months, use `status = unresolved`, not `active`. **[v3.3]** "No date on the homepage" is not a reason for `unresolved`: search as A1–A4 require first.
 

@@ -69,7 +69,7 @@ What `pull` does:
 - starts the local Postgres;
 - appends its output to `muse_handoff/returns/drive_pull.log`.
 
-Remove the task with `schtasks.exe /Delete /TN ChurchMapMusePull /F`.
+Register (or re-register) the task with [`muse_handoff/register_pull_task.ps1`](../muse_handoff/register_pull_task.ps1); remove it with `schtasks.exe /Delete /TN ChurchMapMusePull /F`. WSL mounts only the drives present when it boots, and G: appears after login, so the task's hourly re-mount is what keeps `/mnt/g` up.
 
 ## Geocoding
 
