@@ -532,6 +532,15 @@ def test_activity_recheck_rejects_the_robots_blocked_page_again(tmp_path, monkey
                              dict(candidate_ref="A-2", task="WP0039", status="active", status_source_url=barred)])
     errs = ds.check_recheck("WP-0039", out)
     assert len(errs) == 1 and errs[0].startswith("ERROR A-1: status_source_url is the page robots.txt")
+    # The same page written differently is still the same page (PR #58 review).
+    for same in ("https://a.example/events#october-25", "HTTPS://A.Example/events", " https://a.example/events "):
+        ds.write_csv(out, cols, [dict(candidate_ref="A-1", task="WP0039", status="active", status_source_url=same),
+                                 dict(candidate_ref="A-2", task="WP0039", status="unresolved")])
+        assert len(ds.check_recheck("WP-0039", out)) == 1, same
+    # A row cut short after status gives None for the URL: no crash, no false match.
+    out.write_text("candidate_ref,task,status,status_source_url\nA-1,WP0039,active\nA-2,WP0039,unresolved,\n",
+                   encoding="utf-8")
+    assert ds.check_recheck("WP-0039", out) == []
     # Another page, or the same page left unresolved, is fine.
     ds.write_csv(out, cols, [dict(candidate_ref="A-1", task="WP0039", status="active", status_source_url=other),
                              dict(candidate_ref="A-2", task="WP0039", status="unresolved", status_source_url=barred)])

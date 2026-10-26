@@ -40,6 +40,7 @@ import sys
 from collections import Counter
 from datetime import datetime, timezone
 from pathlib import Path
+from urllib.parse import urlsplit, urlunsplit
 
 HANDOFF = Path(__file__).resolve().parent
 ROOT = HANDOFF.parent
@@ -552,6 +553,13 @@ def check_sweep(run_log: Path) -> str:
     return f"no '{' / '.join(gone)}: listed N' lines" if gone else ""
 
 
+def page_key(url: str | None) -> str:
+    """The page a URL fetches: scheme and host case, the fragment, and an empty path don't
+    change it ("HTTPS://A.example#oct" is https://a.example/)."""
+    p = urlsplit((url or "").strip())
+    return urlunsplit((p.scheme.lower(), p.netloc.lower(), p.path or "/", p.query, ""))
+
+
 def check_recheck(wp_id: str, cands: Path) -> list[str]:
     """Exactly one row per input candidate_ref, nothing else, all under this package's task
     (so the v3.3 section A checks apply to every row). An active row may not cite the page
@@ -568,9 +576,11 @@ def check_recheck(wp_id: str, cands: Path) -> list[str]:
     errs += [f"ERROR {r.get('candidate_ref', '')}: task={r.get('task', '')!r}, want {task}"
              for r in rows if r.get("task") != task]
     for r in rows:
-        given = inputs.get(r.get("candidate_ref", ""), {})
+        # A short row gives None, not the .get() default (csv.DictReader).
+        given = inputs.get(r.get("candidate_ref") or "", {})
         if (r.get("status") == "active" and given.get("activity_check") == "robots_blocked"
-                and r.get("status_source_url", "").strip() == given.get("status_source_url", "").strip()):
+                and r.get("status_source_url")
+                and page_key(r["status_source_url"]) == page_key(given.get("status_source_url"))):
             errs.append(f"ERROR {r['candidate_ref']}: status_source_url is the page robots.txt bars our "
                         "checker from (activity_check = robots_blocked); cite another page or the Facebook Page")
     return errs
