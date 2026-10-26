@@ -1134,18 +1134,18 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   background: var(--bg);
   border-left-color: var(--gold);
 }
-.map-hero-picks strong {
+.map-hero-picks li strong {
   font: 600 1rem/1.3 'Fraunces', Georgia, serif;
   font-optical-sizing: auto;
 }
-.map-hero-picks span {
+.map-hero-picks li span {
   display: flex;
   align-items: center;
   gap: 0.25rem;
   color: var(--text-2);
   font-size: 0.76rem;
 }
-.map-hero-picks span .icon { color: var(--success); }
+.map-hero-picks li span .icon { color: var(--success); }
 .map-hero-all {
   display: inline-flex;
   align-items: center;
@@ -1155,6 +1155,231 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   font-size: 0.84rem;
   font-weight: 700;
 }
+/* ── Fit preferences ("Make these fit you") ──────────────────────────────── */
+.sr-only {
+  position: absolute;
+  width: 1px;
+  height: 1px;
+  margin: -1px;
+  padding: 0;
+  overflow: hidden;
+  clip: rect(0 0 0 0);
+  white-space: nowrap;
+  border: 0;
+}
+/* Reason line ("Spanish service · Kids program"): a small badge so it reads
+   apart from the denomination row and the card's profile status. Sienna, not
+   gold: gold is kept for stars, the active pin and dimension bars. */
+.map-hero-picks .pick-fit,
+.card-fit {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.3rem;
+  align-self: flex-start;
+  padding: 0.18rem 0.55rem;
+  color: var(--sienna);
+  background: var(--warm-surface);
+  border-left: 2px solid var(--sienna);
+  border-radius: 0 6px 6px 0;
+  font-size: 0.75rem;
+  font-weight: 600;
+}
+.map-hero-picks .pick-fit { margin-top: 0.2rem; }
+.map-hero-picks .pick-fit .icon { color: currentColor; }
+/* Panel open on desktop: one row per pick (name, then reason) so all three
+   stay above the panel and a re-rank can't move the chips under the cursor. */
+@media (min-width: 761px) {
+  .map-hero-picks-compact li a {
+    flex-direction: row;
+    align-items: baseline;
+    justify-content: space-between;
+    gap: 0.5rem;
+    padding: 0.3rem 0.6rem;
+  }
+  .map-hero-picks-compact li a > span:not(.pick-fit) { display: none; }
+  .map-hero-picks-compact li strong {
+    flex: 1 1 auto;
+    min-width: 0;
+    overflow: hidden;
+    text-overflow: ellipsis;
+    white-space: nowrap;
+  }
+  .map-hero-picks-compact .pick-fit { flex: 0 1 auto; max-width: 62%; margin-top: 0; }
+}
+.map-hero-nomatch {
+  margin: 0 0 0.6rem;
+  color: var(--text-2);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.fit-preferences { margin-top: 0.7rem; }
+.fit-entry,
+.fit-edit {
+  padding: 0;
+  color: var(--sienna);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+/* Entry and summary share one bar, so pressing the first chip swaps the text
+   without moving the panel below it. */
+.fit-entry,
+.fit-summary {
+  display: flex;
+  align-items: center;
+  justify-content: flex-start;
+  width: 100%;
+  min-height: 40px;
+  padding: 0.45rem 0.75rem;
+  background: var(--warm-surface);
+  border: 1px solid var(--border);
+  border-radius: 8px;
+}
+.fit-entry {
+  gap: 0.4rem;
+  font-size: 0.86rem;
+  text-align: left;
+  transition: border-color 0.15s;
+}
+.fit-entry:hover { border-color: var(--sienna); }
+.fit-entry-hint { color: var(--text-2); font-weight: 500; font-size: 0.8rem; }
+.fit-dot { color: var(--text-3); font-weight: 400; }
+.fit-entry:hover,
+.fit-edit:hover { color: var(--sienna-dark); }
+.fit-summary {
+  flex-wrap: wrap;
+  gap: 0.35rem;
+  margin: 0;
+  color: var(--text-2);
+  font-size: 0.84rem;
+}
+.fit-summary strong { color: var(--text); font-weight: 600; }
+.fit-edit { font-size: 0.84rem; text-decoration: underline; text-underline-offset: 2px; }
+.fit-panel {
+  margin-top: 0.4rem;
+  padding: 0.9rem 0 0.2rem;
+  border-top: 1px solid var(--border);
+}
+.fit-group + .fit-group { margin-top: 0.8rem; }
+.fit-question {
+  margin: 0 0 0.4rem;
+  color: var(--text);
+  font-size: 0.8rem;
+  font-weight: 700;
+}
+.fit-chips { display: flex; flex-wrap: wrap; gap: 0.4rem; }
+.fit-chip { min-height: 32px; }
+.fit-actions {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  margin-top: 0.9rem;
+}
+.fit-done,
+.fit-sheet-primary {
+  padding: 0.55rem 1rem;
+  color: white;
+  background: var(--sienna);
+  border: 0;
+  border-radius: 7px;
+  font: inherit;
+  font-weight: 700;
+  cursor: pointer;
+}
+.fit-done:hover,
+.fit-sheet-primary:hover { background: var(--sienna-dark); }
+.fit-clear {
+  padding: 0.55rem 0.4rem;
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  font: inherit;
+  font-size: 0.84rem;
+  cursor: pointer;
+}
+.fit-clear:hover { color: var(--error); }
+
+/* Phone-width sheet: a native <dialog> opened with showModal(). */
+.fit-sheet {
+  width: 100%;
+  max-width: 100%;
+  max-height: 80dvh;
+  margin: auto 0 0;
+  padding: 0;
+  color: var(--text);
+  background: var(--surface);
+  border: 0;
+  border-radius: 16px 16px 0 0;
+}
+.fit-sheet[open] {
+  display: flex;
+  flex-direction: column;
+  animation: fit-sheet-in 0.2s ease-out;
+}
+.fit-sheet::backdrop { background: rgba(28, 25, 23, 0.35); }
+@keyframes fit-sheet-in { from { transform: translateY(24px); opacity: 0; } }
+.fit-sheet-head {
+  position: relative;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 20px 16px 8px;
+}
+.fit-sheet-head::before {
+  content: '';
+  position: absolute;
+  top: 8px;
+  left: 50%;
+  width: 36px;
+  height: 4px;
+  margin-left: -18px;
+  background: var(--border);
+  border-radius: 9999px;
+}
+.fit-sheet-head h2 {
+  margin: 0;
+  font: 650 1.2rem/1.2 'Fraunces', Georgia, serif;
+  font-optical-sizing: auto;
+}
+.fit-sheet-close {
+  width: 44px;
+  height: 44px;
+  margin-right: -10px;
+  color: var(--text-2);
+  background: none;
+  border: 0;
+  font-size: 1.6rem;
+  line-height: 1;
+  cursor: pointer;
+}
+.fit-sheet-body { padding: 4px 16px 16px; overflow-y: auto; }
+.fit-sheet .fit-chip { min-height: 44px; padding-inline: 0.95rem; }
+.fit-sheet-foot {
+  display: flex;
+  align-items: center;
+  gap: 0.6rem;
+  padding: 12px 16px calc(12px + env(safe-area-inset-bottom));
+  border-top: 1px solid var(--border);
+}
+.fit-sheet-primary { flex: 1; min-height: 48px; }
+
+/* Search page: summary/entry at the top of the list column, reason line on cards. */
+.search-fit { margin: 0 0 0.6rem; }
+.search-fit .fit-panel { margin-bottom: 0.4rem; }
+.search-fit-nomatch {
+  margin: 0 0 0.6rem;
+  color: var(--text-2);
+  font-size: 0.8rem;
+  line-height: 1.45;
+}
+.card-fit { margin: 0.35rem 0 0.1rem; }
+
+@media (prefers-reduced-motion: reduce) {
+  .fit-sheet[open] { animation: none; }
+}
+
 .landing-search { margin-top: 1.4rem; }
 .landing-search > label {
   display: block;
@@ -1402,10 +1627,19 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   .landing-search { margin-top: 0.9rem; }
   .landing-search > label { display: none; }
   .map-hero-card h1 { font-size: 1.5rem; }
-  .map-hero-picks { margin-top: 0.75rem; padding-top: 0.6rem; }
+  /* "See every church" first, "Make these fit you" as the line under it. */
+  .map-hero-picks {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+    margin-top: 0.75rem;
+    padding-top: 0.6rem;
+  }
   .map-hero-picks .eyebrow,
-  .map-hero-picks ul { display: none; }
-  .map-hero-all { margin-top: 0; }
+  .map-hero-picks ul,
+  .map-hero-nomatch { display: none; }
+  .map-hero-all { order: 1; align-self: flex-start; margin-top: 0; }
+  .map-hero-picks .fit-preferences { order: 2; margin-top: 0; }
   .landing-search-row { flex-wrap: wrap; }
   .landing-search-row button { width: 100%; justify-content: center; }
   .profile-showcase { margin-top: 56px; }

@@ -5,11 +5,21 @@ import L from 'leaflet'
 import AccountButton from '../components/AccountButton'
 import ChurchCard from '../components/ChurchCard'
 import ChurchDetailPanel from '../components/ChurchDetailPanel'
+import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { churchMarkerIcon } from '../components/mapMarker'
 import { detectLocation, listChurches } from '../api/client'
-import { byProfileUsefulness } from '../churchProfile'
+import {
+  byProfileUsefulness,
+  churchLanguages,
+  cityLanguageChips,
+  fitReason,
+  rankForYou,
+  speaksLanguage,
+  zeroMatchSentence,
+} from '../churchProfile'
+import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 
 const PAGE = 50
 
@@ -65,6 +75,7 @@ export default function Search() {
   const [selectedTags, setSelectedTags] = useState([])
   const [selectedLang, setSelectedLang] = useState(null)
   const [sortBy, setSortBy] = useState('usefulness')
+  const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
   const [detectedLocation, setDetectedLocation] = useState(null)
   const [userCoords, setUserCoords] = useState(null)
   const [locating, setLocating] = useState(false)
@@ -72,6 +83,24 @@ export default function Search() {
   const [hoveredId, setHoveredId] = useState(null)
   const [selectedChurchId, setSelectedChurchId] = useState(null)
   const offsetRef = useRef(0)
+
+  // A visitor who said what matters sees "For you" first on a city search;
+  // a name search keeps its own best-match order.
+  function defaultSort(search, currentPrefs) {
+    if (search.type === 'name') return 'relevance'
+    return hasPreferences(currentPrefs) ? 'forYou' : 'usefulness'
+  }
+
+  function updatePrefs(next) {
+    setPrefs(next)
+    savePreferences(next)
+    if (activeSearch?.type === 'location') {
+      if (hasPreferences(next) && !hasPreferences(prefs)) setSortBy('forYou')
+      if (!hasPreferences(next) && sortBy === 'forYou') setSortBy('usefulness')
+    } else if (!hasPreferences(next) && sortBy === 'forYou') {
+      setSortBy('relevance')
+    }
+  }
 
   async function fetchPage(search, offset, append = false) {
     const data = await listChurches(search, { limit: PAGE, offset })
@@ -102,7 +131,7 @@ export default function Search() {
     setUserCoords(location ? { lat: location.lat, lon: location.lon } : null)
     setSelectedChurchId(null)
     setMobileView('list')
-    setSortBy(search.type === 'name' ? 'relevance' : 'usefulness')
+    setSortBy(defaultSort(search, prefs))
     setLoading(true)
     setError(null)
     offsetRef.current = 0
@@ -160,6 +189,8 @@ export default function Search() {
   }
 
   useEffect(() => {
+    const storedPrefs = loadPreferences()
+    setPrefs(storedPrefs)
     const n = searchParams.get('name')
     const c = searchParams.get('city')
     const s = searchParams.get('state')
@@ -183,7 +214,7 @@ export default function Search() {
       setState(s)
       setSearchMode('location')
       setActiveSearch(search)
-      setSortBy('usefulness')
+      setSortBy(defaultSort(search, storedPrefs))
       setLoading(true)
       setError(null)
       offsetRef.current = 0
@@ -201,15 +232,24 @@ export default function Search() {
   }
 
   const availableTags = churches ? [...new Set(churches.flatMap(c => c.tags ?? []))] : []
+  // Languages come from churchLanguages, the same answer "For you" and the
+  // cards use; cultural background stays its own pill.
+  // A culture spelled like a language ("Chinese") is one pill; the filter below
+  // accepts either meaning for it, as it did before.
   const availableLangs = churches
-    ? [...new Set(churches.flatMap(c => [c.language, c.cultural_background]).filter(Boolean))]
+    ? [...new Map([
+      ...churches.flatMap(c => churchLanguages(c)),
+      ...churches.map(c => c.cultural_background).filter(Boolean),
+    ].map(value => [value.toLowerCase(), value])).values()]
     : []
 
   const filtered = churches
     ?.filter(c => selectedTags.length === 0 || selectedTags.every(t => c.tags?.includes(t)))
-    ?.filter(c => !selectedLang || c.language === selectedLang || c.cultural_background === selectedLang)
+    ?.filter(c => !selectedLang || speaksLanguage(c, selectedLang) || c.cultural_background === selectedLang)
 
-  const visibleChurches = filtered ? [...filtered].sort((a, b) => {
+  const visibleChurches = !filtered ? null : sortBy === 'forYou'
+    ? rankForYou([...filtered].sort(byProfileUsefulness), prefs)
+    : [...filtered].sort((a, b) => {
     if (sortBy === 'distance' && userCoords?.lat) {
       const da = (a.latitude && a.longitude) ? haversine(userCoords.lat, userCoords.lon, a.latitude, a.longitude) : 9999
       const db_ = (b.latitude && b.longitude) ? haversine(userCoords.lat, userCoords.lon, b.latitude, b.longitude) : 9999
@@ -219,7 +259,15 @@ export default function Search() {
     if (sortBy === 'reviews') return (b.review_count ?? 0) - (a.review_count ?? 0)
     if (sortBy === 'usefulness') return byProfileUsefulness(a, b)
     return 0
-  }) : null
+  })
+
+  // Exact only once every page of the city is loaded (no "Load more" left).
+  const forYouZeroMatch = churches && activeSearch?.type === 'location'
+    ? zeroMatchSentence(churches, prefs, {
+      city: activeSearch.city,
+      limit: hasMore ? churches.length : churches.length + 1,
+    })
+    : null
 
   const mappable = (visibleChurches || []).filter(c => c.latitude && c.longitude)
   const selectedChurch = selectedChurchId
@@ -348,6 +396,7 @@ export default function Search() {
             <div className="sort-bar">
               <span className="sort-label">Sort:</span>
               {[
+                ...(hasPreferences(prefs) ? [{ key: 'forYou', label: 'For you' }] : []),
                 ...(activeSearch?.type === 'name'
                   ? [{ key: 'relevance', label: 'Best match' }]
                   : [{ key: 'usefulness', label: 'Best profiles' }]),
@@ -427,46 +476,61 @@ export default function Search() {
                 onBack={() => { setSelectedChurchId(null); setHoveredId(null) }}
                 onSelect={handleSelectChurch}
               />
-            ) : visibleChurches?.length === 0 ? (
-              <div className="empty-state">
-                {churches.length === 0
-                  ? activeSearch?.type === 'name'
-                    ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
-                    : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>
-                  : <p>No churches match the selected filters.</p>
-                }
-              </div>
             ) : (
               <>
-                <div className="church-list">
-                  {visibleChurches?.map(c => (
-                    <div
-                      key={c.id}
-                      className={`card-wrapper${hoveredId === c.id ? ' card-wrapper-active' : ''}`}
-                      onMouseEnter={() => setHoveredId(c.id)}
-                      onMouseLeave={() => setHoveredId(null)}
-                    >
-                      <ChurchCard
-                        church={c}
-                        userLat={userCoords?.lat}
-                        userLon={userCoords?.lon}
-                        showLocation={activeSearch?.type === 'name'}
-                        onSelect={handleSelectChurch}
-                      />
-                    </div>
-                  ))}
-                </div>
-                {hasMore && selectedTags.length === 0 && (
-                  <div className="load-more-row">
-                    <button
-                      type="button"
-                      className="load-more-btn"
-                      onClick={handleLoadMore}
-                      disabled={loadingMore}
-                    >
-                      {loadingMore ? 'Loading…' : 'Load more churches'}
-                    </button>
+                {/* In the list column, so opening the panel on desktop grows
+                    the list, not the header above both panes. */}
+                <FitPreferences
+                  className="search-fit"
+                  prefs={prefs}
+                  onChange={updatePrefs}
+                  languageChips={cityLanguageChips(churches, prefs.languages)}
+                  phoneMediaQuery="(max-width: 839px)"
+                />
+                {sortBy === 'forYou' && forYouZeroMatch && <p className="search-fit-nomatch">{forYouZeroMatch}</p>}
+                {visibleChurches?.length === 0 ? (
+                  <div className="empty-state">
+                    {churches.length === 0
+                      ? activeSearch?.type === 'name'
+                        ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
+                        : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>
+                      : <p>No churches match the selected filters.</p>
+                    }
                   </div>
+                ) : (
+                  <>
+                    <div className="church-list">
+                      {visibleChurches?.map(c => (
+                        <div
+                          key={c.id}
+                          className={`card-wrapper${hoveredId === c.id ? ' card-wrapper-active' : ''}`}
+                          onMouseEnter={() => setHoveredId(c.id)}
+                          onMouseLeave={() => setHoveredId(null)}
+                        >
+                          <ChurchCard
+                            church={c}
+                            userLat={userCoords?.lat}
+                            userLon={userCoords?.lon}
+                            showLocation={activeSearch?.type === 'name'}
+                            fitReason={fitReason(c, prefs)}
+                            onSelect={handleSelectChurch}
+                          />
+                        </div>
+                      ))}
+                    </div>
+                    {hasMore && selectedTags.length === 0 && (
+                      <div className="load-more-row">
+                        <button
+                          type="button"
+                          className="load-more-btn"
+                          onClick={handleLoadMore}
+                          disabled={loadingMore}
+                        >
+                          {loadingMore ? 'Loading…' : 'Load more churches'}
+                        </button>
+                      </div>
+                    )}
+                  </>
                 )}
               </>
             )}

@@ -1,5 +1,6 @@
 import { Link } from 'react-router-dom'
 import Icon from './Icon'
+import { languageSignals } from '../churchProfile'
 
 const DENOM_COLORS = {
   baptist:     '#9A3412',
@@ -41,7 +42,7 @@ function Distance({ church, userLat, userLon }) {
   return <span className="card-distance"><Icon name="pin" size={13} /> {label}</span>
 }
 
-function CardBody({ church, userLat, userLon, showLocation }) {
+function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
   const extracted = church.extracted_tags || {}
   const extractedValues = Object.values(extracted)
   const hasWebsiteInsights = Boolean(
@@ -54,6 +55,11 @@ function CardBody({ church, userLat, userLon, showLocation }) {
       : []),
     ...(Array.isArray(extracted.vibe_tags) ? extracted.vibe_tags : []),
   ])].slice(0, 2)
+  // Website-read languages already sit in the "From their website" block;
+  // these are the verified and directory ones.
+  const languageTags = languageSignals(church)
+    .filter(signal => signal.source !== 'website' && signal.language.toLowerCase() !== 'english')
+    .map(signal => signal.language)
 
   return (
     <div className="card-body">
@@ -80,10 +86,16 @@ function CardBody({ church, userLat, userLon, showLocation }) {
         )}
         <Distance church={church} userLat={userLat} userLon={userLon} />
       </div>
+      {fitReason && (
+        <p className="card-fit">
+          <Icon name="check" size={12} />
+          {fitReason}
+        </p>
+      )}
       <div className="tag-list">
-        {church.language && church.language !== 'English' && (
-          <span className="tag tag-lang">{church.language}</span>
-        )}
+        {languageTags.map(language => (
+          <span key={language} className="tag tag-lang">{language}</span>
+        ))}
         {church.cultural_background && (
           <span className="tag tag-culture">{church.cultural_background}</span>
         )}
@@ -101,7 +113,7 @@ function CardBody({ church, userLat, userLon, showLocation }) {
   )
 }
 
-export default function ChurchCard({ church, userLat, userLon, showLocation = false, onSelect }) {
+export default function ChurchCard({ church, userLat, userLon, showLocation = false, fitReason = '', onSelect }) {
   const accentColor = denomAccentColor(church.denomination)
   const sharedStyle = { borderLeft: `5px solid ${accentColor}` }
 
@@ -115,14 +127,14 @@ export default function ChurchCard({ church, userLat, userLon, showLocation = fa
         tabIndex={0}
         onKeyDown={e => e.key === 'Enter' && onSelect(church.id)}
       >
-        <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} />
+        <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} fitReason={fitReason} />
       </div>
     )
   }
 
   return (
     <Link to={`/church/${church.id}`} className="church-card" style={sharedStyle}>
-      <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} />
+      <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} fitReason={fitReason} />
     </Link>
   )
 }
