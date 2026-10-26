@@ -474,6 +474,34 @@ def test_recheck_selects_unresolved_new_congregations_closest_to_the_map_first(t
     assert out[1]["origin_task"] == "F" and list(out[0]) == ds.RECHECK_INPUT_COLS
 
 
+
+def test_recheck_of_unverified_active_sends_back_only_what_muse_can_fix(tmp_path):
+    cols = ["candidate_id", "task", "status", "status_source_type", "street_address", "official_url",
+            "duplicate_of_church_id", "possible_match_church_id", "possible_match_candidate_id"]
+    rows = [dict(candidate_id="B-1", task="WP0020", status="active", status_source_type="own_site"),
+            dict(candidate_id="B-2", task="WP0020", status="active", status_source_type="own_site"),
+            dict(candidate_id="B-3", task="WP0020", status="active", status_source_type="own_site"),
+            dict(candidate_id="B-4", task="WP0021", status="active", status_source_type="other"),
+            dict(candidate_id="B-5", task="WP0020", status="unresolved", status_source_type="own_site"),
+            dict(candidate_id="B-6", task="WP0009", status="active", status_source_type="own_site")]
+    checks = [("B-1", "not_found"), ("B-2", "fetch_failed"), ("B-3", "verified"), ("B-4", "verified"),
+              ("B-5", "not_found"), ("B-6", "robots_blocked")]
+    for name, fields, data in [("muse_candidates.csv", cols, rows),
+                               ("source_checks.csv", ["subject_type", "subject_id", "fact_group", "verdict"],
+                                [dict(subject_type="candidate", subject_id=i, fact_group="status", verdict=v)
+                                 for i, v in checks])]:
+        with (tmp_path / name).open("w", newline="", encoding="utf-8") as f:
+            w = csv.DictWriter(f, fieldnames=fields, restval="")
+            w.writeheader()
+            w.writerows(data)
+    out = ds.recheck_rows(tmp_path, unverified_active=True)
+    # fetch_failed is our checker's problem; verified own-site quotes are done.
+    assert {r["candidate_ref"]: r["activity_check"] for r in out} == {
+        "B-1": "not_found", "B-4": "other_source", "B-6": "robots_blocked"}
+    assert list(out[0]) == ds.ACTIVITY_INPUT_COLS
+    assert [r["candidate_ref"] for r in ds.recheck_rows(tmp_path, {"WP0020", "WP0021"}, True)] == ["B-1", "B-4"]
+    assert [r["candidate_ref"] for r in ds.recheck_rows(tmp_path, {"WP0020"})] == ["B-5"]
+
 def test_recheck_return_needs_exactly_the_input_refs_under_this_task(tmp_path, monkeypatch):
     monkeypatch.setattr(ds, "OUTBOX", tmp_path)
     (tmp_path / "WP-0014").mkdir()
@@ -563,3 +591,9 @@ def test_the_discovery_template_asks_for_the_sweep():
                                     known_sha="x", note="")
     assert "(v3.4)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
     assert "churchfinder: listed N" in text and "church_directory" in text
+
+
+def test_the_activity_template_took_every_edit():
+    # str.replace is silent when its target drifts; each edit must have landed.
+    t = ds.ACTIVITY_TASK
+    assert t.startswith("# {wp_id} — re-check congregations:") and "as `active`" in t and "page that failed" in t

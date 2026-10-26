@@ -2,6 +2,12 @@
 
 **This file replaces `BRIEF_v2.md` and `BRIEF_FB_pass.md`.** It holds every rule in one place. Rules that are new in v3 are marked **[v3]**.
 
+> **v3.5 (2026-10-25, after WP-0033). Cite what our checker can read; applies from WP-0034.** Marked **[v3.5]**:
+> - In WP-0031–0033, 111 of 213 `active` rows still failed our re-check. The quote must be **text a reader sees on the page**: not a metadata timestamp (`Published: 2026-09-18T19:18:23+00:00` is JSON-LD, not page text), and not a homepage item that will rotate off by the time we check. Cite the event, post, sermon or bulletin page itself (A3).
+> - **Video channels (YouTube, Vimeo) are leads only**: their dates are relative ("5 days ago") and our checker can't read them. Find the same sermon on the church's own site, or use its Facebook post (A3). The validator rejects both from WP-0034.
+> - Facebook evidence (F6): the excerpt is the date as Facebook shows it plus **the post's own words**; never a date joined to the Page's Intro. A post whose own text contradicts the year (e.g. "Friday, October 31st" in 2026, when Oct 31 is a Saturday) does not establish the year.
+> - A fact stated only in a source older than 12 months (e.g. a 2022 post announcing classes) is not current: leave it blank and say so in `notes`.
+>
 > **v3.4 (2026-10-22, after WP-0019). Sweep the church directories; applies from WP-0020.** Marked **[v3.4]**:
 > - Discovery now starts from the multi-church directories (S5): the churchfinder.com city page and the church.oursweb.net search for every city in the package. Web search alone missed many congregations in big cities.
 > - A congregation found there has `found_via = church_directory`, with the listing URL in `notes` as `lead: <url>`. Directories are locate-only: every fact still comes from S1–S3, and section A still applies.
@@ -86,7 +92,7 @@ Rules for this task:
 
   A useful detail from them may go in `notes`, labelled "lead".
 - **Exact page.** `<group>_source_url` is the exact page or document (or Facebook post permalink, or the Page's About URL) that contains the excerpt. Never a bare homepage when the text is on a sub-page, and never truncated.
-- **Source age.** Prefer sources dated within 24 months. If you must use an older one, give its date in `notes`. **Service times and children's programs from a source older than 12 months:** report them, and put the source date in `notes`.
+- **Source age.** **[v3.5]** A fact stated only in a source older than 12 months is not current: leave it blank, and give that source and its date in `notes` (N6). This covers every fact — address, phone, service times and children's programs alike.
 - **Conflicts.** When sources disagree, report the more recent value. Put the other value and both dates in `notes`.
 - **Freshness.** If the newest evidence from any source is older than 12 months, use `status = unresolved`, not `active`. **[v3.3]** "No date on the homepage" is not a reason for `unresolved`: search as A1–A4 require first.
 
@@ -101,7 +107,10 @@ Every row, discovery or verification, goes through this search. It is required, 
   - **bulletin**: weekly bulletin or worship folder (PDFs count, including ones on the parish's bulletin host such as ecatholic or discovermass);
   - **visit**: plan your visit, contact, about, ministries, children/kids/family.
 - **A2. The church's Facebook Page** (F1), always, whether or not the site links one. If the site links none, search Facebook for the church name and city. Open the Page's own newest posts, its events, and its About section. If you can't open Facebook at all, say so in `run_log.md` once and in each row's A4 note (`facebook=no access`).
-- **A3. Dated evidence** means a date tied to the congregation's activity: an event date, a sermon or video date, a bulletin date, a post date, a "posted on" or "updated" date on a news item. Not a copyright footer year, not a date in a URL alone. It must be within 12 months of `checked_at`. Cite that exact page as `status_source_url` and copy the date into `status_excerpt` verbatim (for example `Sunday, September 14, 2026 · Fall Kickoff Picnic`). A church video channel linked from its own site counts as `own_site` when the site links it; give the channel URL and the newest video's date.
+- **A3. Dated evidence** means a date tied to the congregation's activity: an event date, a sermon date, a bulletin date, a post date, a "posted on" or "updated" date on a news item. Not a copyright footer year, not a date in a URL alone. It must be within 12 months of `checked_at`. Cite that exact page as `status_source_url` and copy the date into `status_excerpt` verbatim (for example `Sunday, September 14, 2026 · Fall Kickoff Picnic`).
+  - **[v3.5]** The excerpt is text a reader sees on the page. Never a metadata timestamp (JSON-LD `datePublished`, `<meta>` tags, sitemap `lastmod`, anything like `2026-09-18T19:18:23`); never a prefix you added such as `Published:`.
+  - **[v3.5]** Cite the stable page: the event's own page, the post, the sermon page, the bulletin PDF. A homepage's "upcoming" box changes weekly, so a date on it is often gone when we check.
+  - **[v3.5]** Video channels (YouTube, Vimeo) are leads, not citations: find the same sermon on the church's own site, or the Facebook post. The validator rejects a video URL in `status_source_url`.
 - **A4. `unresolved` only after A1 and A2 found nothing dated within 12 months.** Then `notes` must contain this line, with the URL you opened or `none` when the site has no such page:
   `activity checked: events=<url|none>; news=<url|none>; sermons=<url|none>; bulletin=<url|none>; facebook=<url|none|no access>; newest date seen=<date|none>`
   The validator rejects an `unresolved` row without it, or with any of the five keys missing.
@@ -117,6 +126,7 @@ Every row, discovery or verification, goes through this search. It is required, 
 - **F3.** Report a Page in `facebook_page_url` only with non-empty `fb_page_evidence`; otherwise put the URL in `notes` as a lead. `posts_as_church` shows the Page is run by the congregation, but does not count toward `match_confidence`.
 - **F4.** `fb_last_post_date` is the newest post **by the Page itself**. If posts announce services in another city or online only, set `address_is_worship_location = unknown` and explain.
 - **F5.** Public Facebook **Groups are leads only**. Confirm from S1–S4; never cite a Group post as a source.
+- **[v3.5] F6. Facebook as activity evidence.** `status_source_url` is the Page (or the post); `status_excerpt` is the date as Facebook shows it, then ` — `, then the post's own words, verbatim (replace a person's name with `[removed]`). Never join a date to the Page's Intro or About text. If the post's text contradicts the year Facebook implies (a weekday that doesn't fit, last year's event), the year is not established: use another post or leave the row `unresolved`.
 
 ## Do (D)
 
@@ -154,6 +164,7 @@ Every row, discovery or verification, goes through this search. It is required, 
 - **N4.** Bypass login walls, CAPTCHAs, paywalls, robots blocks, or rate limits.
 - **N5.** Infer anyone's religion, ethnicity, or language from names, photos, or neighbourhoods. Report languages only when the congregation states them.
 - **N6.** Invent or normalize facts beyond formatting. Copy service times and children's program text verbatim.
+  - **[v3.5]** A fact stated only in a source older than 12 months is not current: leave it blank and say so in `notes`.
 - **N7.** Take screenshots.
 - **[v3.2]** Put a description of the page in an excerpt field. Text such as "homepage carries current service schedule…" or "Updated August 23, 2024 (latest own-site date)" belongs in `notes`. The excerpt is only text that appears on the page.
 - **[v3.1] N9.** Edit an excerpt to satisfy our validator. Excerpts are verbatim, always. If a verbatim excerpt fails a check (for example, a time written as 一時半), leave it, add "verbatim; validator flag" in `notes`, and we will fix the validator.

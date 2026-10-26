@@ -64,7 +64,13 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   border-bottom: 1px solid var(--border);
   background: var(--bg);
 }
-.search-top header { margin-bottom: 0.75rem; }
+.search-top header {
+  display: flex;
+  align-items: flex-start;
+  justify-content: space-between;
+  gap: 1rem;
+  margin-bottom: 0.75rem;
+}
 .search-page header .wordmark {
   display: inline-block;
   margin: 0 0 0.15rem;
@@ -867,6 +873,25 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 }
 .signout-btn:hover { color: var(--error); border-color: var(--error); opacity: 1; }
 
+/* Header account control: Google's own button when signed out */
+.account-button {
+  display: flex;
+  align-items: center;
+  gap: 0.5rem;
+  flex-shrink: 0;
+}
+.account-name {
+  color: var(--text);
+  font-size: 0.82rem;
+  font-weight: 600;
+}
+.detail-topbar {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 1rem;
+}
+
 /* ── Similar churches ────────────────────── */
 .similar-churches-grid {
   display: grid;
@@ -1536,6 +1561,9 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   }
   .landing-nav { min-height: 64px; }
   .landing-nav > div a:first-child { display: none; }
+  /* the search card sits right below, so the account button gets the room */
+  .landing-nav a.nav-search-link { display: none; }
+  .landing-nav > div { flex-wrap: nowrap; }
   .landing-page main > section.map-hero {
     height: calc(100vh - 64px);
     height: calc(100dvh - 64px);

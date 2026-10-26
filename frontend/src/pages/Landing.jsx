@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react'
 import AboutSection from '../components/AboutSection'
+import AccountButton from '../components/AccountButton'
 import DimensionBars from '../components/DimensionBars'
 import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
@@ -157,6 +158,7 @@ export default function Landing({ exampleChurch }) {
         <div>
           <a href="#methodology">How it works</a>
           <a className="nav-search-link" href="/search">Search churches</a>
+          <AccountButton />
         </div>
       </nav>
 

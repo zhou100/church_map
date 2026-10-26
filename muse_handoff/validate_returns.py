@@ -45,6 +45,16 @@ def is_directory_url(url: str) -> bool:
 
 
 COPYRIGHT_RE = re.compile(r"©|\(c\)\s*20\d\d|copyright", re.I)
+# Brief v3.5 A3: a status quote is visible page text. Metadata timestamps (JSON-LD
+# datePublished, meta tags, sitemap lastmod) and video-channel pages never re-verified.
+CITABLE_FROM = 34  # brief v3.5 applies from WP0034
+META_TIMESTAMP_RE = re.compile(r"\b20\d\d-\d\d-\d\dT\d\d:\d\d")
+VIDEO_HOSTS = ("youtube.com", "youtu.be", "vimeo.com")
+
+
+def is_video_url(url: str) -> bool:
+    host = urlparse(url or "").netloc.lower().split(":")[0]
+    return any(host == h or host.endswith("." + h) for h in VIDEO_HOSTS)
 
 
 def deep_search_applies(task: str) -> bool:
@@ -66,6 +76,12 @@ def check_deep_search(w: str, r: dict) -> None:
             err(w, "status_excerpt is a copyright line; a copyright year is not activity (brief A3)")
         elif not DATE_RE.search(r["status_excerpt"]):
             err(w, "status=active but status_excerpt contains no date (brief A3)")
+        task = r.get("task", "")
+        if PACKAGE_TASK_RE.match(task) and int(task[2:]) >= CITABLE_FROM:
+            if META_TIMESTAMP_RE.search(r["status_excerpt"]):
+                err(w, "status_excerpt is a metadata timestamp, not text on the page (brief A3, v3.5)")
+            if is_video_url(r.get("status_source_url", "")):
+                err(w, "status_source_url is a video page; cite the church's sermon page or Facebook post (brief A3, v3.5)")
     if r.get("facebook_page_url") and not r.get("fb_last_post_date"):
         err(w, "facebook_page_url without fb_last_post_date (brief F4, A2)")
 
