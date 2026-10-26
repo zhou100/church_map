@@ -452,3 +452,17 @@ def test_a_recheck_row_replaces_the_candidate_but_keeps_its_region(tmp_path, mon
     r = rows[0]
     assert (r["status"], r["street_address"], r["task"], r["last_pass"], r["source_file"]) == \
         ("active", "100 Main St", "WP0006", "WP0014", "new_candidates_WP0014.csv")
+
+
+# --- Brief v3.5 currency rule: facts from sources older than 12 months stay blank ---------
+
+def test_stale_facts_are_blanked_only_while_they_cite_the_old_source(monkeypatch):
+    monkeypatch.setitem(bs.STALE_CANDIDATE_FACTS, ("X-001", "address"), "https://old.example/2022.pdf")
+    row = {"street_address": "1 Main St", "zip": "90001", "city": "Downey",
+           "address_source_url": "https://old.example/2022.pdf", "address_excerpt": "1 Main St",
+           "phone": "555-0100", "phone_source_url": "https://old.example/2022.pdf"}
+    out = bs.drop_stale_facts(row, "X-001")
+    assert out["street_address"] == out["zip"] == out["address_source_url"] == ""
+    assert out["city"] == "Downey" and out["phone"] == "555-0100"  # city is input; phone not listed
+    recited = bs.drop_stale_facts({**row, "address_source_url": "https://new.example/2026"}, "X-001")
+    assert recited["street_address"] == "1 Main St"

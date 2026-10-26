@@ -154,8 +154,32 @@ CAND_COLS = [
 # Duplicates we established that Muse did not mark (plan §6: B outcome, CN outcome).
 # C-030 and C-064: same name, address and website as a directory church; found when
 # their Census pins landed on that church's pin (dbt assert_new_congregations_are_not_in_the_directory).
-CANDIDATE_DUPLICATES = {"CN-025": "78022", "C-030": "76688", "C-064": "77437"}
+# WP0026-004 and WP0026-026: same name and street as a directory church (same dbt test).
+# WP0028-015, WP0028-017 and WP0028-018: same street and website as a directory church
+# in the known list Muse was given (same dbt test; -017 surfaced once WP-0036 verified
+# its address).
+CANDIDATE_DUPLICATES = {"CN-025": "78022", "C-030": "76688", "C-064": "77437",
+                        "WP0026-004": "76313", "WP0026-026": "76294",
+                        "WP0028-015": "76396", "WP0028-017": "78028", "WP0028-018": "77612"}
 CANDIDATE_DUPLICATES_BY_NAME = {("B", "Bridge City Church"): "76692"}
+
+# Facts cited only from a source older than 12 months (brief v3.5, N6: leave blank). Muse kept
+# these and flagged them for us (WP-0037 run log). Keyed on the cited URL, so a later pass that
+# cites a current source keeps its value.
+STALE_CANDIDATE_FACTS = {
+    ("WP0020-097", "address"): "https://www.eadventist.net/search/iframe?locale=en&org=ANPPFB",  # updated 2022-08-19
+    ("WP0020-097", "phone"): "https://www.eadventist.net/search/iframe?locale=en&org=ANPPFB",
+    ("WP0021-033", "address"): "https://bunny-wp-pullzone-dyowhdxdks.b-cdn.net/wp-content/uploads/2023/03/MRBook_091711.pdf",
+    ("WP0021-033", "phone"): "https://bunny-wp-pullzone-dyowhdxdks.b-cdn.net/wp-content/uploads/2023/03/MRBook_091711.pdf",
+    ("WP0022-028", "address"): "https://www.chinesecong.org/story",
+    ("WP0022-028", "phone"): ("https://static1.squarespace.com/static/5aa6ca2f4cde7abcb31b8d9b/t/"
+                              "62c66e513aa09d13dd110125/1657171537810/Mission+Policy.pdf"),
+}
+STALE_FACT_COLS = {
+    "address": ("street_address", "zip", "address_source_url", "address_source_type", "address_excerpt",
+                "address_is_worship_location"),
+    "phone": ("phone", "phone_source_url", "phone_source_type", "phone_excerpt"),
+}
 
 LANGUAGE_NAMES = {
     "mandarin": "Mandarin", "國語": "Mandarin", "国语": "Mandarin", "普通話": "Mandarin", "普通话": "Mandarin",
@@ -404,6 +428,16 @@ def candidate_from_v2(r: dict, cid: str, task: str) -> dict:
     }
 
 
+def drop_stale_facts(raw: dict, cid: str) -> dict:
+    """Blank the fact groups STALE_CANDIDATE_FACTS names, while they still cite that source."""
+    raw = dict(raw)
+    for g, cols in STALE_FACT_COLS.items():
+        url = STALE_CANDIDATE_FACTS.get((cid, g))
+        if url and raw.get(f"{g}_source_url", "").strip() == url:
+            raw.update(dict.fromkeys(cols, ""))
+    return raw
+
+
 def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None = None
                      ) -> tuple[dict[str, str], dict[tuple[str, str], str]]:
     used = {} if used is None else used
@@ -418,6 +452,7 @@ def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None =
             if "candidate_ref" in r:  # v3
                 cid = r["candidate_ref"]
                 r = apply_overlays(r, "candidate", cid, overlays, used)
+                r = drop_stale_facts(r, cid)
                 for g, fp in raw_fingerprints(r, GROUPS).items():
                     fps[(cid, g)] = fp
                 r = {**r, "candidate_id": cid, "task": r.get("task") or task, "format": "v3"}

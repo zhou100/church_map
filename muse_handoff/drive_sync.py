@@ -1,7 +1,7 @@
 """Work queue between ChurchMap and Muse through a shared Google Drive folder.
 
 Muse has no API, but it reads and writes a Drive folder that Google Drive for
-desktop mirrors locally (default /mnt/f/My Drive/churchmap-handoff; override with
+desktop mirrors locally (default /mnt/g/My Drive/churchmap-handoff; override with
 CHURCHMAP_DRIVE). The protocol is in drive/README_FOR_MUSE.md. In short: we write
 outbox/WP-xxxx/, status.csv, feedback/ and reference/; Muse writes only
 returns/WP-xxxx/, and writes DONE.md (file names + sha256) last.
@@ -43,7 +43,7 @@ from pathlib import Path
 
 HANDOFF = Path(__file__).resolve().parent
 ROOT = HANDOFF.parent
-DRIVE = Path(os.environ.get("CHURCHMAP_DRIVE", "/mnt/f/My Drive/churchmap-handoff"))
+DRIVE = Path(os.environ.get("CHURCHMAP_DRIVE", "/mnt/g/My Drive/churchmap-handoff"))
 OUTBOX = HANDOFF / "outbox"
 RET = HANDOFF / "returns"
 STATUS = OUTBOX / "status.csv"  # master copy; mirrored read-only to the Drive root
@@ -439,7 +439,7 @@ RECHECK_INPUT_COLS = ["candidate_ref", "origin_task", "candidate_name", "current
 
 RECHECK_TASK = """# {wp_id} — re-check unresolved congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.3) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -476,29 +476,57 @@ Zero `ERROR` lines is required. We also check that every input `candidate_ref` h
 """
 
 
-def recheck_rows(seeds: Path) -> list[dict]:
+ACTIVITY_INPUT_COLS = RECHECK_INPUT_COLS + ["activity_check"]
+# Re-check verdicts Muse can fix by citing another page. fetch_failed (mostly HTTP 403 to
+# our checker) and skipped_facebook are ours to fix, so those rows are not sent back.
+FIXABLE_ACTIVITY = {"not_found", "partial", "not_an_excerpt", "unsupported", "robots_blocked", "source_gone"}
+ACTIVITY_TASK = RECHECK_TASK.replace(
+    "re-check unresolved congregations: {title}", "re-check congregations: {title}").replace(
+    """You reported these {n} congregations earlier with `status = unresolved`, almost always because the homepage you fetched carried no date. That keeps them off the map.""",
+    """You reported these {n} congregations as `active`, but our re-check could not verify the dated quote you cited. `activity_check` says what happened: `not_found` (the quote isn't on that page; most often a metadata timestamp, a homepage item that has since rotated off, or a YouTube channel page), `partial`, `not_an_excerpt`, `unsupported`, `robots_blocked` (our checker obeys robots.txt, so cite a page it may read), `source_gone`, or `other_source` (an aggregator, not the church's own source). That keeps them off the map. Read brief A3 and F6 (v3.5) before starting: cite a stable page whose visible text carries the date, never a metadata timestamp or a video channel.""").replace(
+    "(the input shows our current values, without excerpts).",
+    "(the input shows our current values, without excerpts). `status_source_url` in the input is the page that failed; cite a different one unless you are sure the quote is on it.")
+
+
+def recheck_rows(seeds: Path, tasks: set[str] | None = None, unverified_active: bool = False) -> list[dict]:
     """Unresolved new congregations (the dbt rule: no duplicate, no possible match), the
-    ones closest to the map first: an address, then a website."""
+    ones closest to the map first: an address, then a website. With unverified_active,
+    the active ones whose dated quote our re-check could not verify (FIXABLE_ACTIVITY, or
+    cited from an aggregator) instead. tasks limits both to these origin tasks."""
+    verdicts = {r["subject_id"]: r["verdict"] for r in read_csv(seeds / "source_checks.csv")
+                if r["subject_type"] == "candidate" and r["fact_group"] == "status"}
+
+    def activity_check(r: dict) -> str:
+        if r.get("status_source_type") == "other":
+            return "other_source"
+        v = verdicts.get(r["candidate_id"], "")
+        return v if v in FIXABLE_ACTIVITY else ""
+
     rows = [r for r in read_csv(seeds / "muse_candidates.csv")
-            if r["status"] == "unresolved" and not r["duplicate_of_church_id"]
-            and not r["possible_match_church_id"] and not r["possible_match_candidate_id"]]
+            if not r["duplicate_of_church_id"]
+            and not r["possible_match_church_id"] and not r["possible_match_candidate_id"]
+            and (not tasks or r["task"] in tasks)
+            and (r["status"] == "active" and activity_check(r) if unverified_active else r["status"] == "unresolved")]
     rows.sort(key=lambda r: (not r["street_address"], not r["official_url"], r["candidate_id"]))
     return [{**{c: r.get(c, "") for c in RECHECK_INPUT_COLS}, "candidate_ref": r["candidate_id"],
-             "origin_task": r["task"]} for r in rows]
+             "origin_task": r["task"], **({"activity_check": activity_check(r)} if unverified_active else {})}
+            for r in rows]
 
 
 def cmd_new_recheck(args) -> int:
-    rows = recheck_rows(Path(args.seeds))
+    tasks = {t.strip() for t in args.tasks.split(",") if t.strip()} or None
+    rows = recheck_rows(Path(args.seeds), tasks, args.unverified_active)
     if not rows:
-        raise SystemExit("no unresolved new congregations")
+        raise SystemExit("no congregations to re-check")
+    cols, template = (ACTIVITY_INPUT_COLS, ACTIVITY_TASK) if args.unverified_active else (RECHECK_INPUT_COLS, RECHECK_TASK)
     parts = [rows[i:i + args.size] for i in range(0, len(rows), args.size)]
     for i, part in enumerate(parts, 1):
         wp_id = next_wp_id()
         pkg = OUTBOX / wp_id
         pkg.mkdir(parents=True)
-        write_csv(pkg / "recheck_input.csv", RECHECK_INPUT_COLS, part)
+        write_csv(pkg / "recheck_input.csv", cols, part)
         title = f"{args.title} (part {i} of {len(parts)})" if len(parts) > 1 else args.title
-        (pkg / "TASK.md").write_text(RECHECK_TASK.format(
+        (pkg / "TASK.md").write_text(template.format(
             wp_id=wp_id, task=wp_id.replace("-", ""), title=title, n=len(part),
             sha=sha256(pkg / "recheck_input.csv")), encoding="utf-8")
         print(f"{wp_id}: {title}; {len(part)} congregations -> {pkg}")
@@ -877,6 +905,9 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("new-recheck", help="ask Muse to re-check every unresolved new congregation (brief section A)")
     p.add_argument("--title", required=True)
     p.add_argument("--size", type=int, default=100, help="congregations per package")
+    p.add_argument("--tasks", default="", help="only rows first reported by these tasks, e.g. 'WP0020,WP0021'")
+    p.add_argument("--unverified-active", action="store_true",
+                   help="active congregations whose dated quote our re-check could not verify, not unresolved ones")
     p.add_argument("--seeds", default=str(ROOT / "analytics/dbt/seeds"))
     p.set_defaults(fn=cmd_new_recheck)
     p = sub.add_parser("publish", help="copy a package to the Drive outbox and queue it")

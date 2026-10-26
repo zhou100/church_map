@@ -47,7 +47,7 @@ The intake script runs four steps:
 
 ### Through the shared Drive queue
 
-From round 7 on, work moves through a Google Drive folder that Muse reads and writes. Google Drive for desktop mirrors it at `/mnt/f/My Drive/churchmap-handoff`; override with `CHURCHMAP_DRIVE`. The protocol Muse follows is [`muse_handoff/drive/README_FOR_MUSE.md`](../muse_handoff/drive/README_FOR_MUSE.md).
+From round 7 on, work moves through a Google Drive folder that Muse reads and writes. Google Drive for desktop mirrors it at `/mnt/g/My Drive/churchmap-handoff`; override with `CHURCHMAP_DRIVE`. The protocol Muse follows is [`muse_handoff/drive/README_FOR_MUSE.md`](../muse_handoff/drive/README_FOR_MUSE.md).
 
 ```bash
 python3 muse_handoff/drive_sync.py new-discovery --title "Marin County" --state CA --cities "San Rafael=25,Novato=20"
@@ -65,11 +65,11 @@ What `pull` does:
 - After the rebuild, every pull geocodes the addresses that have no pin yet (`geocode_incremental.py --fetch`) and rebuilds again if any result changed. Skip it with `--no-geocode`.
 
 `pull` runs every hour from the Windows scheduled task `ChurchMapMusePull`, through [`muse_handoff/drive_pull_hourly.sh`](../muse_handoff/drive_pull_hourly.sh). The script does three things:
-- re-mounts F: if WSL lost the mount;
+- re-mounts G: if WSL lost the mount;
 - starts the local Postgres;
 - appends its output to `muse_handoff/returns/drive_pull.log`.
 
-Remove the task with `schtasks.exe /Delete /TN ChurchMapMusePull /F`.
+Register (or re-register) the task with [`muse_handoff/register_pull_task.ps1`](../muse_handoff/register_pull_task.ps1); remove it with `schtasks.exe /Delete /TN ChurchMapMusePull /F`. WSL mounts only the drives present when it boots, and G: appears after login, so the task's hourly re-mount is what keeps `/mnt/g` up.
 
 ## Geocoding
 

@@ -2,7 +2,7 @@
 
 This folder is a work queue. We put work packages in `outbox/`. You do them and put the results in `returns/`. Nobody needs to send a message for work to move: we check this folder several times a day.
 
-**All research rules are in `reference/BRIEF_v3.md` (v3.4) and still apply.** v3.3 makes the deeper search in its section A required: events, news, sermons, bulletins and the church's Facebook Page, before any row is `unresolved`. v3.4 adds the directory sweep (S5, D12): discovery starts from the churchfinder.com and church.oursweb.net listings for each city. This file covers only how work moves through the folder.
+**All research rules are in `reference/BRIEF_v3.md` (v3.5) and still apply.** v3.3 makes the deeper search in its section A required: events, news, sermons, bulletins and the church's Facebook Page, before any row is `unresolved`. v3.4 adds the directory sweep (S5, D12): discovery starts from the churchfinder.com and church.oursweb.net listings for each city. v3.5 (from WP-0034) says what we can verify: a dated quote is visible page text on a stable page, never a metadata timestamp or a video channel, and a Facebook excerpt is the post's own words. This file covers only how work moves through the folder.
 
 ## Who writes where
 
