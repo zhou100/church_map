@@ -644,6 +644,20 @@ def test_check_unresearched_holds_each_directory_line(tmp_path):
                     "cap not reached"]
 
 
+
+def test_check_unresearched_reads_past_a_semicolon_in_parentheses(tmp_path):
+    # WP-0042 / WP-0043 as delivered: a note in parentheses holds a `;`.
+    log = tmp_path / "run_log.md"
+    log.write_text("- Laguna Beach — churchfinder: listed 14, known 3 (corrected by recount — 22660, 22662; "
+                   "the v3.5 line said 1), reported-new 2, unresearched 0; oursweb: listed 0, unresearched 0\n"
+                   "- Colton — churchfinder: listed 20, known 1 (KNOWN FLAG: no address to cross-confirm; "
+                   "if required, U becomes 14), reported-old 4, unresearched 13 — CAP REACHED (reported 4/4); "
+                   "oursweb: listed 0, known 0, reported 0, unresearched 0\n"
+                   "- Chino — churchfinder: listed 9 (note; more), reported 2, unresearched 3; "
+                   "oursweb: listed 0, unresearched 0\n", encoding="utf-8")
+    errs = ds.check_unresearched(log)
+    assert len(errs) == 1 and "Chino" in errs[0] and "churchfinder unresearched 3, cap not reached" in errs[0]
+
 def test_the_activity_template_took_every_edit():
     # str.replace is silent when its target drifts; each edit must have landed.
     t = ds.ACTIVITY_TASK

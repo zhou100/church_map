@@ -556,7 +556,9 @@ def check_sweep(run_log: Path) -> str:
 
 
 UNRESEARCHED_FROM = 42  # brief v3.6: WP-0042 left ~230 listings unresearched under its caps
-SWEEP_SEGMENT = re.compile(r"(churchfinder|oursweb)\s*:\s*listed\s+\d+[^;\n]*", re.I)
+# A segment runs to the next `;` outside parentheses: WP-0042/43 wrote notes like
+# "known 3 (recounted …; the v3.5 line said 1), …, unresearched 0".
+SWEEP_SEGMENT = re.compile(r"(churchfinder|oursweb)\s*:\s*listed\s+\d+(?:\([^)\n]*\)|[^;(\n])*", re.I)
 
 
 def check_unresearched(run_log: Path) -> list[str]:
