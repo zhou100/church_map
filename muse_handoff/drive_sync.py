@@ -798,7 +798,9 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
                             f"`{SWEEP_LINE}`.\n")
         elif int(wp_id[3:]) >= UNRESEARCHED_FROM:
             left = check_unresearched(wp_dir / "run_log.md")
-            if left:
+            if left and partial:  # README step 4: deliver what is finished; we queue the rest
+                notes.append(f"{len(left)} sweep segment(s) with listings unresearched; queue them")
+            elif left:
                 problems.append("## `run_log.md`\n\nDirectory listings left unresearched below the cap (brief D12, "
                                 "A6, v3.6). Research them and report each one (as `unresolved` if nothing dated "
                                 "turns up), or end the line with `cap reached`:\n\n" + "\n".join(left) + "\n")

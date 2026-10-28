@@ -5,7 +5,7 @@
 > **v3.6 (2026-10-28, after WP-0042). Finish the directory sweep; applies to WP-0042's fix and from WP-0043.** Marked **[v3.6]**:
 > - In WP-0042, the churchfinder pages of 18 cities listed about 250 congregations. 2 were already known, and 23 were reported: about one per city. The other listings were never researched. **A6 is about the quality of each row. It is never a reason to leave directory listings unresearched.** Below a city's cap, research every new listing (D12) and report it, as `unresolved` if nothing dated turns up.
 > - Read **every page** of a directory's results. A count of exactly 20 is usually only the first page.
-> - Each sweep line now ends with `unresearched U` for each directory (D12). Our intake rejects a package with `U` above 0 unless that line also says `cap reached`.
+> - Each sweep line now ends with `unresearched U` for each directory (D12). Our intake rejects a package with `U` above 0 unless that line also says `cap reached`, or `DONE.md` says `partial: yes` because you were rate-limited or out of time (README step 4); then we queue the rest.
 >
 > **v3.5 (2026-10-25, after WP-0033). Cite what our checker can read; applies from WP-0034.** Marked **[v3.5]**:
 > - In WP-0031–0033, 111 of 213 `active` rows still failed our re-check. The quote must be **text a reader sees on the page**: not a metadata timestamp (`Published: 2026-09-18T19:18:23+00:00` is JSON-LD, not page text), and not a homepage item that will rotate off by the time we check. Cite the event, post, sermon or bulletin page itself (A3).
@@ -158,7 +158,7 @@ Every row, discovery or verification, goes through this search. It is required, 
 
   Then search the web for what the directories missed. In `run_log.md`, report per city one line per directory: `<city> — churchfinder: listed N, already known K, reported R, unresearched U; oursweb: listed N, already known K, reported R, unresearched U` (and `cap reached` when it stopped you).
 
-  **[v3.6]** `U` counts the new listings you did not research. Some listings are researched and then left out, because they are a duplicate listing, in another city, not a congregation, or closed. Those don't count in `U`; name them in the prose under the sweep. `U` must be 0 unless the line says `cap reached`, and our intake rejects the package otherwise.
+  **[v3.6]** `U` counts the new listings you did not research. Some listings are researched and then left out, because they are a duplicate listing, in another city, not a congregation, or closed. Those don't count in `U`; name them in the prose under the sweep. `U` must be 0 unless the line says `cap reached`, and our intake rejects the package otherwise. If you were rate-limited or ran out of time, deliver what is finished with `partial: yes` in `DONE.md` (README step 4) and keep the true `U`: we queue the rest.
 - **[v3] D10.** Use the **USPS city name** that matches the ZIP (e.g. "Los Altos" for a Loyola address in 94024). The ZIP must belong to that city.
 
 ## Do not (N)

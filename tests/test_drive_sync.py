@@ -659,11 +659,12 @@ def test_a_discovery_delivery_with_unresearched_listings_goes_back_to_muse(queue
     wp = drive / "returns" / "WP-0042"
     wp.mkdir()
 
-    def deliver(sweep):
+    def deliver(sweep, partial="no"):
         _deliver(wp, body="candidate_ref,task\nWP0042-001,WP0042\n")
         (wp / "run_log.md").write_text(sweep, encoding="utf-8")
         (wp / "DONE.md").write_text(f"new_candidates.csv sha256={_sha(wp / 'new_candidates.csv')}\n"
-                                    f"run_log.md sha256={_sha(wp / 'run_log.md')}\npartial: no\n", encoding="utf-8")
+                                    f"run_log.md sha256={_sha(wp / 'run_log.md')}\npartial: {partial}\n",
+                                    encoding="utf-8")
 
     deliver("- Irvine — churchfinder: listed 20, already known 0, reported 1, unresearched 19; "
             "oursweb: listed 0, already known 0, reported 0, unresearched 0\n")
@@ -673,3 +674,10 @@ def test_a_discovery_delivery_with_unresearched_listings_goes_back_to_muse(queue
     deliver("- Irvine — churchfinder: listed 20, already known 0, reported 1, unresearched 19, cap reached; "
             "oursweb: listed 0, already known 0, reported 0, unresearched 0\n")
     assert ds.pull_package(wp, status, recheck=False) == "pending_build"
+    # A declared partial delivery (README step 4) is accepted with the rest noted for us (PR #59 review).
+    deliver("- Irvine — churchfinder: listed 20, already known 0, reported 1, unresearched 19; "
+            "oursweb: listed 0, already known 0, reported 0, unresearched 0\n", partial="yes")
+    assert ds.pull_package(wp, status, recheck=False) == "pending_build"
+    assert "1 sweep segment(s) with listings unresearched; queue them" in status["WP-0042"]["note"]
+    assert "partial delivery; queue the rest" in status["WP-0042"]["note"]
+    assert (ret / "new_candidates_WP0042.csv").exists()
