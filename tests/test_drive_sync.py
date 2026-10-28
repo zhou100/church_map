@@ -617,11 +617,59 @@ def test_only_discovery_packages_from_wp0020_are_held_to_the_sweep(tmp_path, mon
 def test_the_discovery_template_asks_for_the_sweep():
     text = ds.DISCOVERY_TASK.format(wp_id="WP-0099", task="WP0099", title="t", city_rows="| A | 1 |", known_n=1,
                                     known_sha="x", note="")
-    assert "(v3.5)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
+    assert "(v3.6)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
     assert "churchfinder: listed N" in text and "church_directory" in text
+    assert "unresearched U" in text and "every page" in text
+
+
+# --- v3.6 D12: no directory listing left unresearched below the cap ----------------------
+
+def test_check_unresearched_holds_each_directory_line(tmp_path):
+    log = tmp_path / "run_log.md"
+    # WP-0042 as delivered: no unresearched count at all.
+    log.write_text("- Irvine — churchfinder: listed 20, already known 0, reported 4; "
+                   "oursweb: listed 29, already known 1, reported 0\n", encoding="utf-8")
+    errs = ds.check_unresearched(log)
+    assert len(errs) == 2 and "Irvine" in errs[0] and "churchfinder" in errs[0] and "oursweb" in errs[1]
+    log.write_text("- Irvine — churchfinder: listed 20, already known 0, reported 4, unresearched 16; "
+                   "oursweb: listed 29, already known 1, reported 19, unresearched 0\n"
+                   "- Brea — churchfinder: listed 19, already known 2, reported 4, unresearched 9, cap reached; "
+                   "oursweb: listed 367, already known 0, reported 1, unresearched 0\n"
+                   "- Stanton — Churchfinder: listed 9, already known 0, reported 3, Unresearched 0; "
+                   "oursweb: listed 0, already known 0, reported 0, unresearched 0\n"
+                   "Prose that mentions churchfinder without a count is ignored.\n", encoding="utf-8")
+    errs = ds.check_unresearched(log)
+    assert errs == ["- `- Irvine — churchfinder: listed 20, already known 0, reported 4, unresearched 16; oursweb: "
+                    "listed 29, already known 1, reported 19, unresearched 0`: churchfinder unresearched 16, "
+                    "cap not reached"]
 
 
 def test_the_activity_template_took_every_edit():
     # str.replace is silent when its target drifts; each edit must have landed.
     t = ds.ACTIVITY_TASK
     assert t.startswith("# {wp_id} — re-check congregations:") and "as `active`" in t and "page that failed" in t
+
+
+def test_a_discovery_delivery_with_unresearched_listings_goes_back_to_muse(queue, monkeypatch):
+    drive, ret, _ = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))  # only the sweep is under test
+    (ds.OUTBOX / "WP-0042").mkdir()
+    (ds.OUTBOX / "WP-0042" / "known_congregations.csv").write_text("known_id\n", encoding="utf-8")
+    ds.save_status({"WP-0042": dict(wp_id="WP-0042", title="south OC", state="queued", published_at="x")})
+    wp = drive / "returns" / "WP-0042"
+    wp.mkdir()
+
+    def deliver(sweep):
+        _deliver(wp, body="candidate_ref,task\nWP0042-001,WP0042\n")
+        (wp / "run_log.md").write_text(sweep, encoding="utf-8")
+        (wp / "DONE.md").write_text(f"new_candidates.csv sha256={_sha(wp / 'new_candidates.csv')}\n"
+                                    f"run_log.md sha256={_sha(wp / 'run_log.md')}\npartial: no\n", encoding="utf-8")
+
+    deliver("- Irvine — churchfinder: listed 20, already known 0, reported 1, unresearched 19; "
+            "oursweb: listed 0, already known 0, reported 0, unresearched 0\n")
+    status = ds.load_status()
+    assert ds.pull_package(wp, status, recheck=False) == "needs_fix"
+    assert "unresearched 19, cap not reached" in (drive / "feedback" / "WP-0042.md").read_text(encoding="utf-8")
+    deliver("- Irvine — churchfinder: listed 20, already known 0, reported 1, unresearched 19, cap reached; "
+            "oursweb: listed 0, already known 0, reported 0, unresearched 0\n")
+    assert ds.pull_package(wp, status, recheck=False) == "pending_build"

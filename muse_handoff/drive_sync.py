@@ -187,13 +187,13 @@ def known_congregations(state: str, cities: list[str], db: Path, seeds: Path) ->
 
 DISCOVERY_TASK = """# {wp_id} — find congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
 Find Christian congregations that meet in the cities below and are **not** in `known_congregations.csv`. **A row we can use has dated activity within 12 months, an address, and a way to reach the church.** Search each one as brief section A requires (events, news, sermons, bulletin, Facebook Page) before marking it `unresolved` or leaving a fact blank. The caps are maximums, not targets.
 
-- **Start from the church directories (S5, D12):** for every city, go through the churchfinder.com city page and the church.oursweb.net results, skip the congregations already known, and research each new one (section A). Then search the web for what they missed. Directory finds have `found_via = church_directory` and `lead: <listing URL>` in `notes`; never cite a directory as a source.
+- **Start from the church directories (S5, D12):** for every city, go through the churchfinder.com city page and the church.oursweb.net results (**every page**), skip the congregations already known, and research **every** new one (section A) until the city's cap is reached; depth (A6) never means stopping below it. Then search the web for what they missed. Directory finds have `found_via = church_directory` and `lead: <listing URL>` in `notes`; never cite a directory as a source.
 - Report every language the church states (N5).
 - De-duplicate by name **and** by address (D4), against `known_congregations.csv` and against your own rows. A known congregation is worth a row only if you add language, service, or children's facts; then set `possible_match_id` to its `known_id`.
 - Facts come from the congregation's own site or Page (S1/S2) or its denomination (S3); never from another congregation's site.
@@ -215,7 +215,7 @@ Find Christian congregations that meet in the cities below and are **not** in `k
 | File | Contents |
 |---|---|
 | `new_candidates.csv` | `new_candidates_TEMPLATE_v3.csv` columns; `task = {task}`; `candidate_ref` `{task}-001`, `{task}-002`, … |
-| `run_log.md` | D9 manifest; **the directory sweep per city (D12): `<city> — churchfinder: listed N, already known K, reported R; oursweb: listed N, already known K, reported R`**; other sources searched per city; counts per city (found, already known, with kids program, by stated language, Facebook-only); blocked sites; hard rows |
+| `run_log.md` | D9 manifest; **the directory sweep per city (D12): `<city> — churchfinder: listed N, already known K, reported R, unresearched U; oursweb: listed N, already known K, reported R, unresearched U`**, with `U` = 0 unless the line says `cap reached`; other sources searched per city; counts per city (found, already known, with kids program, by stated language, Facebook-only); blocked sites; hard rows |
 | `DONE.md` | written last; see `README_FOR_MUSE.md` |
 
 ## Check before delivering
@@ -260,7 +260,7 @@ def cmd_new_discovery(args) -> int:
 
 LEADS_TASK = """# {wp_id} — check leads: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -339,7 +339,7 @@ FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "official_url", 
 
 SERVICE_FIX_TASK = """# {wp_id} — re-quote service times: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 {note}
 ## What
 
@@ -440,7 +440,7 @@ RECHECK_INPUT_COLS = ["candidate_ref", "origin_task", "candidate_name", "current
 
 RECHECK_TASK = """# {wp_id} — re-check unresolved congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.5) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -536,6 +536,8 @@ def cmd_new_recheck(args) -> int:
 
 
 SWEEP_FROM = 20  # brief v3.4 D12 (directory sweep) applies to discovery packages from WP-0020
+SWEEP_LINE = ("<city> — churchfinder: listed N, already known K, reported R, unresearched U; "
+              "oursweb: listed N, already known K, reported R, unresearched U")
 
 
 def is_discovery(wp_id: str) -> bool:
@@ -551,6 +553,28 @@ def check_sweep(run_log: Path) -> str:
     text = run_log.read_text(encoding="utf-8", errors="replace").lower()
     gone = [d for d in ("churchfinder", "oursweb") if not re.search(rf"{d}\s*:\s*listed\s+\d+", text)]
     return f"no '{' / '.join(gone)}: listed N' lines" if gone else ""
+
+
+UNRESEARCHED_FROM = 42  # brief v3.6: WP-0042 left ~230 listings unresearched under its caps
+SWEEP_SEGMENT = re.compile(r"(churchfinder|oursweb)\s*:\s*listed\s+\d+[^;\n]*", re.I)
+
+
+def check_unresearched(run_log: Path) -> list[str]:
+    """One problem per sweep line whose directory segment has no `unresearched U`, or U > 0
+    on a line that doesn't say `cap reached` (brief D12, v3.6)."""
+    out = []
+    for line in run_log.read_text(encoding="utf-8", errors="replace").splitlines():
+        segs = list(SWEEP_SEGMENT.finditer(line))
+        if not segs:
+            continue
+        capped = "cap reached" in line.lower()
+        for m in segs:
+            u = re.search(r"unresearched\s+(\d+)", m.group(0), re.I)
+            if not u:
+                out.append(f"- `{line.strip()}`: no `unresearched U` for {m.group(1).lower()}")
+            elif int(u.group(1)) and not capped:
+                out.append(f"- `{line.strip()}`: {m.group(1).lower()} unresearched {u.group(1)}, cap not reached")
+    return out
 
 
 def page_key(url: str | None) -> str:
@@ -771,8 +795,13 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         missing = check_sweep(wp_dir / "run_log.md")
         if missing:
             problems.append(f"## `run_log.md`\n\nNo directory sweep (brief D12): {missing}. Report, per city, "
-                            "`<city> — churchfinder: listed N, already known K, reported R; oursweb: listed N, "
-                            "already known K, reported R`.\n")
+                            f"`{SWEEP_LINE}`.\n")
+        elif int(wp_id[3:]) >= UNRESEARCHED_FROM:
+            left = check_unresearched(wp_dir / "run_log.md")
+            if left:
+                problems.append("## `run_log.md`\n\nDirectory listings left unresearched below the cap (brief D12, "
+                                "A6, v3.6). Research them and report each one (as `unresolved` if nothing dated "
+                                "turns up), or end the line with `cap reached`:\n\n" + "\n".join(left) + "\n")
     if (OUTBOX / wp_id / "recheck_input.csv").exists() and "new_candidates.csv" not in outputs:
         problems.append("## `new_candidates.csv`\n\nMissing: this package asks for one row per input `candidate_ref`.\n")
     elif (OUTBOX / wp_id / "recheck_input.csv").exists():
