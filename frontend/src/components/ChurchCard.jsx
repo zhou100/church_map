@@ -25,25 +25,19 @@ function Stars({ rating }) {
   return <span className="stars">{'★'.repeat(full)}{'☆'.repeat(5 - full)}</span>
 }
 
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 3958.8
-  const dLat = (lat2 - lat1) * Math.PI / 180
-  const dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat / 2) ** 2 +
-    Math.cos(lat1 * Math.PI / 180) * Math.cos(lat2 * Math.PI / 180) * Math.sin(dLon / 2) ** 2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1 - a))
-}
-
-function Distance({ church, userLat, userLon }) {
-  if (userLat == null || !church.latitude || !church.longitude) return null
-  const miles = haversine(userLat, userLon, church.latitude, church.longitude)
+// Straight-line miles from the search's stated origin, measured by the API
+// (`distance_miles`). A listing without coordinates says so instead of
+// silently dropping out of a distance-ordered list.
+function Distance({ church }) {
+  const miles = church.distance_miles
+  if (miles == null) return <span className="card-distance card-distance-unknown">Distance unknown</span>
   const label = miles < 0.1 ? 'nearby'
     : miles < 10 ? `${miles.toFixed(1)} mi`
     : `${Math.round(miles)} mi`
   return <span className="card-distance"><Icon name="pin" size={13} /> {label}</span>
 }
 
-function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
+function CardBody({ church, showDistance, showLocation, fitReason }) {
   const extracted = church.extracted_tags || {}
   const extractedValues = Object.values(extracted)
   const hasWebsiteInsights = Boolean(
@@ -85,7 +79,7 @@ function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
             {hasWebsiteInsights ? 'Website profile available' : 'Website not read yet'}
           </span>
         )}
-        <Distance church={church} userLat={userLat} userLon={userLon} />
+        {showDistance && <Distance church={church} />}
       </div>
       {fitReason && (
         <p className="card-fit">
@@ -114,7 +108,7 @@ function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
   )
 }
 
-function ChurchCard({ church, userLat, userLon, showLocation = false, fitReason = '', onSelect }) {
+function ChurchCard({ church, showDistance = false, showLocation = false, fitReason = '', onSelect }) {
   const accentColor = denomAccentColor(church.denomination)
   const sharedStyle = { borderLeft: `5px solid ${accentColor}` }
 
@@ -126,16 +120,18 @@ function ChurchCard({ church, userLat, userLon, showLocation = false, fitReason 
         onClick={() => onSelect(church.id)}
         role="button"
         tabIndex={0}
-        onKeyDown={e => e.key === 'Enter' && onSelect(church.id)}
+        onKeyDown={e => {
+          if (e.key === 'Enter' || e.key === ' ') { e.preventDefault(); onSelect(church.id) }
+        }}
       >
-        <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} fitReason={fitReason} />
+        <CardBody church={church} showDistance={showDistance} showLocation={showLocation} fitReason={fitReason} />
       </div>
     )
   }
 
   return (
     <Link to={`/church/${church.id}`} className="church-card" style={sharedStyle}>
-      <CardBody church={church} userLat={userLat} userLon={userLon} showLocation={showLocation} fitReason={fitReason} />
+      <CardBody church={church} showDistance={showDistance} showLocation={showLocation} fitReason={fitReason} />
     </Link>
   )
 }

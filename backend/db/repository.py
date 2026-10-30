@@ -67,14 +67,6 @@ CITY_ORDERINGS = {
         SQRT(POWER(c.latitude - {_city_median("latitude")}, 2)
            + POWER(c.longitude - {_city_median("longitude")}, 2)) ASC NULLS LAST,
         c.name ASC, c.church_id ASC""", 2),
-    # Search: nearest the middle of the city first, so "Load more" only ever
-    # adds churches farther out. Longitude degrees are scaled to latitude
-    # degrees at the city's latitude; unmapped churches come last.
-    "nearest": (f"""
-        POWER(c.latitude - {_city_median("latitude")}, 2)
-          + POWER((c.longitude - {_city_median("longitude")})
-                  * COS(RADIANS({_city_median("latitude")})), 2) ASC NULLS LAST,
-        c.name ASC, c.church_id ASC""", 3),
 }
 
 # `_DIM_QUERY` produces the fields routers expect, including review aggregates.
@@ -188,9 +180,138 @@ def extracted_filters(
     return "".join(f"\n              AND ({c})" for c in clauses), params
 
 
+def _distance_miles(lat: str, lon: str) -> str:
+    """Great-circle miles from (lat, lon), each an SQL expression; clamps
+    rounding at coincident/antipodal points. NULL when the church has no
+    coordinates: GREATEST skips NULLs, so without the CASE an unmapped church
+    would be 0 mi."""
+    return f"""CASE WHEN c.latitude IS NULL OR c.longitude IS NULL THEN NULL::float8
+    ELSE 3958.8 * 2 * ASIN(SQRT(LEAST(1.0, GREATEST(0.0,
+    POWER(SIN(RADIANS(c.latitude - {lat}) / 2), 2) +
+    COS(RADIANS({lat})) * COS(RADIANS(c.latitude)) *
+    POWER(SIN(RADIANS(c.longitude - {lon}) / 2), 2))))) END"""
+
+
+def _city_center(axis: str) -> str:
+    """Median latitude or longitude of a city's mapped, visible churches: the
+    approximate center Search measures a city from and /search-center returns.
+    Uncorrelated, so Postgres evaluates it once per query. Binds (city, state)."""
+    return f"""(SELECT percentile_cont(0.5) WITHIN GROUP (ORDER BY m.{axis})
+        FROM churches m
+        WHERE LOWER(m.city) = LOWER(%s) AND LOWER(m.state) = LOWER(%s)
+          AND {VISIBLE.replace("c.", "m.")}
+          AND m.latitude BETWEEN -90 AND 90 AND m.longitude BETWEEN -180 AND 180)"""
+
+
+# frontend/src/churchProfile.js KIDS_PROGRAM; \y is Postgres's \b.
+_KIDS_PROGRAM = r"\y(kids?|child|children'?s?|youth|nursery|sunday school|vbs|vacation bible school)\y"
+
+
+def fit_sql(prefs: dict) -> tuple[str, list]:
+    """How many of the three preference questions a church has evidence for,
+    0..3, the same count as `fitScore` in churchProfile.js: languages from
+    verified facts or website extraction (never name guesses), the extracted
+    worship style, and a kids program that is verified, extracted, or rated
+    above 4 by three or more reviewers (backend/utils.py compute_tags).
+    Needs the `_DIM_SELECT` review join and GROUP BY."""
+    parts, params = [], []
+    languages = [l.strip().lower() for l in prefs.get("languages") or [] if l.strip()]
+    if languages:
+        parts.append(
+            "CASE WHEN EXISTS (SELECT 1 FROM ("
+            " SELECT unnest(string_to_array(c.service_languages, ';')) AS lang"
+            " UNION ALL SELECT jsonb_array_elements_text("
+            " CASE WHEN jsonb_typeof(c.extracted_tags->'service_languages') = 'array'"
+            " THEN c.extracted_tags->'service_languages' ELSE '[]'::jsonb END)"
+            ") fit_languages WHERE LOWER(BTRIM(lang)) = ANY(%s)) THEN 1 ELSE 0 END"
+        )
+        params.append(languages)
+    if prefs.get("worship"):
+        parts.append("CASE WHEN c.extracted_tags->>'worship_style' = ANY(%s) THEN 1 ELSE 0 END")
+        params.append(list(prefs["worship"]))
+    if prefs.get("kids"):
+        parts.append(
+            "CASE WHEN BTRIM(COALESCE(c.kids_program, '')) <> ''"
+            " OR (jsonb_typeof(c.extracted_tags->'programs') = 'array' AND EXISTS ("
+            "  SELECT 1 FROM jsonb_array_elements(c.extracted_tags->'programs') program"
+            "   WHERE jsonb_typeof(program) = 'string' AND program #>> '{}' ~* %s))"
+            " OR (COUNT(r.review_id) >= 3 AND AVG(r.childrens_programs) > 4.0)"
+            " THEN 1 ELSE 0 END"
+        )
+        params.append(_KIDS_PROGRAM)
+    return ("(" + " + ".join(parts) + ")" if parts else "0"), params
+
+
 class ChurchRepository:
     def __init__(self, con: AsyncConnection):
         self.con = con
+
+    async def city_center(self, city: str, state: str) -> dict | None:
+        """Approximate search origin from mapped, visible city records."""
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(
+                f"SELECT {_city_center('latitude')} AS lat, {_city_center('longitude')} AS lon",
+                (city, state, city, state),
+            )
+            row = await cur.fetchone()
+            return row if row and row["lat"] is not None else None
+
+    async def list_nearby(self, lat: float, lon: float, radius_miles: float,
+                          limit: int, offset: int, **filters) -> list[dict]:
+        return await self.list_scoped(near=(lat, lon, radius_miles), limit=limit,
+                                      offset=offset, **filters)
+
+    async def list_scoped(
+        self, *, limit: int, offset: int,
+        city: str | None = None, state: str | None = None, name: str | None = None,
+        near: tuple[float, float, float] | None = None,
+        origin: tuple[float, float] | None = None,
+        sort: str = "nearest", prefs: dict | None = None, **filters,
+    ) -> list[dict]:
+        """One page of a city, name or radius scope, ranked before LIMIT.
+
+        `nearest`: nearest to `origin`, which is the circle center for `near`
+        and, for a city, its approximate center (`_city_center`) unless given;
+        rows without coordinates carry a NULL distance and come last. `for_you`:
+        preference evidence (fit_sql, which mirrors churchProfile.js fitScore),
+        then profile completeness, then distance. Unknown attributes score 0,
+        never excluded. Every row carries `total_count` for the whole scope.
+        """
+        if near is not None:
+            origin = near[:2]
+        if origin is not None:
+            distance, dparams = _distance_miles("%s", "%s"), [origin[0], origin[0], origin[1]]
+        elif city is not None:
+            distance = _distance_miles(_city_center("latitude"), _city_center("longitude"))
+            dparams = [city, state] * 3
+        else:
+            distance, dparams = "NULL::float8", []
+        fit, fparams_fit = fit_sql(prefs or {})
+        where, fparams = extracted_filters(**filters)
+        if near is not None:
+            scope, sparams = "c.latitude BETWEEN -90 AND 90 AND c.longitude BETWEEN -180 AND 180", []
+        elif name is not None:
+            scope, sparams = "STRPOS(LOWER(c.name), LOWER(%s)) > 0", [name]
+        else:
+            scope, sparams = "LOWER(c.city) = LOWER(%s) AND LOWER(c.state) = LOWER(%s)", [city, state]
+        order = {
+            "nearest": "distance_miles ASC NULLS LAST, profile_score DESC, name ASC, id ASC",
+            "for_you": "fit_score DESC, profile_score DESC, distance_miles ASC NULLS LAST, name ASC, id ASC",
+        }[sort]
+        sql = "SELECT s.*, COUNT(*) OVER () AS total_count FROM (" + _DIM_SELECT.replace(
+            "c.name,", f"c.name, {distance} AS distance_miles, {fit} AS fit_score, "
+            f"{STARTING_POINT_SCORE} AS profile_score,", 1
+        ) + f"""
+            WHERE {scope} AND {VISIBLE}{where}
+            GROUP BY c.church_id
+        ) s {"WHERE distance_miles <= %s" if near is not None else ""}
+        ORDER BY {order} LIMIT %s OFFSET %s
+        """
+        params = [*dparams, *fparams_fit, *sparams, *fparams,
+                  *([near[2]] if near is not None else []), limit, offset]
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, params)
+            return await cur.fetchall()
 
     async def list_by_zip(
         self, zip_code: str, limit: int, offset: int, **filters
@@ -209,6 +330,9 @@ class ChurchRepository:
         self, city: str, state: str, limit: int, offset: int,
         sort: str = "default", **filters
     ) -> list[dict]:
+        if sort in ("nearest", "for_you"):
+            return await self.list_scoped(city=city, state=state, sort=sort,
+                                          limit=limit, offset=offset, **filters)
         where, fparams = extracted_filters(**filters)
         order_by, city_pairs = CITY_ORDERINGS[sort]
         sql = _DIM_SELECT + f"""

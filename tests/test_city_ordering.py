@@ -41,12 +41,14 @@ def test_starting_point_ranks_score_then_distance_before_the_limit():
 
 def test_nearest_orders_by_distance_from_the_city_middle_before_the_limit():
     cursor = _city_sql(sort="nearest")
-    order_by = cursor.sql.split("ORDER BY", 1)[1]
-    assert "jsonb_array_length" not in order_by, "distance only, not profile score"
-    assert order_by.index("percentile_disc") < order_by.index("NULLS LAST") < order_by.index("LIMIT")
-    assert "COS(RADIANS(" in order_by
-    # latitude median, longitude median, and the latitude again for the scale
-    assert cursor.params == ("Brooklyn", "NY", *("Brooklyn", "NY") * 3, 100, 0)
+    order_by = cursor.sql.rsplit("ORDER BY", 1)[1]
+    assert order_by.index("distance_miles ASC NULLS LAST") < order_by.index("profile_score"), \
+        "distance first; profile richness only breaks exact ties"
+    assert order_by.index("NULLS LAST") < order_by.index("LIMIT")
+    # Great-circle distance from the city's median coordinates: latitude twice
+    # (offset and scale), longitude once, each binding the city again.
+    assert cursor.sql.count("percentile_cont") == 3
+    assert tuple(cursor.params) == (*("Brooklyn", "NY") * 4, 100, 0)
 
 
 def test_unknown_sort_is_rejected():

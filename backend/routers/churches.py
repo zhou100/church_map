@@ -10,6 +10,7 @@ from __future__ import annotations
 import asyncio
 import json
 import os
+from typing import Annotated
 
 from fastapi import APIRouter, HTTPException, Query, Response
 from psycopg.rows import dict_row
@@ -21,6 +22,9 @@ from backend.scrapers_v2.prompts.website_v3 import THEOLOGICAL_STANCES, WORSHIP_
 from backend.utils import compute_tags
 
 router = APIRouter()
+
+# Sorts served by ChurchRepository.list_scoped; the rest are CITY_ORDERINGS.
+SCOPED_SORTS = ("nearest", "for_you")
 
 
 def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
@@ -35,6 +39,9 @@ def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
     church = {
         "id": row["id"],
         "name": row["name"],
+        "distance_miles": row.get("distance_miles"),
+        # Scoped listings only: rows in the whole scope, repeated on each row.
+        "total_count": row.get("total_count"),
         "address": row.get("address"),
         "city": row.get("city"),
         "state": row.get("state"),
@@ -191,6 +198,12 @@ async def list_churches(
     worship_style: str = "",
     stance: str = "",
     sort: str = "",
+    lat: Annotated[float | None, Query(ge=-90, le=90)] = None,
+    lon: Annotated[float | None, Query(ge=-180, le=180)] = None,
+    radius_miles: Annotated[float | None, Query(ge=1, le=100)] = None,
+    prefer_language: Annotated[list[str], Query(max_length=10)] = [],
+    prefer_worship: Annotated[list[str], Query(max_length=5)] = [],
+    prefer_kids: bool = False,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     response: Response = None,
@@ -206,10 +219,26 @@ async def list_churches(
     indistinguishable from "no churches like that near you", which is a much
     worse answer than saying the filter was wrong.
 
-    `sort` orders a city listing (`default`, `starting_point` or `nearest`; see
-    `CITY_ORDERINGS`). Name search keeps its relevance order and ZIP search
-    its default order, so `sort` only applies to city/state.
+    `sort` orders a city listing (`default` or `starting_point`; see
+    `CITY_ORDERINGS`), or a city, radius or name scope by `nearest` or
+    `for_you` (`ChurchRepository.list_scoped`), ranked before LIMIT so later
+    pages continue one order. A city is measured from its approximate center,
+    so every visitor's request for a city is the same URL (the list cache and
+    the landing prefetch depend on that). `lat`/`lon` with `radius_miles` is
+    the visitor's chosen circle. `prefer_*` only rank `for_you`; they never
+    filter. ZIP search keeps its default order.
     """
+    if any(v is not None for v in (lat, lon, radius_miles)) and not all(
+        v is not None for v in (lat, lon, radius_miles)
+    ):
+        raise HTTPException(status_code=400, detail="lat, lon and radius_miles are required together")
+    if any(len(value) > 40 for value in prefer_language):
+        raise HTTPException(status_code=400, detail="prefer_language values are limited to 40 characters")
+    if any(value not in WORSHIP_STYLES for value in prefer_worship):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown prefer_worship; expected one of {sorted(WORSHIP_STYLES)}",
+        )
     name_query = name.strip()
     if name_query and len(name_query) < 2:
         raise HTTPException(
@@ -229,17 +258,28 @@ async def list_churches(
         )
 
     sort_key = sort.lower() or "default"
-    if sort_key not in CITY_ORDERINGS:
+    if sort_key not in {*CITY_ORDERINGS, *SCOPED_SORTS}:
         raise HTTPException(
             status_code=400,
-            detail=f"unknown sort; expected one of {sorted(CITY_ORDERINGS)}",
+            detail=f"unknown sort; expected one of {sorted({*CITY_ORDERINGS, *SCOPED_SORTS})}",
         )
+    prefs = {"languages": prefer_language, "worship": prefer_worship, "kids": prefer_kids}
 
     filters = {"language": language, "worship_style": worship_style, "stance": stance}
     async with pool.acquire() as con:
         repo = ChurchRepository(con)
-        if name_query:
+        if radius_miles is not None:
+            rows = await repo.list_scoped(
+                near=(lat, lon, radius_miles), sort="for_you" if sort_key == "for_you" else "nearest",
+                prefs=prefs, limit=limit, offset=offset, **filters)
+        elif name_query and sort_key == "for_you":
+            rows = await repo.list_scoped(name=name_query, sort="for_you", prefs=prefs,
+                                          limit=limit, offset=offset, **filters)
+        elif name_query:
             rows = await repo.search_by_name(name_query, limit, offset, **filters)
+        elif sort_key in SCOPED_SORTS and not zip_code:
+            rows = await repo.list_scoped(city=city, state=state, sort=sort_key,
+                                          prefs=prefs, limit=limit, offset=offset, **filters)
         elif zip_code:
             rows = await repo.list_by_zip(zip_code, limit, offset, **filters)
         else:
@@ -249,6 +289,15 @@ async def list_churches(
     if response is not None:
         response.headers["Cache-Control"] = LIST_CACHE_CONTROL
     return [_row_to_list_church(r) for r in rows]
+
+
+@router.get("/churches/search-center")
+async def search_center(city: str, state: str):
+    async with pool.acquire() as con:
+        center = await ChurchRepository(con).city_center(city, state)
+    if center is None:
+        raise HTTPException(status_code=404, detail="No mapped search center for this city. Try a nearby city.")
+    return center
 
 
 @router.get("/churches/prerender")

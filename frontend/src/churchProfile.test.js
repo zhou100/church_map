@@ -193,7 +193,7 @@ test('zero matches: say what we have not read, never that it is absent', () => {
   )
   assert.equal(
     zeroMatchSentence(rows, korean, { city: 'Fresno', limit: 4 }),
-    "None of the churches we have details on in Fresno mention Korean services yet — most haven't told us. These are still good places to start.",
+    "No loaded results mention Korean services yet. More churches in Fresno may match.",
   )
   assert.match(zeroMatchSentence(rows.slice(2), korean, { city: 'Fresno', limit: 100 }), /^The one church we have details on in Fresno doesn't mention/)
   assert.match(

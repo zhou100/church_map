@@ -95,17 +95,6 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   overflow: hidden;
   position: relative;
 }
-.results-loading {
-  position: absolute;
-  inset: 0;
-  z-index: 1000;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  background: rgba(247, 244, 240, 0.82);
-  color: var(--text-2);
-  font-weight: 600;
-}
 .list-panel {
   width: min(420px, 100%);
   flex-shrink: 0;
@@ -117,7 +106,8 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 .map-panel {
   flex: 1;
   position: relative;
-  /* Leaflet's panes and controls (z-index up to 1000) stay under .results-loading. */
+  /* Leaflet's panes (z-index up to 1000) stay inside the map panel, under
+     the "Map: N loaded" note. */
   isolation: isolate;
 }
 .map-panel .leaflet-container { height: 100% !important; }
@@ -233,15 +223,6 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   border: 1px solid var(--border);
   border-radius: 999px;
   text-decoration: none;
-}
-
-.location-detected {
-  display: flex;
-  align-items: center;
-  gap: 0.25rem;
-  margin: 0.5rem 0 0;
-  font-size: 0.82rem;
-  color: var(--sienna);
 }
 
 .empty-state {
@@ -660,6 +641,24 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   color: white;
   border-color: var(--sienna);
 }
+
+/* ── Sort pills ──────────────────────────── */
+.sort-pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 0.2rem;
+  background: none;
+  border: 1.5px solid var(--border);
+  border-radius: 9999px;
+  padding: 0.2rem 0.75rem;
+  font-size: 0.78rem;
+  cursor: pointer;
+  color: var(--sienna);
+  transition: background 0.15s, color 0.15s, border-color 0.15s;
+}
+.sort-pill:disabled { opacity: 0.35; cursor: default; }
+.sort-pill.sort-active { background: var(--sienna); color: white; border-color: var(--sienna); }
+
 /* ── Map container ───────────────────────── */
 .map-container {
   border-radius: 10px;
@@ -1678,3 +1677,44 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   .status-grid article:nth-child(2) { border-right: 0; }
   .status-grid article:nth-child(-n + 2) { border-bottom: 1px solid var(--border); }
 }
+
+/* Search scope: the city first; nearby cities only when the visitor asks. */
+.scope-bar { display: flex; align-items: center; flex-wrap: wrap; gap: 8px 12px; margin: 10px 0 2px; font-size: 13px; }
+.scope-current { display: flex; align-items: center; gap: 6px; margin: 0; color: var(--text-2); }
+.scope-current strong { color: var(--text); }
+.scope-btn, .link-btn, .retry-btn { background: none; border: 0; padding: 4px 0; color: var(--sienna); font: inherit; font-weight: 600; text-decoration: underline; text-underline-offset: 3px; cursor: pointer; }
+.scope-btn:disabled, .link-btn:disabled { color: var(--text-3); cursor: default; }
+.scope-options { display: flex; flex-wrap: wrap; gap: 8px 16px; width: 100%; }
+.scope-options fieldset { display: flex; flex-wrap: wrap; align-items: center; gap: 6px; margin: 0; padding: 0; border: 0; }
+.scope-options legend { float: left; margin-right: 4px; color: var(--text-3); font-size: 12px; font-weight: 600; }
+.scope-options button { border: 1.5px solid var(--border); border-radius: 9999px; background: var(--surface); color: var(--sienna); padding: 4px 12px; font-size: 12px; cursor: pointer; }
+.scope-options button[aria-pressed="true"] { background: var(--sienna); border-color: var(--sienna); color: white; }
+.results-summary { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 12px 16px 0; font-size: 12px; color: #6B6560; }
+.sort-switch { display: flex; flex-shrink: 0; gap: 4px; }
+.results-summary .sort-pill { white-space: nowrap; }
+.list-updating .church-list { opacity: 0.55; transition: opacity 0.15s; }
+.load-more-error { margin: 1rem 0 0; }
+/* Appending a page must not drag the view along with the controls under the
+   list: Chrome's scroll anchoring would follow them to the new bottom and
+   the sentinel there would load yet another page by itself. */
+.list-sentinel, .load-more-row, .load-more-error, .list-end { overflow-anchor: none; }
+.list-end { margin: 1.25rem 0; text-align: center; color: var(--text-2); font-size: 0.85rem; }
+.card-distance-unknown { color: var(--text-3); font-weight: 500; }
+.map-loaded-note { position: absolute; z-index: 500; top: 10px; left: 54px; margin: 0; padding: 4px 10px; border: 1px solid var(--border); border-radius: 9999px; background: #FFFFFFE6; color: var(--text-2); font-size: 12px; pointer-events: none; }
+.search-center-pin span { display: block; width: 22px; height: 22px; border-radius: 50%; background: #8B5E3C; border: 3px solid white; box-shadow: 0 0 0 2px #8B5E3C; }
+/* leaflet.css loads with the lazy map, after this file; its
+   `.leaflet-marker-icon { display: block }` must not win. */
+.leaflet-marker-icon.church-cluster { display: grid; place-items: center; border: 3px solid white; border-radius: 50%; background: #8B5E3C; color: white; font: 700 14px 'Plus Jakarta Sans', sans-serif; box-shadow: 0 1px 5px #1c191744; }
+.church-cluster-active { background: #D4A853; color: #1C1917; }
+.church-cluster:focus-visible { outline: 3px solid #1C1917; outline-offset: 3px; }
+.cluster-popup { min-width: 210px; }
+.cluster-popup > strong { display: block; margin-bottom: 8px; }
+.church-cluster-stack { border-style: double; border-width: 4px; }
+.cluster-note { margin: 0 0 4px; color: #6B6560; font-size: 11px; }
+.cluster-pager { display: flex; align-items: center; justify-content: space-between; gap: 8px; margin-top: 8px; font-size: 12px; }
+.cluster-pager button { border: 1px solid #8B5E3C; border-radius: 6px; background: white; color: #8B5E3C; padding: 6px 10px; cursor: pointer; }
+.cluster-pager button:disabled { opacity: 0.4; cursor: default; }
+.cluster-popup ul { list-style: none; margin: 6px 0 0; padding: 0; }
+.cluster-popup li { padding: 8px 0; border-top: 1px solid #E4DED6; }
+.cluster-popup li button, .cluster-popup li a { display: block; background: none; border: 0; padding: 5px 0; text-align: left; color: #8B5E3C; font: inherit; cursor: pointer; }
+.cluster-popup li span { display: block; color: #6B6560; font-size: 11px; }

@@ -1,0 +1,20 @@
+{
+  "_about": "Shared by churchProfile.test.js (fitScore) and tests/test_scoped_search.py (fit_sql): server-side For you ranking must count the same evidence the cards explain.",
+  "prefs": { "languages": ["Vietnamese", "Spanish"], "worship": ["liturgical"], "kids": true },
+  "cases": [
+    { "name": "verified language", "service_languages": " English ; Vietnamese ", "score": 1 },
+    { "name": "website language, case differs", "extracted_tags": { "service_languages": ["spanish"] }, "score": 1 },
+    { "name": "two languages count once", "service_languages": "Vietnamese;Spanish", "score": 1 },
+    { "name": "name-derived language is not evidence", "language": "Vietnamese", "cultural_background": "Vietnamese", "score": 0 },
+    { "name": "malformed extraction", "extracted_tags": { "service_languages": "Spanish", "programs": "Kids" }, "score": 0 },
+    { "name": "worship style", "extracted_tags": { "worship_style": "liturgical" }, "score": 1 },
+    { "name": "verified kids program", "kids_program": "Sunday school for ages 3-10", "score": 1 },
+    { "name": "blank kids program", "kids_program": "   ", "score": 0 },
+    { "name": "extracted children's ministry", "extracted_tags": { "programs": ["Children's ministry"] }, "score": 1 },
+    { "name": "program word inside another word", "extracted_tags": { "programs": ["Childcare referrals"] }, "score": 0 },
+    { "name": "kids rated by three reviewers", "reviews": [5, 5, 4.5], "score": 1 },
+    { "name": "kids rated by two reviewers", "reviews": [5, 5], "score": 0 },
+    { "name": "everything", "service_languages": "Spanish", "extracted_tags": { "worship_style": "liturgical", "programs": ["Youth group"] }, "score": 3 },
+    { "name": "nothing known", "score": 0 }
+  ]
+}
