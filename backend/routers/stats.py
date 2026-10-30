@@ -20,7 +20,7 @@ import time
 from datetime import datetime, timezone
 from typing import Any
 
-from fastapi import APIRouter
+from fastapi import APIRouter, Response
 
 from backend.db import pool
 from backend.db.repository import CrawlRepository, StatsRepository
@@ -223,9 +223,16 @@ def build_stats(
     }
 
 
+# Shared-cache TTL matches the in-process CACHE_TTL_S. Browsers are not told
+# to keep a copy; this is a public aggregate, not a per-user response.
+STATS_CACHE_CONTROL = "public, s-maxage=300"
+
+
 @router.get("/stats")
-async def stats() -> dict:
+async def stats(response: Response = None) -> dict:
     if _cache["value"] is not None and (time.monotonic() - _cache["at"]) < CACHE_TTL_S:
+        if response is not None:
+            response.headers["Cache-Control"] = STATS_CACHE_CONTROL
         return _cache["value"]
 
     async with pool.acquire() as con:
@@ -248,4 +255,6 @@ async def stats() -> dict:
     )
     _cache["at"] = time.monotonic()
     _cache["value"] = value
+    if response is not None:
+        response.headers["Cache-Control"] = STATS_CACHE_CONTROL
     return value

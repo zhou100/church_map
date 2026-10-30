@@ -1,15 +1,11 @@
-import { useState, useEffect, useRef } from 'react'
+import { useState, useEffect, useRef, useMemo, useCallback, lazy, Suspense } from 'react'
 import { useSearchParams } from 'react-router-dom'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
-import L from 'leaflet'
 import AccountButton from '../components/AccountButton'
 import ChurchCard from '../components/ChurchCard'
-import ChurchDetailPanel from '../components/ChurchDetailPanel'
 import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
-import { churchMarkerIcon } from '../components/mapMarker'
-import { detectLocation, listChurches } from '../api/client'
+import { SEARCH_PAGE as PAGE, detectLocation, listChurches, takeCitySearchPrefetch } from '../api/client'
 import {
   byProfileUsefulness,
   churchLanguages,
@@ -21,43 +17,16 @@ import {
 } from '../churchProfile'
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 
-const PAGE = 50
+const SearchMap = lazy(() => import('../components/SearchMap'))
+const ChurchDetailPanel = lazy(() => import('../components/ChurchDetailPanel'))
 
-// Refit only when the set of churches changes (a new search, a filter, more
-// results). The list is rebuilt on every render, so keying on it would refit
-// on each hover or re-sort and undo the visitor's own pan and zoom.
-function MapBounds({ churches }) {
-  const map = useMap()
-  const latest = useRef(churches)
-  latest.current = churches
-  const idSet = churches.map(c => c.id).sort((a, b) => a - b).join(',')
-  useEffect(() => {
-    const pts = latest.current.filter(c => c.latitude && c.longitude)
-    if (pts.length === 0) return
-    const bounds = L.latLngBounds(pts.map(c => [c.latitude, c.longitude]))
-    map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 })
-  }, [idSet, map])
-  return null
-}
+const DESKTOP_MAP = '(min-width: 840px)'
+const CAN_HOVER = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches
 
-function MapFlyTo({ church }) {
-  const map = useMap()
-  useEffect(() => {
-    if (church?.latitude && church?.longitude) {
-      map.flyTo([church.latitude, church.longitude], 15, { duration: 0.8 })
-    }
-  }, [church, map])
-  return null
-}
-
-function MapResize({ active }) {
-  const map = useMap()
-  useEffect(() => {
-    if (!active) return
-    const frame = requestAnimationFrame(() => map.invalidateSize())
-    return () => cancelAnimationFrame(frame)
-  }, [active, map])
-  return null
+function haversine(lat1, lon1, lat2, lon2) {
+  const R = 3958.8, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180
+  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2
+  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
 }
 
 export default function Search() {
@@ -82,6 +51,10 @@ export default function Search() {
   const [mobileView, setMobileView] = useState('list')
   const [hoveredId, setHoveredId] = useState(null)
   const [selectedChurchId, setSelectedChurchId] = useState(null)
+  const [wideLayout, setWideLayout] = useState(
+    () => typeof window !== 'undefined' && window.matchMedia(DESKTOP_MAP).matches,
+  )
+  const [mapActivated, setMapActivated] = useState(wideLayout)
   const offsetRef = useRef(0)
 
   // A visitor who said what matters sees "For you" first on a city search;
@@ -103,7 +76,20 @@ export default function Search() {
   }
 
   async function fetchPage(search, offset, append = false) {
-    const data = await listChurches(search, { limit: PAGE, offset })
+    let data = null
+    if (!append && offset === 0 && search.type === 'location') {
+      const prefetched = takeCitySearchPrefetch(search.city, search.state)
+      if (prefetched) {
+        try {
+          data = await prefetched
+        } catch {
+          data = null
+        }
+      }
+    }
+    if (data == null) {
+      data = await listChurches(search, { limit: PAGE, offset })
+    }
     if (append) {
       setChurches(prev => [...(prev || []), ...data])
     } else {
@@ -189,6 +175,17 @@ export default function Search() {
   }
 
   useEffect(() => {
+    const mq = window.matchMedia(DESKTOP_MAP)
+    const onChange = () => setWideLayout(mq.matches)
+    mq.addEventListener('change', onChange)
+    return () => mq.removeEventListener('change', onChange)
+  }, [])
+
+  useEffect(() => {
+    if (mobileView === 'map' || wideLayout) setMapActivated(true)
+  }, [mobileView, wideLayout])
+
+  useEffect(() => {
     const storedPrefs = loadPreferences()
     setPrefs(storedPrefs)
     const n = searchParams.get('name')
@@ -225,41 +222,50 @@ export default function Search() {
     }
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
-  function haversine(lat1, lon1, lat2, lon2) {
-    const R = 3958.8, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180
-    const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2
-    return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-  }
+  const handleSelectChurch = useCallback((id) => {
+    setSelectedChurchId(id)
+    setHoveredId(id)
+    setMobileView('list')
+  }, [])
 
-  const availableTags = churches ? [...new Set(churches.flatMap(c => c.tags ?? []))] : []
+  const availableTags = useMemo(
+    () => (churches ? [...new Set(churches.flatMap(c => c.tags ?? []))] : []),
+    [churches],
+  )
   // Languages come from churchLanguages, the same answer "For you" and the
   // cards use; cultural background stays its own pill.
   // A culture spelled like a language ("Chinese") is one pill; the filter below
   // accepts either meaning for it, as it did before.
-  const availableLangs = churches
-    ? [...new Map([
+  const availableLangs = useMemo(() => {
+    if (!churches) return []
+    return [...new Map([
       ...churches.flatMap(c => churchLanguages(c)),
       ...churches.map(c => c.cultural_background).filter(Boolean),
     ].map(value => [value.toLowerCase(), value])).values()]
-    : []
+  }, [churches])
 
-  const filtered = churches
-    ?.filter(c => selectedTags.length === 0 || selectedTags.every(t => c.tags?.includes(t)))
-    ?.filter(c => !selectedLang || speaksLanguage(c, selectedLang) || c.cultural_background === selectedLang)
+  const filtered = useMemo(() => {
+    if (!churches) return null
+    return churches
+      .filter(c => selectedTags.length === 0 || selectedTags.every(t => c.tags?.includes(t)))
+      .filter(c => !selectedLang || speaksLanguage(c, selectedLang) || c.cultural_background === selectedLang)
+  }, [churches, selectedTags, selectedLang])
 
-  const visibleChurches = !filtered ? null : sortBy === 'forYou'
-    ? rankForYou([...filtered].sort(byProfileUsefulness), prefs)
-    : [...filtered].sort((a, b) => {
-    if (sortBy === 'distance' && userCoords?.lat) {
-      const da = (a.latitude && a.longitude) ? haversine(userCoords.lat, userCoords.lon, a.latitude, a.longitude) : 9999
-      const db_ = (b.latitude && b.longitude) ? haversine(userCoords.lat, userCoords.lon, b.latitude, b.longitude) : 9999
-      return da - db_
-    }
-    if (sortBy === 'rating') return (b.avg_rating ?? 0) - (a.avg_rating ?? 0)
-    if (sortBy === 'reviews') return (b.review_count ?? 0) - (a.review_count ?? 0)
-    if (sortBy === 'usefulness') return byProfileUsefulness(a, b)
-    return 0
-  })
+  const visibleChurches = useMemo(() => {
+    if (!filtered) return null
+    if (sortBy === 'forYou') return rankForYou([...filtered].sort(byProfileUsefulness), prefs)
+    return [...filtered].sort((a, b) => {
+      if (sortBy === 'distance' && userCoords?.lat) {
+        const da = (a.latitude && a.longitude) ? haversine(userCoords.lat, userCoords.lon, a.latitude, a.longitude) : 9999
+        const db_ = (b.latitude && b.longitude) ? haversine(userCoords.lat, userCoords.lon, b.latitude, b.longitude) : 9999
+        return da - db_
+      }
+      if (sortBy === 'rating') return (b.avg_rating ?? 0) - (a.avg_rating ?? 0)
+      if (sortBy === 'reviews') return (b.review_count ?? 0) - (a.review_count ?? 0)
+      if (sortBy === 'usefulness') return byProfileUsefulness(a, b)
+      return 0
+    })
+  }, [filtered, sortBy, prefs, userCoords])
 
   // Exact only once every page of the city is loaded (no "Load more" left).
   const forYouZeroMatch = churches && activeSearch?.type === 'location'
@@ -269,7 +275,10 @@ export default function Search() {
     })
     : null
 
-  const mappable = (visibleChurches || []).filter(c => c.latitude && c.longitude)
+  const mappable = useMemo(
+    () => (visibleChurches || []).filter(c => c.latitude && c.longitude),
+    [visibleChurches],
+  )
   const selectedChurch = selectedChurchId
     ? (visibleChurches || []).find(c => c.id === selectedChurchId) ?? null
     : null
@@ -285,18 +294,7 @@ export default function Search() {
     runSearch({ type: 'location', city: 'Brooklyn', state: 'NY' })
   }
 
-  function markerIcon(id) {
-    const active = id === hoveredId || id === selectedChurchId
-    return churchMarkerIcon(active)
-  }
-
-  function handleSelectChurch(id) {
-    setSelectedChurchId(id)
-    setHoveredId(id)
-    setMobileView('list')
-  }
-
-  const hasResults = !loading && churches !== null
+  const hasChurches = churches !== null
 
   return (
     <div className="search-page">
@@ -389,9 +387,9 @@ export default function Search() {
           </p>
         )}
         {error && <p className="error-msg">{error}</p>}
-        {loading && <p className="loading">Finding churches…</p>}
+        {loading && !hasChurches && <p className="loading">Finding churches…</p>}
 
-        {hasResults && !selectedChurchId && (
+        {hasChurches && !selectedChurchId && (
           <>
             <div className="sort-bar">
               <span className="sort-label">Sort:</span>
@@ -444,7 +442,7 @@ export default function Search() {
           </>
         )}
 
-        {hasResults && (
+        {hasChurches && (
           <div className="mobile-view-toggle" role="group" aria-label="Results view">
             <button
               type="button"
@@ -466,16 +464,19 @@ export default function Search() {
         )}
       </div>
 
-      {hasResults && (
+      {hasChurches && (
         <div className={`results-pane mobile-view-${mobileView}`}>
+          {loading && <div className="results-loading" role="status">Finding churches…</div>}
           {/* ── List / Detail panel ── */}
           <div className="list-panel">
             {selectedChurchId ? (
-              <ChurchDetailPanel
-                churchId={selectedChurchId}
-                onBack={() => { setSelectedChurchId(null); setHoveredId(null) }}
-                onSelect={handleSelectChurch}
-              />
+              <Suspense fallback={<div className="loading" style={{ padding: '2rem 0' }}>Loading…</div>}>
+                <ChurchDetailPanel
+                  churchId={selectedChurchId}
+                  onBack={() => { setSelectedChurchId(null); setHoveredId(null) }}
+                  onSelect={handleSelectChurch}
+                />
+              </Suspense>
             ) : (
               <>
                 {/* In the list column, so opening the panel on desktop grows
@@ -504,8 +505,10 @@ export default function Search() {
                         <div
                           key={c.id}
                           className={`card-wrapper${hoveredId === c.id ? ' card-wrapper-active' : ''}`}
-                          onMouseEnter={() => setHoveredId(c.id)}
-                          onMouseLeave={() => setHoveredId(null)}
+                          {...(CAN_HOVER ? {
+                            onMouseEnter: () => setHoveredId(c.id),
+                            onMouseLeave: () => setHoveredId(null),
+                          } : {})}
                         >
                           <ChurchCard
                             church={c}
@@ -536,47 +539,26 @@ export default function Search() {
             )}
           </div>
 
-          {/* ── Map panel ── */}
-          <div className="map-panel">
-            <MapContainer
-              center={[39.5, -98.35]}
-              zoom={4}
-              style={{ height: '100%', width: '100%' }}
-            >
-              <MapResize active={mobileView === 'map'} />
-              <TileLayer
-                attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
-                url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
-              />
-              {!selectedChurch && <MapBounds churches={mappable} />}
-              {selectedChurch && <MapFlyTo church={selectedChurch} />}
-              {mappable.map(c => (
-                <Marker
-                  key={c.id}
-                  position={[c.latitude, c.longitude]}
-                  icon={markerIcon(c.id)}
-                  eventHandlers={{
-                    click: () => handleSelectChurch(c.id),
-                    mouseover: () => setHoveredId(c.id),
-                    mouseout:  () => setHoveredId(null),
-                  }}
-                >
-                  <Popup>
-                    <div className="map-popup">
-                      <strong>{c.name}</strong>
-                      {activeSearch?.type === 'name' && (c.city || c.state) && (
-                        <span className="popup-location">{[c.city, c.state].filter(Boolean).join(', ')}</span>
-                      )}
-                      {c.denomination && <span className="popup-denom">{c.denomination}</span>}
-                      {c.avg_rating != null && (
-                        <span className="popup-rating">★ {c.avg_rating.toFixed(1)}</span>
-                      )}
-                    </div>
-                  </Popup>
-                </Marker>
-              ))}
-            </MapContainer>
-          </div>
+          {/* ── Map panel. On a phone the list is the default, so Leaflet stays
+              unloaded until the visitor asks for the map (or the viewport is
+              wide enough that the map is already on screen). ── */}
+          {mapActivated && (
+            <div className="map-panel">
+              <Suspense fallback={null}>
+                <SearchMap
+                  mappable={mappable}
+                  selectedChurch={selectedChurch}
+                  hoveredId={hoveredId}
+                  selectedChurchId={selectedChurchId}
+                  activeSearch={activeSearch}
+                  onSelect={handleSelectChurch}
+                  onHover={setHoveredId}
+                  hoverEnabled={CAN_HOVER}
+                  mobileView={mobileView}
+                />
+              </Suspense>
+            </div>
+          )}
         </div>
       )}
     </div>

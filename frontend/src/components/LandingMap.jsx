@@ -2,6 +2,7 @@ import { useEffect, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { churchMarkerIcon } from './mapMarker'
+import 'leaflet/dist/leaflet.css'
 
 // Loaded with a dynamic import from Landing: Leaflet touches `window` at
 // import time, and the landing page is server-rendered by scripts/prerender.mjs.

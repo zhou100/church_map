@@ -6,6 +6,7 @@ import ChurchCard from './ChurchCard'
 import AboutSection from './AboutSection'
 import Icon from './Icon'
 import { churchMarkerIcon } from './mapMarker'
+import 'leaflet/dist/leaflet.css'
 import { enrichChurch, getChurch, getReviews, getSimilarChurches } from '../api/client'
 
 function Stars({ rating }) {

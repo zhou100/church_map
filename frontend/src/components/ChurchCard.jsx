@@ -1,3 +1,4 @@
+import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import Icon from './Icon'
 import { languageSignals } from '../churchProfile'
@@ -113,7 +114,7 @@ function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
   )
 }
 
-export default function ChurchCard({ church, userLat, userLon, showLocation = false, fitReason = '', onSelect }) {
+function ChurchCard({ church, userLat, userLon, showLocation = false, fitReason = '', onSelect }) {
   const accentColor = denomAccentColor(church.denomination)
   const sharedStyle = { borderLeft: `5px solid ${accentColor}` }
 
@@ -138,3 +139,5 @@ export default function ChurchCard({ church, userLat, userLon, showLocation = fa
     </Link>
   )
 }
+
+export default memo(ChurchCard)
