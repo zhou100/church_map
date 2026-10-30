@@ -3,6 +3,7 @@ import { fileURLToPath } from 'node:url'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
+import { renderLanding } from './renderLanding.js'
 
 const SITE_NAME = 'ChurchMap'
 const SITE_URL = process.env.VITE_SITE_URL || 'https://churchmap.vercel.app'
@@ -172,9 +173,7 @@ try {
   const indexUrl = new URL('index.html', distUrl)
   const baseHtml = await readFile(indexUrl, 'utf8')
 
-  const landingMarkup = renderToStaticMarkup(
-    React.createElement(Landing, { exampleChurch }),
-  )
+  const landingMarkup = renderLanding(Landing, exampleChurch)
   await writeFile(
     indexUrl,
     withPrerenderData(withRoot(baseHtml, landingMarkup), {
