@@ -13,12 +13,17 @@ const API_BASE = resolveApiBase()
 // One page of Search results. The prefetch below asks for exactly the page
 // Search would ask for, so it can stand in for that first request.
 export const SEARCH_PAGE = 50
+// A city search lists the churches nearest the middle of the city first.
+export const SEARCH_CITY_SORT = 'nearest'
 
 export function prefetchCitySearch(city, state) {
   if (typeof window === 'undefined' || !city || !state) return
   const existing = window.__churchmapSearchPrefetch
   if (existing && existing.city === city && existing.state === state) return
-  const promise = listChurches({ type: 'location', city, state }, { limit: SEARCH_PAGE, offset: 0 })
+  const promise = listChurches(
+    { type: 'location', city, state },
+    { limit: SEARCH_PAGE, offset: 0, sort: SEARCH_CITY_SORT },
+  )
   // Consumed by Search, which falls back to its own request on failure.
   promise.catch(() => {})
   window.__churchmapSearchPrefetch = { city, state, promise }

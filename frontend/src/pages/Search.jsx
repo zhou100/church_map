@@ -5,16 +5,14 @@ import ChurchCard from '../components/ChurchCard'
 import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
-import { SEARCH_PAGE as PAGE, detectLocation, listChurches, takeCitySearchPrefetch } from '../api/client'
 import {
-  byProfileUsefulness,
-  churchLanguages,
-  cityLanguageChips,
-  fitReason,
-  rankForYou,
-  speaksLanguage,
-  zeroMatchSentence,
-} from '../churchProfile'
+  SEARCH_CITY_SORT,
+  SEARCH_PAGE as PAGE,
+  detectLocation,
+  listChurches,
+  takeCitySearchPrefetch,
+} from '../api/client'
+import { cityLanguageChips, fitReason, rankForYou, zeroMatchSentence } from '../churchProfile'
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 
 const SearchMap = lazy(() => import('../components/SearchMap'))
@@ -22,12 +20,6 @@ const ChurchDetailPanel = lazy(() => import('../components/ChurchDetailPanel'))
 
 const DESKTOP_MAP = '(min-width: 840px)'
 const CAN_HOVER = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches
-
-function haversine(lat1, lon1, lat2, lon2) {
-  const R = 3958.8, dLat = (lat2 - lat1) * Math.PI / 180, dLon = (lon2 - lon1) * Math.PI / 180
-  const a = Math.sin(dLat/2)**2 + Math.cos(lat1*Math.PI/180)*Math.cos(lat2*Math.PI/180)*Math.sin(dLon/2)**2
-  return R * 2 * Math.atan2(Math.sqrt(a), Math.sqrt(1-a))
-}
 
 export default function Search() {
   const [searchParams, setSearchParams] = useSearchParams()
@@ -41,9 +33,6 @@ export default function Search() {
   const [loadingMore, setLoadingMore] = useState(false)
   const [hasMore, setHasMore] = useState(false)
   const [error, setError] = useState(null)
-  const [selectedTags, setSelectedTags] = useState([])
-  const [selectedLang, setSelectedLang] = useState(null)
-  const [sortBy, setSortBy] = useState('usefulness')
   const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
   const [detectedLocation, setDetectedLocation] = useState(null)
   const [userCoords, setUserCoords] = useState(null)
@@ -57,22 +46,9 @@ export default function Search() {
   const [mapActivated, setMapActivated] = useState(wideLayout)
   const offsetRef = useRef(0)
 
-  // A visitor who said what matters sees "For you" first on a city search;
-  // a name search keeps its own best-match order.
-  function defaultSort(search, currentPrefs) {
-    if (search.type === 'name') return 'relevance'
-    return hasPreferences(currentPrefs) ? 'forYou' : 'usefulness'
-  }
-
   function updatePrefs(next) {
     setPrefs(next)
     savePreferences(next)
-    if (activeSearch?.type === 'location') {
-      if (hasPreferences(next) && !hasPreferences(prefs)) setSortBy('forYou')
-      if (!hasPreferences(next) && sortBy === 'forYou') setSortBy('usefulness')
-    } else if (!hasPreferences(next) && sortBy === 'forYou') {
-      setSortBy('relevance')
-    }
   }
 
   async function fetchPage(search, offset, append = false) {
@@ -88,7 +64,11 @@ export default function Search() {
       }
     }
     if (data == null) {
-      data = await listChurches(search, { limit: PAGE, offset })
+      data = await listChurches(search, {
+        limit: PAGE,
+        offset,
+        sort: search.type === 'location' ? SEARCH_CITY_SORT : undefined,
+      })
     }
     if (append) {
       setChurches(prev => [...(prev || []), ...data])
@@ -111,13 +91,10 @@ export default function Search() {
       }))
     }
     setActiveSearch(search)
-    setSelectedTags([])
-    setSelectedLang(null)
     setDetectedLocation(location ? { city: location.city, state: location.state } : null)
     setUserCoords(location ? { lat: location.lat, lon: location.lon } : null)
     setSelectedChurchId(null)
     setMobileView('list')
-    setSortBy(defaultSort(search, prefs))
     setLoading(true)
     setError(null)
     offsetRef.current = 0
@@ -196,12 +173,10 @@ export default function Search() {
       setChurchName(n)
       setSearchMode('name')
       setActiveSearch(search)
-      setSortBy('relevance')
       setLoading(true)
       setError(null)
       offsetRef.current = 0
       fetchPage(search, 0)
-        .then(() => setSelectedTags([]))
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     } else if (c && s) {
@@ -211,12 +186,10 @@ export default function Search() {
       setState(s)
       setSearchMode('location')
       setActiveSearch(search)
-      setSortBy(defaultSort(search, storedPrefs))
       setLoading(true)
       setError(null)
       offsetRef.current = 0
       fetchPage(search, 0)
-        .then(() => setSelectedTags([]))
         .catch(err => setError(err.message))
         .finally(() => setLoading(false))
     }
@@ -228,47 +201,17 @@ export default function Search() {
     setMobileView('list')
   }, [])
 
-  const availableTags = useMemo(
-    () => (churches ? [...new Set(churches.flatMap(c => c.tags ?? []))] : []),
-    [churches],
-  )
-  // Languages come from churchLanguages, the same answer "For you" and the
-  // cards use; cultural background stays its own pill.
-  // A culture spelled like a language ("Chinese") is one pill; the filter below
-  // accepts either meaning for it, as it did before.
-  const availableLangs = useMemo(() => {
-    if (!churches) return []
-    return [...new Map([
-      ...churches.flatMap(c => churchLanguages(c)),
-      ...churches.map(c => c.cultural_background).filter(Boolean),
-    ].map(value => [value.toLowerCase(), value])).values()]
-  }, [churches])
-
-  const filtered = useMemo(() => {
-    if (!churches) return null
-    return churches
-      .filter(c => selectedTags.length === 0 || selectedTags.every(t => c.tags?.includes(t)))
-      .filter(c => !selectedLang || speaksLanguage(c, selectedLang) || c.cultural_background === selectedLang)
-  }, [churches, selectedTags, selectedLang])
-
+  // No sort control: a city search is nearest-first (the API's order), and
+  // once the visitor has said what matters, most evidence for that first,
+  // nearer churches winning ties. A name search keeps its best-match order.
+  const forYou = activeSearch?.type === 'location' && hasPreferences(prefs)
   const visibleChurches = useMemo(() => {
-    if (!filtered) return null
-    if (sortBy === 'forYou') return rankForYou([...filtered].sort(byProfileUsefulness), prefs)
-    return [...filtered].sort((a, b) => {
-      if (sortBy === 'distance' && userCoords?.lat) {
-        const da = (a.latitude && a.longitude) ? haversine(userCoords.lat, userCoords.lon, a.latitude, a.longitude) : 9999
-        const db_ = (b.latitude && b.longitude) ? haversine(userCoords.lat, userCoords.lon, b.latitude, b.longitude) : 9999
-        return da - db_
-      }
-      if (sortBy === 'rating') return (b.avg_rating ?? 0) - (a.avg_rating ?? 0)
-      if (sortBy === 'reviews') return (b.review_count ?? 0) - (a.review_count ?? 0)
-      if (sortBy === 'usefulness') return byProfileUsefulness(a, b)
-      return 0
-    })
-  }, [filtered, sortBy, prefs, userCoords])
+    if (!churches) return null
+    return forYou ? rankForYou(churches, prefs) : churches
+  }, [churches, forYou, prefs])
 
   // Exact only once every page of the city is loaded (no "Load more" left).
-  const forYouZeroMatch = churches && activeSearch?.type === 'location'
+  const forYouZeroMatch = churches && forYou
     ? zeroMatchSentence(churches, prefs, {
       city: activeSearch.city,
       limit: hasMore ? churches.length : churches.length + 1,
@@ -282,10 +225,6 @@ export default function Search() {
   const selectedChurch = selectedChurchId
     ? (visibleChurches || []).find(c => c.id === selectedChurchId) ?? null
     : null
-
-  function toggleTag(tag) {
-    setSelectedTags(prev => prev.includes(tag) ? prev.filter(t => t !== tag) : [...prev, tag])
-  }
 
   function tryDemo() {
     setCity('Brooklyn')
@@ -389,59 +328,6 @@ export default function Search() {
         {error && <p className="error-msg">{error}</p>}
         {loading && !hasChurches && <p className="loading">Finding churches…</p>}
 
-        {hasChurches && !selectedChurchId && (
-          <>
-            <div className="sort-bar">
-              <span className="sort-label">Sort:</span>
-              {[
-                ...(hasPreferences(prefs) ? [{ key: 'forYou', label: 'For you' }] : []),
-                ...(activeSearch?.type === 'name'
-                  ? [{ key: 'relevance', label: 'Best match' }]
-                  : [{ key: 'usefulness', label: 'Best profiles' }]),
-                { key: 'distance', label: 'Nearest', icon: 'pin', disabled: !userCoords?.lat },
-                { key: 'rating',   label: 'Rating' },
-                { key: 'reviews',  label: 'Reviews', icon: 'reviews' },
-              ].map(({ key, label, icon, disabled }) => (
-                <button
-                  key={key} type="button" disabled={disabled}
-                  className={`sort-pill${sortBy === key ? ' sort-active' : ''}`}
-                  onClick={() => setSortBy(key)}
-                >
-                  {icon && <Icon name={icon} size={13} />} {label}
-                </button>
-              ))}
-            </div>
-
-            {(availableTags.length > 0 || availableLangs.length > 0) && (
-              <div className="tag-filter-bar">
-                {availableLangs.map(lang => (
-                  <button
-                    key={lang} type="button"
-                    onClick={() => setSelectedLang(prev => prev === lang ? null : lang)}
-                    className={`tag-filter-pill tag-filter-lang${selectedLang === lang ? ' tag-active' : ''}`}
-                  >
-                    {lang}
-                  </button>
-                ))}
-                {availableTags.map(tag => (
-                  <button
-                    key={tag} type="button"
-                    onClick={() => toggleTag(tag)}
-                    className={`tag-filter-pill${selectedTags.includes(tag) ? ' tag-active' : ''}`}
-                  >
-                    {tag}
-                  </button>
-                ))}
-                {(selectedTags.length > 0 || selectedLang) && (
-                  <button type="button" className="tag-clear" onClick={() => { setSelectedTags([]); setSelectedLang(null) }}>
-                    Clear
-                  </button>
-                )}
-              </div>
-            )}
-          </>
-        )}
-
         {hasChurches && (
           <div className="mobile-view-toggle" role="group" aria-label="Results view">
             <button
@@ -488,15 +374,12 @@ export default function Search() {
                   languageChips={cityLanguageChips(churches, prefs.languages)}
                   phoneMediaQuery="(max-width: 839px)"
                 />
-                {sortBy === 'forYou' && forYouZeroMatch && <p className="search-fit-nomatch">{forYouZeroMatch}</p>}
+                {forYouZeroMatch && <p className="search-fit-nomatch">{forYouZeroMatch}</p>}
                 {visibleChurches?.length === 0 ? (
                   <div className="empty-state">
-                    {churches.length === 0
-                      ? activeSearch?.type === 'name'
-                        ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
-                        : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>
-                      : <p>No churches match the selected filters.</p>
-                    }
+                    {activeSearch?.type === 'name'
+                      ? <><p>No churches found matching “{activeSearch.name}”.</p><p>Try a shorter or different name.</p></>
+                      : <><p>No churches found in {city}, {state}.</p><p>Our directory is still growing. Try a nearby city or check the spelling.</p></>}
                   </div>
                 ) : (
                   <>
@@ -521,7 +404,7 @@ export default function Search() {
                         </div>
                       ))}
                     </div>
-                    {hasMore && selectedTags.length === 0 && (
+                    {hasMore && (
                       <div className="load-more-row">
                         <button
                           type="button"

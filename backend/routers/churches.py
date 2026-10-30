@@ -207,7 +207,7 @@ async def list_churches(
     indistinguishable from "no churches like that near you", which is a much
     worse answer than saying the filter was wrong.
 
-    `sort` orders a city listing (`default` or `starting_point`; see
+    `sort` orders a city listing (`default`, `starting_point` or `nearest`; see
     `CITY_ORDERINGS`). Name search keeps its relevance order and ZIP search
     its default order, so `sort` only applies to city/state.
     """
