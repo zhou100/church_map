@@ -30,7 +30,7 @@ decisions; surface a mismatch rather than silently choosing a convenient rule.
 | Crawling / extraction | `backend/scrapers_v2/`, `.github/workflows/crawl.yml`, `tests/scrapers_v2/` |
 | Research / verified facts | [analytics/README.md](analytics/README.md), `muse_handoff/BRIEF_v3.md`, relevant dbt model and test |
 | Publishing | `scripts/publish_verified.py`, `migrations/0006_verified_facts.sql`, publishing marts |
-| Search / UI | [DESIGN.md](DESIGN.md), `frontend/src/api/client.js`, `churchProfile.js`, `preferences.js`, relevant pages |
+| Search / UI | [DESIGN.md](DESIGN.md), `frontend/src/api/client.js`, `searchScope.js`, `churchProfile.js`, `preferences.js`, `ChurchRepository.list_scoped`, relevant pages |
 | Prompt / model | `backend/scrapers_v2/prompts/website_v3.py`, `evals/website_extraction/gate.py`, `baselines/CURRENT` under that eval directory |
 | Deployment | `render.yaml`, `Dockerfile`, `scripts/docker-entrypoint.sh`, `.github/workflows/`, `frontend/vercel.json` |
 
@@ -133,6 +133,12 @@ freshness budgets come from code/config; do not copy them into evergreen prose.
   consistent across API, loaded pages, cards and details. Preferences currently
   rank evidence; unknown attributes must not become negative matches. Test a
   match beyond page one before claiming a city-wide filter works.
+- Search ranks before it pages, on the server. Do not sort, filter or state an
+  absence over partly loaded rows, and do not walk every page to make one
+  client-side. Server "For you" (`fit_sql`) must count the same evidence as
+  `fitScore`: change both, with the shared cases in
+  `frontend/src/fitParityCases.json`. A scope widens only by the visitor's
+  explicit choice; paging, map pans and cluster clicks stay inside it.
 - Follow DESIGN.md: Fraunces for church names/wordmark, sienna and gold palette;
   retired purple stays retired. Preserve honest review empty states and source
   explanations. Add no dependencies or broad refactors without a task-specific
@@ -149,7 +155,7 @@ not claims of certification or proof of corpus-wide accuracy.
 | Research / dbt / publisher | Follow analytics setup, then `DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build --project-dir analytics/dbt --full-refresh` in the sidecar. Run relevant Python tests. Source/identity mistakes, grain inflation or address-pin mismatches block affected publication. Missing private inputs mean unverified, not passed. |
 | Prompt / model | Bump `PROMPT_VERSION` for prompt edits; regenerate and review baseline/cache and `CURRENT` together. Model changes invalidate the fingerprint too. Run `python -m evals.website_extraction.gate`. Compare candidate to the old baseline before adopting it; changing the baseline cannot justify a regression. Live eval calls cost money. |
 | Quality improvement | Separate regression examples from an untouched evaluation sample. Stratify by geography, language, source and failure class; record sampling frame, sample size, per-field precision, missed supported facts and abstention. Use uncertainty intervals and paired old/new comparisons; predeclare tolerable errors. The current 18-example cached gate is regression evidence only, not a population accuracy estimate. |
-| Frontend / search | Run `npm test` and `npm run build` in `frontend/`; inspect affected flows in a browser. Exercise mobile/desktop, keyboard/focus, loading/error/empty states, pagination and source links. Compare ranking/filter results with a fixed independently checked query set; a build cannot prove usefulness. |
+| Frontend / search | Run `npm test` and `npm run build` in `frontend/`; inspect affected flows in a browser. Exercise mobile/desktop, keyboard/focus, loading/error/empty states, pagination and source links. Compare ranking/filter results with a fixed independently checked query set; a build cannot prove usefulness. For incremental loading, count requests: a tall screen, scroll anchoring or a layout shift must not load pages by itself, and Back must restore rows and scroll without refetching. Rows without coordinates are a required case (SQL `GREATEST`/`LEAST` skip NULLs). |
 | Deployment / operations | Verify exact deployment revision, API and browser journey, observed outcomes and recovery/rollback path. Choose a user-relevant SLI, denominator, window and target before claiming reliability improved; job freshness alone is insufficient. |
 | Documentation only | Check factual claims against referenced code, resolve local links and review `git diff --check`. Do not trigger production jobs or paid evals to validate prose. |
 
