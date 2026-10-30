@@ -175,7 +175,9 @@ export function rankForYou(churches, prefs) {
 // implying the city has no such church (TODOS F4). The count is only exact
 // when the whole city fit under the row limit. `ranked` means the rows are
 // the top of a server ranking of the whole scope by the same evidence
-// (sort=for_you), so a later row can't match either. Search's nearest-first
+// (sort=for_you), so a later row can't match either, as long as no row on
+// the page matched at all: the server also ranks rows `eligible` drops, and
+// a match among those can sit above a real church's on a later page. Search's nearest-first
 // pages (`nearestFirst`) can still hold a documented match on a page not
 // loaded yet, so until the last page the sentence speaks only of these.
 // Otherwise a full page only speaks for the loaded rows. `eligible` is which
@@ -193,7 +195,8 @@ export function zeroMatchSentence(churches, prefs, { city, limit, eligible = isC
       : `None of the ${churches.length} churches nearest the middle of ${city} mention`
     return `${subject} ${phrase}. Load more to check churches farther out.`
   }
-  if (!exact && !ranked) {
+  const rankedSpeaksForScope = ranked && !churches.some(church => fitScore(church, prefs) > 0)
+  if (!exact && !rankedSpeaksForScope) {
     return `No loaded results mention ${phrase} yet. More churches in ${city} may match.`
   }
   if (exact && known === 0) {

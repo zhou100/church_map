@@ -42,6 +42,10 @@ function searchParams({ city, state }) {
   return new URLSearchParams({ city, state })
 }
 
+function prefsKey(prefs) {
+  return hasPreferences(prefs) ? JSON.stringify(prefs) : null
+}
+
 function searchUrl(place) {
   return `/search?${searchParams(place)}`
 }
@@ -65,6 +69,10 @@ export default function Landing({ exampleChurch }) {
   const userEdited = useRef(false)
   const heroCard = useRef(null)
   const previewRequest = useRef(null)
+  // The preferences the page shows now; a response ranked for any other set
+  // (the visitor changed or cleared them meanwhile) is dropped.
+  const currentPrefsKey = useRef(null)
+  currentPrefsKey.current = prefsKey(prefs)
   // What the current rows were ranked for: the server ranks the whole city
   // (sort=for_you) before its row limit, so picks never depend on page one
   // of some other order.
@@ -84,29 +92,40 @@ export default function Landing({ exampleChurch }) {
   // by the same evidence fitScore counts, then by how much a newcomer can
   // learn; without them, by that second measure alone.
   function showPreview(place, currentPrefs, { refresh = false } = {}) {
-    previewRequest.current?.abort()
+    previewRequest.current?.ctrl.abort()
     const ctrl = new AbortController()
-    previewRequest.current = ctrl
+    const ranked = hasPreferences(currentPrefs)
+    const requestKey = prefsKey(currentPrefs)
+    previewRequest.current = { ctrl, refresh, key: requestKey, done: false }
+    const request = previewRequest.current
     setPreview(place)
     if (!userEdited.current) setLocation(`${place.city}, ${place.state}`)
     if (!refresh) setPreviewStatus('loading')
-    const ranked = hasPreferences(currentPrefs)
     listChurches(
       { type: 'location', city: place.city, state: place.state },
       { limit: PREVIEW_LIMIT, sort: ranked ? 'for_you' : 'starting_point', prefs: ranked ? currentPrefs : null, signal: ctrl.signal },
     )
       .then(data => {
+        if (ctrl.signal.aborted || requestKey !== currentPrefsKey.current) return
         setPreviewChurches(data)
-        setRankedFor(ranked ? JSON.stringify(currentPrefs) : null)
+        setRankedFor(requestKey)
         setPreviewStatus(data.length ? 'ready' : 'empty')
       })
-      .catch(() => { if (!ctrl.signal.aborted && !refresh) setPreviewStatus('error') })
+      // A failed re-rank keeps the picks already shown, unless none are yet.
+      .catch(() => {
+        if (!ctrl.signal.aborted) setPreviewStatus(status => (refresh && status !== 'loading' ? status : 'error'))
+      })
+      .finally(() => { request.done = true })
   }
 
   // Re-rank on the server once the visitor pauses on the chips; until then
   // the loaded rows re-rank locally, so the picks respond at once.
   useEffect(() => {
-    if (!preview || rankedFor === (hasPreferences(prefs) ? JSON.stringify(prefs) : null)) return undefined
+    const key = prefsKey(prefs)
+    const pending = previewRequest.current && !previewRequest.current.done ? previewRequest.current : null
+    // A re-rank still in flight for other preferences is stale now.
+    if (pending?.refresh && pending.key !== key) pending.ctrl.abort()
+    if (!preview || rankedFor === key || pending?.key === key) return undefined
     const timer = setTimeout(() => showPreview(preview, prefs, { refresh: true }), 300)
     return () => clearTimeout(timer)
   }, [prefs]) // eslint-disable-line react-hooks/exhaustive-deps
@@ -187,7 +206,7 @@ export default function Landing({ exampleChurch }) {
     city: preview.city,
     limit: PREVIEW_LIMIT,
     eligible: isStartingPoint,
-    ranked: hasPreferences(prefs) && rankedFor === JSON.stringify(prefs),
+    ranked: hasPreferences(prefs) && rankedFor === prefsKey(prefs),
   })
   const forYou = hasPreferences(prefs) && !zeroMatch
 

@@ -61,6 +61,9 @@ export default function Search() {
   const listScroll = useRef(0)
   const restoreScroll = useRef(null)
   const restoreAllowed = useRef(true)
+  // Bumped by every query the visitor starts. A slow center or location
+  // lookup that began before it must not apply its result afterwards.
+  const scopeOp = useRef(0)
 
   const key = query && queryKey(query, prefs)
   const sort = query && resolveSort(query, prefs)
@@ -190,6 +193,8 @@ export default function Search() {
   }, []) // eslint-disable-line react-hooks/exhaustive-deps
 
   function startQuery(next) {
+    scopeOp.current++
+    setScopeBusy(false)
     setSelectedChurchId(null)
     setScopeError(null)
     setMobileView('list')
@@ -225,17 +230,19 @@ export default function Search() {
   }
 
   async function handleNearMe() {
+    const op = ++scopeOp.current
     setLocating(true)
     setScopeError(null)
     try {
       const location = await detectLocation()
+      if (op !== scopeOp.current) return
       setCity(location.city)
       setState(location.state)
       setSearchMode('location')
       const you = Number.isFinite(location.lat) && Number.isFinite(location.lon) ? { lat: location.lat, lon: location.lon } : null
       startQuery({ scope: { kind: 'city', city: location.city, state: location.state }, sort: null, you })
     } catch (err) {
-      setScopeError(err.message)
+      if (op === scopeOp.current) setScopeError(err.message)
     } finally {
       setLocating(false)
     }
@@ -244,6 +251,7 @@ export default function Search() {
   // Widening is always the visitor's choice: a center and a distance.
   async function includeNearby(centerSource = query.you ? 'you' : 'city', miles = 10) {
     const { city: scopeCity, state: scopeState } = query.scope
+    const op = ++scopeOp.current
     setScopeError(null)
     if (centerSource === 'you' && query.you) {
       startQuery({ ...query, scope: { kind: 'nearby', city: scopeCity, state: scopeState, center: query.you, centerSource, miles } })
@@ -253,17 +261,19 @@ export default function Search() {
     try {
       if (centerSource === 'you') {
         const location = await detectLocation()
+        if (op !== scopeOp.current) return
         if (!Number.isFinite(location.lat) || !Number.isFinite(location.lon)) throw new Error('Your location has no coordinates')
         const you = { lat: location.lat, lon: location.lon }
         startQuery({ ...query, you, scope: { kind: 'nearby', city: scopeCity, state: scopeState, center: you, centerSource, miles } })
       } else {
         const center = await getSearchCenter(scopeCity, scopeState)
+        if (op !== scopeOp.current) return
         startQuery({ ...query, scope: { kind: 'nearby', city: scopeCity, state: scopeState, center: { lat: center.lat, lon: center.lon }, centerSource, miles } })
       }
     } catch (err) {
-      setScopeError(`${err.message}. The list still shows ${scopeCity} only.`)
+      if (op === scopeOp.current) setScopeError(`${err.message}. The list still shows ${scopeCity} only.`)
     } finally {
-      setScopeBusy(false)
+      if (op === scopeOp.current) setScopeBusy(false)
     }
   }
 

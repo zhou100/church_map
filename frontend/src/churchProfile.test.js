@@ -291,3 +291,18 @@ test('landing: a match the picks would drop does not count, so the picks are exp
   // Search also treats a directory guess as unknown service language.
   assert.ok(zeroMatchSentence(rows, prefs({ languages: ['Korean'] }), { city: 'Fresno', limit: 100 }))
 })
+
+test('a server-ranked page claims city-wide absence only if no row on it matched at all', () => {
+  // Legacy rows the server still ranks (scope_status NULL) but Search never
+  // recommends: their matches outrank a real church's on a later page.
+  const spanishKids = prefs({ languages: ['Spanish'], kids: true })
+  const page = Array.from({ length: 20 }, (_, i) => church({
+    name: `Temple ${i}`, denomination: 'Buddhist', service_languages: ['Spanish'], kids_program: 'Dharma school',
+  }))
+  const sentence = zeroMatchSentence(page, spanishKids, { city: 'Fresno', limit: 20, ranked: true })
+  assert.doesNotMatch(sentence, /None of the churches we have details on in Fresno/)
+  assert.match(sentence, /may match/)
+  // With nothing matching anywhere on the page, the ranking does speak for the city.
+  const unmatched = Array.from({ length: 20 }, (_, i) => church({ name: `C ${i}`, website_summary: 'A parish.' }))
+  assert.match(zeroMatchSentence(unmatched, spanishKids, { city: 'Fresno', limit: 20, ranked: true }), /None of the churches we have details on in Fresno/)
+})
