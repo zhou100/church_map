@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.routers import churches, stats as stats_mod
-from backend.routers.churches import LIST_CACHE_CONTROL, _row_to_list_church
+from backend.routers.churches import LIST_CACHE_CONTROL, LIST_CDN_CACHE_CONTROL, _row_to_list_church
 
 LONG_SUMMARY = (
     "A neighborhood congregation gathered around a shared table, "
@@ -88,6 +88,8 @@ def test_list_trims_payload_and_sets_public_cache(monkeypatch):
     response = client.get("/api/churches?city=Brooklyn&state=NY&limit=30")
     assert response.status_code == 200
     assert response.headers["cache-control"] == LIST_CACHE_CONTROL
+    assert "max-age=0" in LIST_CACHE_CONTROL
+    assert response.headers["vercel-cdn-cache-control"] == LIST_CDN_CACHE_CONTROL
     church = response.json()[0]
     assert church["website_summary"].endswith("…")
     assert len(church["website_summary"]) <= 201
@@ -96,7 +98,7 @@ def test_list_trims_payload_and_sets_public_cache(monkeypatch):
     assert church["extracted_tags"]["worship_style"] == "blended"
     assert church["extracted_tags"]["programs"] == ["youth group"]
     assert church["extracted_tags"]["theological_stance"] == "moderate"
-    assert church["extracted_tags"]["statement_of_faith"] == ["Salvation by grace through faith"]
+    assert church["extracted_tags"]["statement_of_faith"] is True
     assert "theology_summary" not in church["extracted_tags"]
     assert "pull_quote" not in church["extracted_tags"]
     assert "worship_style_detail" not in church["extracted_tags"]

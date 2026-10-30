@@ -5,7 +5,7 @@ import ChurchCard from '../components/ChurchCard'
 import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
-import { detectLocation, listChurches, takeCitySearchPrefetch } from '../api/client'
+import { SEARCH_PAGE as PAGE, detectLocation, listChurches, takeCitySearchPrefetch } from '../api/client'
 import {
   byProfileUsefulness,
   churchLanguages,
@@ -20,7 +20,6 @@ import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } f
 const SearchMap = lazy(() => import('../components/SearchMap'))
 const ChurchDetailPanel = lazy(() => import('../components/ChurchDetailPanel'))
 
-const PAGE = 50
 const DESKTOP_MAP = '(min-width: 840px)'
 const CAN_HOVER = typeof window !== 'undefined' && window.matchMedia('(hover: hover)').matches
 
@@ -177,10 +176,7 @@ export default function Search() {
 
   useEffect(() => {
     const mq = window.matchMedia(DESKTOP_MAP)
-    const onChange = () => {
-      setWideLayout(mq.matches)
-      if (mq.matches) setMapActivated(true)
-    }
+    const onChange = () => setWideLayout(mq.matches)
     mq.addEventListener('change', onChange)
     return () => mq.removeEventListener('change', onChange)
   }, [])
@@ -460,7 +456,7 @@ export default function Search() {
               type="button"
               className={mobileView === 'map' ? 'mobile-view-active' : ''}
               aria-pressed={mobileView === 'map'}
-              onClick={() => { setMobileView('map'); setMapActivated(true) }}
+              onClick={() => setMobileView('map')}
             >
               <Icon name="pin" size={15} /> Map
             </button>

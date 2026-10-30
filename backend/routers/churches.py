@@ -87,7 +87,11 @@ _LIST_TAG_KEYS = (
     "theological_stance",
     "statement_of_faith",
 )
-LIST_CACHE_CONTROL = "public, max-age=60, s-maxage=600, stale-while-revalidate=86400"
+# Browsers revalidate every time, so a visitor who just left a review sees it on
+# the next list. Only Vercel's CDN keeps a copy, briefly
+# (Vercel-CDN-Cache-Control is read by Vercel and not passed on to browsers).
+LIST_CACHE_CONTROL = "public, max-age=0, must-revalidate"
+LIST_CDN_CACHE_CONTROL = "max-age=60, stale-while-revalidate=300"
 
 
 def _tag_has_content(value) -> bool:
@@ -143,7 +147,12 @@ def _list_extracted_tags(tags):
 def _row_to_list_church(row: dict) -> dict:
     church = _row_to_church(row)
     church["website_summary"] = _truncate_text(church.get("website_summary"))
-    church["extracted_tags"] = _list_extracted_tags(church.get("extracted_tags"))
+    tags = _list_extracted_tags(church.get("extracted_tags"))
+    # Cards and ranking only check that a statement of faith exists; the
+    # bullets themselves are on the detail endpoint.
+    if isinstance(tags, dict) and "statement_of_faith" in tags:
+        tags["statement_of_faith"] = True
+    church["extracted_tags"] = tags
     return church
 
 
@@ -239,6 +248,7 @@ async def list_churches(
             )
     if response is not None:
         response.headers["Cache-Control"] = LIST_CACHE_CONTROL
+        response.headers["Vercel-CDN-Cache-Control"] = LIST_CDN_CACHE_CONTROL
     return [_row_to_list_church(r) for r in rows]
 
 

@@ -117,6 +117,8 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 .map-panel {
   flex: 1;
   position: relative;
+  /* Leaflet's panes and controls (z-index up to 1000) stay under .results-loading. */
+  isolation: isolate;
 }
 .map-panel .leaflet-container { height: 100% !important; }
 

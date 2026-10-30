@@ -18,7 +18,7 @@ import {
 } from '../churchProfile'
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 
-const PREVIEW_LIMIT = 30
+const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
 const TOP_PICKS = 3
 const AUDITED_COVERAGE = { withSummary: 4332, total: 133939 }

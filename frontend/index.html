@@ -20,27 +20,6 @@
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link href="https://fonts.googleapis.com/css2?family=Fraunces:ital,opsz,wght@0,9..144,400..700;1,9..144,400&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap" rel="stylesheet" />
-    <script>
-      (function () {
-        try {
-          var path = location.pathname.replace(/\/+$/, '') || '/'
-          if (path !== '/search') return
-          var params = new URLSearchParams(location.search)
-          var city = params.get('city')
-          var state = params.get('state')
-          if (!city || !state || params.get('name')) return
-          var url = '/api/churches?limit=50&offset=0&city=' + encodeURIComponent(city) + '&state=' + encodeURIComponent(state)
-          window.__churchmapSearchPrefetch = {
-            city: city,
-            state: state,
-            promise: fetch(url).then(function (response) {
-              if (!response.ok) throw new Error('prefetch failed')
-              return response.json()
-            })
-          }
-        } catch (e) {}
-      })()
-    </script>
   </head>
   <body>
     <div id="root"></div>

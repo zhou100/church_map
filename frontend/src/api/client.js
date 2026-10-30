@@ -10,31 +10,24 @@ function resolveApiBase() {
 
 const API_BASE = resolveApiBase()
 
+// One page of Search results. The prefetch below asks for exactly the page
+// Search would ask for, so it can stand in for that first request.
+export const SEARCH_PAGE = 50
+
 export function prefetchCitySearch(city, state) {
   if (typeof window === 'undefined' || !city || !state) return
   const existing = window.__churchmapSearchPrefetch
   if (existing && existing.city === city && existing.state === state) return
-  const params = new URLSearchParams({
-    limit: '50',
-    offset: '0',
-    city,
-    state,
-  })
-  const promise = fetch(`${API_BASE}/api/churches?${params}`).then(response => {
-    if (!response.ok) throw new Error('prefetch failed')
-    return response.json()
-  })
-  window.__churchmapSearchPrefetch = { city, state, promise, via: 'client' }
+  const promise = listChurches({ type: 'location', city, state }, { limit: SEARCH_PAGE, offset: 0 })
+  // Consumed by Search, which falls back to its own request on failure.
+  promise.catch(() => {})
+  window.__churchmapSearchPrefetch = { city, state, promise }
 }
 
 export function takeCitySearchPrefetch(city, state) {
   if (typeof window === 'undefined') return null
   const slot = window.__churchmapSearchPrefetch
   if (!slot || slot.city !== city || slot.state !== state) return null
-  // The document prefetch always calls same-origin `/api`. Ignore it when
-  // this build is pointed at another host; a client prefetch already used
-  // API_BASE and is safe to consume.
-  if (API_BASE && slot.via !== 'client') return null
   window.__churchmapSearchPrefetch = null
   return slot.promise
 }

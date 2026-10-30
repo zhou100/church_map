@@ -17,6 +17,8 @@ export function loadGoogleIdentity() {
     const finish = () => resolve()
     const fail = () => {
       pending = null
+      // A failed <script> never fires again; leave none behind for a retry to find.
+      script.remove()
       reject(new Error('Google sign-in failed to load'))
     }
     script.addEventListener('load', finish, { once: true })
