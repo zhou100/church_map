@@ -57,9 +57,6 @@ export default function Landing({ exampleChurch }) {
   // Read after hydration (below), never during render: `/` is prerendered
   // and the first paint must match it.
   const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
-  // While the inline panel is open (desktop), the picks shrink to one line
-  // each so all three stay in view above it.
-  const [fitPanelOpen, setFitPanelOpen] = useState(false)
   const userEdited = useRef(false)
   const heroCard = useRef(null)
 
@@ -226,6 +223,15 @@ export default function Landing({ exampleChurch }) {
               )}
             </div>
 
+            {/* Above the picks and independent of them: a re-rank below can't
+                move a chip under the cursor, and nothing here submits. */}
+            <FitPreferences
+              alwaysOpen
+              prefs={prefs}
+              onChange={updatePrefs}
+              languageChips={cityLanguageChips(rows, prefs.languages)}
+            />
+
             {preview && previewStatus === 'loading' && (
               <p className="map-hero-status">Finding churches near {preview.city}, {preview.state}…</p>
             )}
@@ -235,7 +241,7 @@ export default function Landing({ exampleChurch }) {
               </p>
             )}
             {preview && previewStatus === 'ready' && (
-              <div className={`map-hero-picks${fitPanelOpen ? ' map-hero-picks-compact' : ''}`}>
+              <div className="map-hero-picks map-hero-picks-compact">
                 {topPicks.length > 0 && (
                   <p className="eyebrow">Start here in {preview.city}{forYou && ' — for you'}</p>
                 )}
@@ -266,18 +272,6 @@ export default function Landing({ exampleChurch }) {
                     </li>
                   ))}
                 </ul>
-                {topPicks.length > 0 && (
-                  <FitPreferences
-                    prefs={prefs}
-                    onChange={updatePrefs}
-                    languageChips={cityLanguageChips(rows, prefs.languages)}
-                    onOpenChange={setFitPanelOpen}
-                    sheetAction={{
-                      label: hasPreferences(prefs) ? 'Show churches that fit' : `Show churches in ${preview.city}`,
-                      onClick: () => goToSearch(preview),
-                    }}
-                  />
-                )}
                 <Link className="map-hero-all" to={searchUrl(preview)} onClick={() => prefetchCitySearch(preview.city, preview.state)}>
                   See every church in {preview.city} <Icon name="arrow" />
                 </Link>

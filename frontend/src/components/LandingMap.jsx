@@ -27,6 +27,18 @@ function FitChurches({ churches, overlayRef }) {
   return null
 }
 
+// The hero grows with the search card, and Leaflet only tracks window resizes.
+function TrackSize() {
+  const map = useMap()
+  useEffect(() => {
+    if (typeof ResizeObserver !== 'function') return undefined
+    const observer = new ResizeObserver(() => map.invalidateSize())
+    observer.observe(map.getContainer())
+    return () => observer.disconnect()
+  }, [map])
+  return null
+}
+
 export default function LandingMap({ churches, hoveredId, onHover, overlayRef }) {
   // Stable across hover and typing, so FitChurches only refits when the
   // churches change and never undoes a visitor's own pan or zoom.
@@ -47,6 +59,7 @@ export default function LandingMap({ churches, hoveredId, onHover, overlayRef })
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
       <ZoomControl position="bottomright" />
+      <TrackSize />
       <FitChurches churches={mappable} overlayRef={overlayRef} />
       {mappable.map(c => (
         <Marker
