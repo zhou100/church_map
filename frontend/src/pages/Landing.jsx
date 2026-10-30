@@ -18,6 +18,7 @@ import {
 } from '../churchProfile'
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 import { prefetchFirstPage } from '../searchScope'
+import { previewKey, previewStatus as previewStatusOf, previewStep } from '../landingPreview'
 
 const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
@@ -42,10 +43,6 @@ function searchParams({ city, state }) {
   return new URLSearchParams({ city, state })
 }
 
-function prefsKey(prefs) {
-  return hasPreferences(prefs) ? JSON.stringify(prefs) : null
-}
-
 function searchUrl(place) {
   return `/search?${searchParams(place)}`
 }
@@ -61,26 +58,21 @@ export default function Landing({ exampleChurch }) {
   const [LandingMap, setLandingMap] = useState(null)
   const [preview, setPreview] = useState(null)
   const [previewChurches, setPreviewChurches] = useState(null)
-  const [previewStatus, setPreviewStatus] = useState('idle')
   const [hoveredId, setHoveredId] = useState(null)
   // Read after hydration (below), never during render: `/` is prerendered
   // and the first paint must match it.
   const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
   const userEdited = useRef(false)
   const heroCard = useRef(null)
-  const previewRequest = useRef(null)
-  // The preferences the page shows now; a response ranked for any other set
-  // (the visitor changed or cleared them meanwhile) is dropped.
-  const currentPrefsKey = useRef(null)
-  currentPrefsKey.current = prefsKey(prefs)
-  // For callbacks that outlive a render, such as the IP lookup on a first
-  // visit, during which the visitor may already have picked preferences.
-  const latestPrefs = useRef(prefs)
-  latestPrefs.current = prefs
-  // What the current rows were ranked for: the server ranks the whole city
-  // (sort=for_you) before its row limit, so picks never depend on page one
-  // of some other order.
-  const [rankedFor, setRankedFor] = useState(null)
+  // What the rows were ranked for, the request in flight and the last
+  // failure, each as a previewKey (city + preferences); see landingPreview.
+  const [loadedKey, setLoadedKey] = useState(undefined)
+  const [pendingKey, setPendingKey] = useState(undefined)
+  const [failedKey, setFailedKey] = useState(undefined)
+  const inflight = useRef(null)
+  const wantKey = preview ? previewKey(preview, prefs) : null
+  const latestWant = useRef(wantKey)
+  latestWant.current = wantKey
 
   // Search's first page, with the sort and preferences Search will use.
   function prefetchSearch(place) {
@@ -92,49 +84,52 @@ export default function Landing({ exampleChurch }) {
     navigate(searchUrl(place))
   }
 
-  // One page only. With preferences, the API ranks every church in the city
-  // by the same evidence fitScore counts, then by how much a newcomer can
-  // learn; without them, by that second measure alone.
-  function showPreview(place, currentPrefs, { refresh = false } = {}) {
-    previewRequest.current?.ctrl.abort()
-    const ctrl = new AbortController()
-    const ranked = hasPreferences(currentPrefs)
-    const requestKey = prefsKey(currentPrefs)
-    previewRequest.current = { ctrl, refresh, key: requestKey, done: false }
-    const request = previewRequest.current
+  function choosePlace(place) {
     setPreview(place)
     if (!userEdited.current) setLocation(`${place.city}, ${place.state}`)
-    if (!refresh) setPreviewStatus('loading')
-    listChurches(
-      { type: 'location', city: place.city, state: place.state },
-      { limit: PREVIEW_LIMIT, sort: ranked ? 'for_you' : 'starting_point', prefs: ranked ? currentPrefs : null, signal: ctrl.signal },
-    )
-      .then(data => {
-        if (ctrl.signal.aborted || requestKey !== currentPrefsKey.current) return
-        setPreviewChurches(data)
-        setRankedFor(requestKey)
-        setPreviewStatus(data.length ? 'ready' : 'empty')
-      })
-      // A failed re-rank keeps the picks already shown, unless none are yet.
-      .catch(() => {
-        if (!ctrl.signal.aborted) setPreviewStatus(status => (refresh && status !== 'loading' ? status : 'error'))
-      })
-      .finally(() => { request.done = true })
   }
 
-  // Re-rank on the server once the visitor pauses on the chips; until then
-  // the loaded rows re-rank locally, so the picks respond at once. Also runs
-  // when the city first becomes known, so preferences picked before that are
-  // never left without a request that can land.
+  // One page only. With preferences, the API ranks every church in the city
+  // by the same evidence fitScore counts, then by how much a newcomer can
+  // learn; without them, by that second measure alone. Runs whenever the
+  // city, the preferences, or a request's outcome changes, so a dropped
+  // answer is always followed by the request the page now wants.
   useEffect(() => {
-    const key = prefsKey(prefs)
-    const pending = previewRequest.current && !previewRequest.current.done ? previewRequest.current : null
-    // A re-rank still in flight for other preferences is stale now.
-    if (pending?.refresh && pending.key !== key) pending.ctrl.abort()
-    if (!preview || rankedFor === key || pending?.key === key) return undefined
-    const timer = setTimeout(() => showPreview(preview, prefs, { refresh: true }), 300)
+    const step = previewStep({ want: wantKey, loaded: loadedKey, pending: pendingKey, failed: failedKey })
+    if (step.type === 'cancel') {
+      inflight.current?.abort()
+      inflight.current = null
+      setPendingKey(undefined)
+      return undefined
+    }
+    if (step.type !== 'request') return undefined
+    const place = preview, requestPrefs = prefs
+    const timer = setTimeout(() => {
+      inflight.current?.abort()
+      const ctrl = new AbortController()
+      inflight.current = ctrl
+      setPendingKey(step.key)
+      const ranked = hasPreferences(requestPrefs)
+      listChurches(
+        { type: 'location', city: place.city, state: place.state },
+        { limit: PREVIEW_LIMIT, sort: ranked ? 'for_you' : 'starting_point', prefs: ranked ? requestPrefs : null, signal: ctrl.signal },
+      )
+        .then(data => {
+          if (ctrl.signal.aborted || step.key !== latestWant.current) return
+          setPreviewChurches(data)
+          setLoadedKey(step.key)
+        })
+        .catch(() => { if (!ctrl.signal.aborted) setFailedKey(step.key) })
+        .finally(() => {
+          if (inflight.current !== ctrl) return
+          inflight.current = null
+          setPendingKey(undefined)
+        })
+    }, step.delay)
     return () => clearTimeout(timer)
-  }, [prefs, preview]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [wantKey, loadedKey, pendingKey, failedKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => inflight.current?.abort(), [])
 
   useEffect(() => {
     const legacyParams = new URLSearchParams(window.location.search)
@@ -159,8 +154,7 @@ export default function Landing({ exampleChurch }) {
       }))
       .catch(() => {})
 
-    const storedPrefs = loadPreferences()
-    setPrefs(storedPrefs)
+    setPrefs(loadPreferences())
 
     // Someone coming back sees the city they were last looking at; a first
     // visit starts wherever the IP lookup places them.
@@ -171,10 +165,10 @@ export default function Landing({ exampleChurch }) {
       localStorage.removeItem('churchmap_last_search')
     }
     if (stored?.city && stored?.state) {
-      showPreview({ city: stored.city, state: stored.state }, storedPrefs)
+      choosePlace({ city: stored.city, state: stored.state })
     } else {
       detectLocation()
-        .then(data => showPreview({ city: data.city, state: data.state }, latestPrefs.current))
+        .then(data => choosePlace({ city: data.city, state: data.state }))
         .catch(() => {})
     }
   }, [navigate])
@@ -204,15 +198,18 @@ export default function Landing({ exampleChurch }) {
   function updatePrefs(next) {
     setPrefs(next)
     savePreferences(next)
+    // A visitor's change is a fresh ask, even for a set that failed before.
+    setFailedKey(undefined)
   }
 
   const rows = previewChurches || NO_CHURCHES
+  const previewStatus = previewStatusOf({ want: wantKey, loaded: loadedKey, failed: failedKey, rows })
   const topPicks = pickStartingPoints(rankForYou(rows, prefs), TOP_PICKS)
   const zeroMatch = preview && zeroMatchSentence(rows, prefs, {
     city: preview.city,
     limit: PREVIEW_LIMIT,
     eligible: isStartingPoint,
-    ranked: hasPreferences(prefs) && rankedFor === prefsKey(prefs),
+    ranked: hasPreferences(prefs) && loadedKey === wantKey,
   })
   const forYou = hasPreferences(prefs) && !zeroMatch
 
