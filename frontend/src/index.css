@@ -642,14 +642,7 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 .loading { text-align: center; padding: 3rem; color: var(--text-3); }
 .error-msg { text-align: center; padding: 2rem; color: var(--error); }
 
-/* ── Tag filter bar ──────────────────────── */
-.tag-filter-bar {
-  display: flex;
-  flex-wrap: wrap;
-  gap: 0.4rem;
-  margin: 0.75rem 0 0.25rem;
-  align-items: center;
-}
+/* ── Pill chips (fit preferences) ────────── */
 .tag-filter-pill {
   background: none;
   border: 1.5px solid var(--border);
@@ -667,45 +660,6 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   color: white;
   border-color: var(--sienna);
 }
-.tag-clear {
-  background: none;
-  color: var(--text-3);
-  font-size: 0.75rem;
-  padding: 0.2rem 0.75rem;
-  border: 1.5px solid var(--border);
-  border-radius: 9999px;
-  cursor: pointer;
-  transition: color 0.15s, border-color 0.15s;
-}
-.tag-clear:hover { color: var(--error); border-color: var(--error); }
-
-/* ── Sort bar ────────────────────────────── */
-.sort-bar {
-  display: flex;
-  align-items: center;
-  gap: 0.4rem;
-  margin-bottom: 0.5rem;
-  flex-wrap: wrap;
-}
-.sort-label { font-size: 0.78rem; color: var(--text-3); font-weight: 600; }
-.sort-pill {
-  display: inline-flex;
-  align-items: center;
-  gap: 0.2rem;
-  background: none;
-  border: 1.5px solid var(--border);
-  border-radius: 9999px;
-  padding: 0.2rem 0.75rem;
-  font-size: 0.78rem;
-  cursor: pointer;
-  color: var(--sienna);
-  transition: background 0.15s, color 0.15s, border-color 0.15s;
-}
-.sort-pill:disabled { opacity: 0.35; cursor: default; }
-.sort-pill.sort-active { background: var(--sienna); color: white; border-color: var(--sienna); }
-.tag-filter-lang { background: none; border-color: #6ee7b7; color: var(--success); }
-.tag-filter-lang.tag-active { background: var(--success); color: white; border-color: var(--success); }
-
 /* ── Map container ───────────────────────── */
 .map-container {
   border-radius: 10px;

@@ -1,4 +1,5 @@
-"""City listing order: the default, and `sort=starting_point` for the landing page."""
+"""City listing order: the default, `sort=starting_point` for the landing page and
+`sort=nearest` for Search."""
 from __future__ import annotations
 
 import asyncio
@@ -38,6 +39,16 @@ def test_starting_point_ranks_score_then_distance_before_the_limit():
     assert cursor.params == ("Brooklyn", "NY", "Brooklyn", "NY", "Brooklyn", "NY", 100, 0)
 
 
+def test_nearest_orders_by_distance_from_the_city_middle_before_the_limit():
+    cursor = _city_sql(sort="nearest")
+    order_by = cursor.sql.split("ORDER BY", 1)[1]
+    assert "jsonb_array_length" not in order_by, "distance only, not profile score"
+    assert order_by.index("percentile_disc") < order_by.index("NULLS LAST") < order_by.index("LIMIT")
+    assert "COS(RADIANS(" in order_by
+    # latitude median, longitude median, and the latitude again for the scale
+    assert cursor.params == ("Brooklyn", "NY", *("Brooklyn", "NY") * 3, 100, 0)
+
+
 def test_unknown_sort_is_rejected():
     """A typo'd sort would silently fall back to some other order, which the
     landing page could not tell apart from "these are the best churches"."""
@@ -64,9 +75,9 @@ FULL_TAGS = {
 SUMMARY = "A neighborhood church."
 
 
-def _ranked_names(seed, limit):
+def _ranked_names(seed, limit, sort="starting_point"):
     """Insert `seed` rows into Orderville, ZZ and return the names in default
-    and starting_point order, each cut at `limit`. Rolled back afterwards."""
+    and `sort` order, each cut at `limit`. Rolled back afterwards."""
     from psycopg import AsyncConnection
 
     async def go():
@@ -85,7 +96,7 @@ def _ranked_names(seed, limit):
             repo = ChurchRepository(con)
             default = await repo.list_by_city_state("Orderville", "ZZ", limit, 0)
             ranked = await repo.list_by_city_state(
-                "Orderville", "ZZ", limit, 0, sort="starting_point"
+                "Orderville", "ZZ", limit, 0, sort=sort
             )
             return [r["name"] for r in default], [r["name"] for r in ranked]
         finally:
@@ -122,3 +133,21 @@ def test_starting_point_breaks_ties_toward_the_middle_before_the_limit():
     assert _ranked_names(seed, limit=1) == (["tie a west"], ["tie z middle"])
     _, ranked = _ranked_names(seed, limit=4)
     assert ranked[-1] == "tie c unmapped"
+
+
+@pg
+def test_nearest_puts_the_closest_church_to_the_middle_first_before_the_limit():
+    """Profile richness doesn't matter here: a bare church at the middle beats a
+    fully documented one at the edge, page one ends nearest-first, and an
+    unmapped church comes last."""
+    seed = [
+        ("near a full edge", SUMMARY, "Sun 10am", FULL_TAGS, 40.50, -74.20),
+        ("near b east", None, None, None, 40.70, -73.80),
+        ("near c unmapped", SUMMARY, None, None, None, None),
+        ("near z middle", None, None, None, 40.70, -73.95),
+        ("near y close", None, None, None, 40.72, -73.95),
+    ]
+    _, first = _ranked_names(seed, limit=2, sort="nearest")
+    assert first == ["near z middle", "near y close"]
+    _, ranked = _ranked_names(seed, limit=5, sort="nearest")
+    assert ranked[-1] == "near c unmapped"

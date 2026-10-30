@@ -67,6 +67,14 @@ CITY_ORDERINGS = {
         SQRT(POWER(c.latitude - {_city_median("latitude")}, 2)
            + POWER(c.longitude - {_city_median("longitude")}, 2)) ASC NULLS LAST,
         c.name ASC""", 2),
+    # Search: nearest the middle of the city first, so "Load more" only ever
+    # adds churches farther out. Longitude degrees are scaled to latitude
+    # degrees at the city's latitude; unmapped churches come last.
+    "nearest": (f"""
+        POWER(c.latitude - {_city_median("latitude")}, 2)
+          + POWER((c.longitude - {_city_median("longitude")})
+                  * COS(RADIANS({_city_median("latitude")})), 2) ASC NULLS LAST,
+        c.name ASC""", 3),
 }
 
 # `_DIM_QUERY` produces the fields routers expect, including review aggregates.

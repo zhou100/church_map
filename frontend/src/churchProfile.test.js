@@ -203,6 +203,38 @@ test('zero matches: say what we have not read, never that it is absent', () => {
   )
 })
 
+test('Search, nearest first: until the last page, the sentence speaks only of the loaded churches', () => {
+  // Page one: 50 undocumented churches at the middle. The documented Spanish
+  // church is 11km out, on page two.
+  const pageOne = Array.from({ length: 50 }, (_, i) => church({ name: `Near ${i}`, latitude: 40, longitude: -74 }))
+  const pageTwo = church({
+    name: 'Iglesia',
+    latitude: 40.1,
+    longitude: -74,
+    website_summary: 'Servicios en español.',
+    extracted_tags: { service_languages: ['Spanish'] },
+  })
+  const spanish = prefs({ languages: ['Spanish'] })
+  const more = { city: 'Fresno', limit: pageOne.length, nearestFirst: true }
+
+  const sentence = zeroMatchSentence(pageOne, spanish, more)
+  assert.equal(
+    sentence,
+    "We don't have details on the 50 churches nearest the middle of Fresno, so we can't tell yet which have Spanish services. Load more to check churches farther out.",
+  )
+  assert.doesNotMatch(sentence, /any church in Fresno/)
+  // documented but not matching: still no claim about the city
+  const readPage = [church({ name: 'Read', ...READ }), ...pageOne.slice(1)]
+  assert.match(zeroMatchSentence(readPage, spanish, more), /^None of the 50 churches nearest the middle of Fresno mention Spanish services\. Load more/)
+  // once page two is in, the match is found
+  assert.equal(zeroMatchSentence([...pageOne, pageTwo], spanish, { ...more, limit: 52 }), null)
+  // every page loaded and nothing documented: the city-wide sentence is true
+  assert.match(
+    zeroMatchSentence(pageOne, spanish, { ...more, limit: 51 }),
+    /^We don't have details on any church in Fresno yet/,
+  )
+})
+
 test('no zero-match sentence when anything matched or nothing was asked', () => {
   const rows = [church({ name: 'A', ...READ }), church({ name: 'B', language: 'Korean' })]
   assert.equal(zeroMatchSentence(rows, prefs({ languages: ['Korean'] }), { city: 'X', limit: 100 }), null)
