@@ -73,6 +73,10 @@ export default function Landing({ exampleChurch }) {
   // (the visitor changed or cleared them meanwhile) is dropped.
   const currentPrefsKey = useRef(null)
   currentPrefsKey.current = prefsKey(prefs)
+  // For callbacks that outlive a render, such as the IP lookup on a first
+  // visit, during which the visitor may already have picked preferences.
+  const latestPrefs = useRef(prefs)
+  latestPrefs.current = prefs
   // What the current rows were ranked for: the server ranks the whole city
   // (sort=for_you) before its row limit, so picks never depend on page one
   // of some other order.
@@ -119,7 +123,9 @@ export default function Landing({ exampleChurch }) {
   }
 
   // Re-rank on the server once the visitor pauses on the chips; until then
-  // the loaded rows re-rank locally, so the picks respond at once.
+  // the loaded rows re-rank locally, so the picks respond at once. Also runs
+  // when the city first becomes known, so preferences picked before that are
+  // never left without a request that can land.
   useEffect(() => {
     const key = prefsKey(prefs)
     const pending = previewRequest.current && !previewRequest.current.done ? previewRequest.current : null
@@ -128,7 +134,7 @@ export default function Landing({ exampleChurch }) {
     if (!preview || rankedFor === key || pending?.key === key) return undefined
     const timer = setTimeout(() => showPreview(preview, prefs, { refresh: true }), 300)
     return () => clearTimeout(timer)
-  }, [prefs]) // eslint-disable-line react-hooks/exhaustive-deps
+  }, [prefs, preview]) // eslint-disable-line react-hooks/exhaustive-deps
 
   useEffect(() => {
     const legacyParams = new URLSearchParams(window.location.search)
@@ -168,7 +174,7 @@ export default function Landing({ exampleChurch }) {
       showPreview({ city: stored.city, state: stored.state }, storedPrefs)
     } else {
       detectLocation()
-        .then(data => showPreview({ city: data.city, state: data.state }, storedPrefs))
+        .then(data => showPreview({ city: data.city, state: data.state }, latestPrefs.current))
         .catch(() => {})
     }
   }, [navigate])
