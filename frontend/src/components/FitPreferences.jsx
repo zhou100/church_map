@@ -8,9 +8,10 @@ import {
   preferenceSummary,
 } from '../preferences'
 
-// "Make these fit you": three questions, all optional. Inline under the
-// entry on desktop; a native <dialog> bottom sheet at phone width, which
-// brings focus trapping, Esc and an inert page with it. Controlled: the page
+// "Make these fit you": three questions, all optional. `alwaysOpen` (Landing)
+// shows them in place. Otherwise inline under the entry on desktop; a native
+// <dialog> bottom sheet at phone width, which brings focus trapping, Esc and
+// an inert page with it. Controlled: the page
 // owns `prefs` and saves them. Plan: docs/plans/landing_fit_preferences_plan.md.
 
 function toggle(list, value) {
@@ -91,6 +92,7 @@ export default function FitPreferences({
   onOpenChange,
   phoneMediaQuery = '(max-width: 760px)',
   className = '',
+  alwaysOpen = false,
 }) {
   const [open, setOpenState] = useState(false)
   const [announcement, setAnnouncement] = useState('')
@@ -149,6 +151,29 @@ export default function FitPreferences({
   }, [])
 
   const questions = <Questions prefs={prefs} languageChips={languageChips} onChange={change} />
+
+  // Landing: the questions sit in the card as optional rows, with no entry,
+  // Done or sheet; the page's own search button stays the only action. Clear
+  // disappears once used, so focus moves to the first chip instead of <body>.
+  if (alwaysOpen) return (
+    <div className={`fit-preferences fit-always-open ${className}`} ref={panel}>
+      <div className="fit-head">
+        <h2 className="fit-title">Make these fit you</h2>
+        {active && (
+          <button
+            type="button"
+            className="fit-clear"
+            onClick={() => { change(EMPTY_PREFERENCES); focusFirstChip() }}
+          >
+            Clear
+          </button>
+        )}
+      </div>
+      <p className="fit-help">Optional · Show churches that match your preferences first.</p>
+      {questions}
+      <p className="sr-only" aria-live="polite">{announcement}</p>
+    </div>
+  )
 
   return (
     <div className={`fit-preferences ${className}`}>

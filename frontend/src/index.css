@@ -1058,9 +1058,8 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 .landing-page main > section.map-hero {
   position: relative;
   width: 100%;
-  height: calc(100vh - 76px);
-  height: calc(100dvh - 76px);
-  min-height: 560px;
+  min-height: max(560px, calc(100vh - 76px));
+  min-height: max(560px, calc(100dvh - 76px));
   border-block: 1px solid var(--border);
 }
 .map-hero-map,
@@ -1070,14 +1069,16 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
 }
 .map-hero-placeholder,
 .map-hero-map .leaflet-container { background: var(--warm-surface); }
+/* Leaflet re-centres its tiles when the card changes height; a tile picked as
+   the scroll anchor would drag the page along with it. */
+.map-hero-map { overflow-anchor: none; }
+/* In flow over the absolutely placed map: a tall card grows the hero and the
+   page scrolls, so nothing is clipped and there's no scroll box inside it. */
 .map-hero-card {
-  position: absolute;
+  position: relative;
   z-index: 1000;
-  top: 24px;
-  left: max(24px, calc((100% - 1120px) / 2));
   width: min(440px, calc(100% - 48px));
-  max-height: calc(100% - 48px);
-  overflow-y: auto;
+  margin: 24px 0 24px max(24px, calc((100% - 1120px) / 2));
   padding: 28px;
   background: var(--surface);
   border: 1px solid var(--border);
@@ -1314,6 +1315,52 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   cursor: pointer;
 }
 .fit-clear:hover { color: var(--error); }
+
+/* Landing: always shown, one "label + chips" row per question. Plain heading,
+   no card per group; height is saved on spacing, never on chip size. */
+.fit-always-open {
+  margin-top: 1rem;
+  padding-top: 0.75rem;
+  border-top: 1px solid var(--border);
+}
+.fit-head {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 0.5rem;
+  min-height: 32px;
+}
+.fit-title {
+  margin: 0;
+  color: var(--text);
+  font: 700 0.86rem/1.3 'Plus Jakarta Sans', system-ui, sans-serif;
+}
+.fit-head .fit-clear { min-height: 32px; padding: 0.25rem 0.4rem; font-size: 0.8rem; }
+.fit-help {
+  margin: 0 0 0.5rem;
+  color: var(--text-2);
+  font-size: 0.78rem;
+  line-height: 1.45;
+}
+.fit-always-open .fit-group {
+  display: grid;
+  grid-template-columns: 7.5rem minmax(0, 1fr);
+  align-items: baseline;
+  gap: 0.3rem 0.6rem;
+}
+.fit-always-open .fit-group + .fit-group { margin-top: 0.45rem; }
+.fit-always-open .fit-question { margin: 0; color: var(--text-2); font-size: 0.78rem; }
+.fit-always-open .fit-chips { gap: 0.35rem; }
+.fit-always-open .fit-chip { max-width: 100%; overflow-wrap: anywhere; text-align: left; }
+@media (max-width: 760px) {
+  .fit-always-open .fit-group { grid-template-columns: minmax(0, 1fr); gap: 0.3rem; }
+  .fit-always-open .fit-group + .fit-group { margin-top: 0.6rem; }
+}
+@media (pointer: coarse) {
+  .fit-always-open .fit-chip { min-height: 44px; padding-inline: 0.95rem; }
+  .fit-head { min-height: 44px; }
+  .fit-head .fit-clear { min-height: 44px; }
+}
 
 /* Phone-width sheet: a native <dialog> opened with showModal(). */
 .fit-sheet {
@@ -1626,22 +1673,19 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   .landing-nav a.nav-search-link { display: none; }
   .landing-nav > div { flex-wrap: nowrap; }
   .landing-page main > section.map-hero {
-    height: calc(100vh - 64px);
-    height: calc(100dvh - 64px);
-    min-height: 520px;
+    min-height: max(520px, calc(100vh - 64px));
+    min-height: max(520px, calc(100dvh - 64px));
   }
+  /* The bottom margin keeps a strip of map below the card for the pins. */
   .map-hero-card {
-    top: 12px;
-    left: 12px;
-    width: calc(100% - 24px);
-    max-height: calc(100% - 96px);
+    width: auto;
+    margin: 12px 12px 200px;
     padding: 18px 16px;
   }
   .map-hero-copy { display: none; }
   .landing-search { margin-top: 0.9rem; }
   .landing-search > label { display: none; }
   .map-hero-card h1 { font-size: 1.5rem; }
-  /* "See every church" first, "Make these fit you" as the line under it. */
   .map-hero-picks {
     display: flex;
     flex-direction: column;
@@ -1652,8 +1696,7 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   .map-hero-picks .eyebrow,
   .map-hero-picks ul,
   .map-hero-nomatch { display: none; }
-  .map-hero-all { order: 1; align-self: flex-start; margin-top: 0; }
-  .map-hero-picks .fit-preferences { order: 2; margin-top: 0; }
+  .map-hero-all { align-self: flex-start; margin-top: 0; }
   .landing-search-row { flex-wrap: wrap; }
   .landing-search-row button { width: 100%; justify-content: center; }
   .profile-showcase { margin-top: 56px; }

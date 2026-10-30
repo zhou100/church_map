@@ -2,34 +2,36 @@ import { useEffect, useMemo } from 'react'
 import { MapContainer, TileLayer, Marker, Popup, ZoomControl, useMap } from 'react-leaflet'
 import L from 'leaflet'
 import { churchMarkerIcon } from './mapMarker'
+import { keepFitted, overlayPadding } from './mapFit'
 import 'leaflet/dist/leaflet.css'
 
 // Loaded with a dynamic import from Landing: Leaflet touches `window` at
 // import time, and the landing page is server-rendered by scripts/prerender.mjs.
 
-// The search card floats over the map, so fit the pins into whatever is left
-// beside it (desktop) or below it (mobile) instead of the full map.
+// Keeps the pins in the part of the map the search card leaves uncovered,
+// including after the card reflows, until the visitor moves the map.
 function FitChurches({ churches, overlayRef }) {
   const map = useMap()
   useEffect(() => {
-    if (churches.length === 0) return
-    const bounds = L.latLngBounds(churches.map(c => [c.latitude, c.longitude]))
-    const mapRect = map.getContainer().getBoundingClientRect()
-    const overlayRect = overlayRef?.current?.getBoundingClientRect()
-    let paddingTopLeft = [48, 48]
-    if (overlayRect) {
-      paddingTopLeft = overlayRect.width < mapRect.width * 0.6
-        ? [overlayRect.right - mapRect.left + 48, 48]
-        : [32, overlayRect.bottom - mapRect.top + 32]
-    }
-    map.fitBounds(bounds, { paddingTopLeft, paddingBottomRight: [48, 48], maxZoom: 14 })
+    const bounds = churches.length
+      ? L.latLngBounds(churches.map(c => [c.latitude, c.longitude]))
+      : null
+    const container = map.getContainer()
+    return keepFitted(map, () => {
+      if (!bounds) return
+      const paddingTopLeft = overlayPadding(
+        container.getBoundingClientRect(),
+        overlayRef?.current?.getBoundingClientRect(),
+      )
+      map.fitBounds(bounds, { paddingTopLeft, paddingBottomRight: [48, 48], maxZoom: 14, animate: false })
+    }, [container, overlayRef?.current])
   }, [churches, map, overlayRef])
   return null
 }
 
 export default function LandingMap({ churches, hoveredId, onHover, overlayRef }) {
-  // Stable across hover and typing, so FitChurches only refits when the
-  // churches change and never undoes a visitor's own pan or zoom.
+  // Stable across hover and typing, so FitChurches only starts over when the
+  // churches change; a resize refits only until the visitor pans or zooms.
   const mappable = useMemo(
     () => churches.filter(c => c.latitude && c.longitude),
     [churches],
