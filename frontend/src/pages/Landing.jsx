@@ -6,7 +6,7 @@ import DimensionBars from '../components/DimensionBars'
 import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
-import { detectLocation, getStats, listChurches, prefetchCitySearch } from '../api/client'
+import { detectLocation, getStats, listChurches } from '../api/client'
 import {
   cityLanguageChips,
   fitReason,
@@ -17,6 +17,8 @@ import {
   zeroMatchSentence,
 } from '../churchProfile'
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
+import { prefetchFirstPage } from '../searchScope'
+import { previewKey, previewStatus as previewStatusOf, previewStep } from '../landingPreview'
 
 const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
@@ -37,8 +39,12 @@ function parseLocation(value) {
   return { city: match[1].trim(), state: match[2].toUpperCase() }
 }
 
-function searchUrl({ city, state }) {
-  return `/search?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`
+function searchParams({ city, state }) {
+  return new URLSearchParams({ city, state })
+}
+
+function searchUrl(place) {
+  return `/search?${searchParams(place)}`
 }
 
 export default function Landing({ exampleChurch }) {
@@ -52,33 +58,78 @@ export default function Landing({ exampleChurch }) {
   const [LandingMap, setLandingMap] = useState(null)
   const [preview, setPreview] = useState(null)
   const [previewChurches, setPreviewChurches] = useState(null)
-  const [previewStatus, setPreviewStatus] = useState('idle')
   const [hoveredId, setHoveredId] = useState(null)
   // Read after hydration (below), never during render: `/` is prerendered
   // and the first paint must match it.
   const [prefs, setPrefs] = useState(EMPTY_PREFERENCES)
   const userEdited = useRef(false)
   const heroCard = useRef(null)
+  // What the rows were ranked for, the request in flight and the last
+  // failure, each as a previewKey (city + preferences); see landingPreview.
+  const [loadedKey, setLoadedKey] = useState(undefined)
+  const [pendingKey, setPendingKey] = useState(undefined)
+  const [failedKey, setFailedKey] = useState(undefined)
+  const inflight = useRef(null)
+  const wantKey = preview ? previewKey(preview, prefs) : null
+  const latestWant = useRef(wantKey)
+  latestWant.current = wantKey
+
+  // Search's first page, with the sort and preferences Search will use.
+  function prefetchSearch(place) {
+    prefetchFirstPage(searchParams(place), prefs)
+  }
 
   function goToSearch(place) {
-    prefetchCitySearch(place.city, place.state)
+    prefetchSearch(place)
     navigate(searchUrl(place))
   }
 
-  function showPreview(place) {
+  function choosePlace(place) {
     setPreview(place)
     if (!userEdited.current) setLocation(`${place.city}, ${place.state}`)
-    setPreviewStatus('loading')
-    listChurches(
-      { type: 'location', city: place.city, state: place.state },
-      { limit: PREVIEW_LIMIT, sort: 'starting_point' },
-    )
-      .then(data => {
-        setPreviewChurches(data)
-        setPreviewStatus(data.length ? 'ready' : 'empty')
-      })
-      .catch(() => setPreviewStatus('error'))
   }
+
+  // One page only. With preferences, the API ranks every church in the city
+  // by the same evidence fitScore counts, then by how much a newcomer can
+  // learn; without them, by that second measure alone. Runs whenever the
+  // city, the preferences, or a request's outcome changes, so a dropped
+  // answer is always followed by the request the page now wants.
+  useEffect(() => {
+    const step = previewStep({ want: wantKey, loaded: loadedKey, pending: pendingKey, failed: failedKey })
+    if (step.type === 'cancel') {
+      inflight.current?.abort()
+      inflight.current = null
+      setPendingKey(undefined)
+      return undefined
+    }
+    if (step.type !== 'request') return undefined
+    const place = preview, requestPrefs = prefs
+    const timer = setTimeout(() => {
+      inflight.current?.abort()
+      const ctrl = new AbortController()
+      inflight.current = ctrl
+      setPendingKey(step.key)
+      const ranked = hasPreferences(requestPrefs)
+      listChurches(
+        { type: 'location', city: place.city, state: place.state },
+        { limit: PREVIEW_LIMIT, sort: ranked ? 'for_you' : 'starting_point', prefs: ranked ? requestPrefs : null, signal: ctrl.signal },
+      )
+        .then(data => {
+          if (ctrl.signal.aborted || step.key !== latestWant.current) return
+          setPreviewChurches(data)
+          setLoadedKey(step.key)
+        })
+        .catch(() => { if (!ctrl.signal.aborted) setFailedKey(step.key) })
+        .finally(() => {
+          if (inflight.current !== ctrl) return
+          inflight.current = null
+          setPendingKey(undefined)
+        })
+    }, step.delay)
+    return () => clearTimeout(timer)
+  }, [wantKey, loadedKey, pendingKey, failedKey]) // eslint-disable-line react-hooks/exhaustive-deps
+
+  useEffect(() => () => inflight.current?.abort(), [])
 
   useEffect(() => {
     const legacyParams = new URLSearchParams(window.location.search)
@@ -87,7 +138,7 @@ export default function Landing({ exampleChurch }) {
       return
     }
     if (legacyParams.has('city') && legacyParams.has('state')) {
-      prefetchCitySearch(legacyParams.get('city'), legacyParams.get('state'))
+      prefetchFirstPage(legacyParams, loadPreferences())
       navigate(`/search?${legacyParams}`, { replace: true })
       return
     }
@@ -114,10 +165,10 @@ export default function Landing({ exampleChurch }) {
       localStorage.removeItem('churchmap_last_search')
     }
     if (stored?.city && stored?.state) {
-      showPreview({ city: stored.city, state: stored.state })
+      choosePlace({ city: stored.city, state: stored.state })
     } else {
       detectLocation()
-        .then(data => showPreview({ city: data.city, state: data.state }))
+        .then(data => choosePlace({ city: data.city, state: data.state }))
         .catch(() => {})
     }
   }, [navigate])
@@ -147,14 +198,18 @@ export default function Landing({ exampleChurch }) {
   function updatePrefs(next) {
     setPrefs(next)
     savePreferences(next)
+    // A visitor's change is a fresh ask, even for a set that failed before.
+    setFailedKey(undefined)
   }
 
   const rows = previewChurches || NO_CHURCHES
+  const previewStatus = previewStatusOf({ want: wantKey, loaded: loadedKey, failed: failedKey, rows })
   const topPicks = pickStartingPoints(rankForYou(rows, prefs), TOP_PICKS)
   const zeroMatch = preview && zeroMatchSentence(rows, prefs, {
     city: preview.city,
     limit: PREVIEW_LIMIT,
     eligible: isStartingPoint,
+    ranked: hasPreferences(prefs) && loadedKey === wantKey,
   })
   const forYou = hasPreferences(prefs) && !zeroMatch
 
@@ -219,7 +274,7 @@ export default function Landing({ exampleChurch }) {
                 <Icon name="pin" size={14} /> {locating ? 'Finding your city…' : 'Use my location'}
               </button>
               {previewStatus !== 'ready' && previewStatus !== 'loading' && (
-                <Link to="/search?city=Brooklyn&state=NY" onClick={() => prefetchCitySearch('Brooklyn', 'NY')}>or try Brooklyn, NY <Icon name="arrow" size={13} /></Link>
+                <Link to="/search?city=Brooklyn&state=NY" onClick={() => prefetchSearch({ city: 'Brooklyn', state: 'NY' })}>or try Brooklyn, NY <Icon name="arrow" size={13} /></Link>
               )}
             </div>
 
@@ -272,7 +327,7 @@ export default function Landing({ exampleChurch }) {
                     </li>
                   ))}
                 </ul>
-                <Link className="map-hero-all" to={searchUrl(preview)} onClick={() => prefetchCitySearch(preview.city, preview.state)}>
+                <Link className="map-hero-all" to={searchUrl(preview)} onClick={() => prefetchSearch(preview)}>
                   See every church in {preview.city} <Icon name="arrow" />
                 </Link>
               </div>

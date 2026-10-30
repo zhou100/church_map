@@ -3,7 +3,8 @@ import { createRoot, hydrateRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Landing from './pages/Landing'
-import { prefetchCitySearch } from './api/client'
+import { loadPreferences } from './preferences'
+import { prefetchFirstPage } from './searchScope'
 import { scheduleGoogleIdentity } from './googleIdentity'
 import './index.css'
 
@@ -27,7 +28,7 @@ scheduleGoogleIdentity()
 // Start the first page of a city search while the Search chunk downloads.
 const startParams = new URLSearchParams(window.location.search)
 if (window.location.pathname.replace(/\/+$/, '') === '/search' && !startParams.get('name')) {
-  prefetchCitySearch(startParams.get('city'), startParams.get('state'))
+  prefetchFirstPage(startParams, loadPreferences())
 }
 
 function readPrerenderData() {

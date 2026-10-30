@@ -1,23 +1,31 @@
 import { useEffect, useRef } from 'react'
-import { MapContainer, TileLayer, Marker, Popup, useMap } from 'react-leaflet'
+import { MapContainer, TileLayer, Marker, Circle, useMap } from 'react-leaflet'
 import L from 'leaflet'
-import { churchMarkerIcon } from './mapMarker'
+import ChurchMapMarkers from './ChurchMapMarkers'
 import 'leaflet/dist/leaflet.css'
 
-// Refit only when the set of churches changes (a new search, a filter, more
-// results). The list is rebuilt on every render, so keying on it would refit
-// on each hover or re-sort and undo the visitor's own pan and zoom.
-function MapBounds({ churches }) {
+const CENTER_ICON = typeof window === 'undefined' ? null
+  : L.divIcon({ className: 'search-center-pin', html: '<span></span>', iconSize: [22, 22], iconAnchor: [11, 11] })
+
+// Fit the map once per search, when it first has rows and a size. Later
+// pages add pins without moving the map, so they never undo the visitor's
+// own pan, zoom or selection.
+function FitOnce({ fitKey, churches, circle, active }) {
   const map = useMap()
-  const latest = useRef(churches)
-  latest.current = churches
-  const idSet = churches.map(c => c.id).sort((a, b) => a - b).join(',')
+  const fitted = useRef(null)
   useEffect(() => {
-    const pts = latest.current.filter(c => c.latitude && c.longitude)
-    if (pts.length === 0) return
-    const bounds = L.latLngBounds(pts.map(c => [c.latitude, c.longitude]))
-    map.fitBounds(bounds, { padding: [32, 32], maxZoom: 14 })
-  }, [idSet, map])
+    if (!fitKey || fitted.current === fitKey) return
+    map.invalidateSize({ pan: false })
+    const size = map.getSize()
+    if (!size.x || !size.y) return
+    if (circle) {
+      map.fitBounds(L.latLng(circle.center.lat, circle.center.lon).toBounds(circle.miles * 1609.344 * 2), { padding: [24, 24], animate: false })
+    } else {
+      if (churches.length === 0) return
+      map.fitBounds(L.latLngBounds(churches.map(c => [c.latitude, c.longitude])), { padding: [32, 32], maxZoom: 14, animate: false })
+    }
+    fitted.current = fitKey
+  }, [fitKey, churches, circle, active, map])
   return null
 }
 
@@ -25,7 +33,9 @@ function MapFlyTo({ church }) {
   const map = useMap()
   useEffect(() => {
     if (church?.latitude && church?.longitude) {
-      map.flyTo([church.latitude, church.longitude], 15, { duration: 0.8 })
+      // A hidden phone map has no size; Leaflet's flight math divides by it.
+      const size = map.getSize()
+      map.flyTo([church.latitude, church.longitude], 15, { duration: 0.8, animate: size.x > 0 && size.y > 0 })
     }
   }, [church, map])
   return null
@@ -41,16 +51,19 @@ function MapResize({ active }) {
   return null
 }
 
+// `mappable` is the loaded rows that have coordinates; `circle` is the
+// nearby-cities scope ({ center, miles }) when the visitor chose one.
 export default function SearchMap({
   mappable,
   selectedChurch,
   hoveredId,
   selectedChurchId,
-  activeSearch,
   onSelect,
   onHover,
   hoverEnabled,
   mobileView,
+  fitKey,
+  circle,
 }) {
   return (
     <MapContainer
@@ -63,38 +76,17 @@ export default function SearchMap({
         attribution='&copy; <a href="https://www.openstreetmap.org/copyright">OpenStreetMap</a>'
         url="https://{s}.tile.openstreetmap.org/{z}/{x}/{y}.png"
       />
-      {!selectedChurch && <MapBounds churches={mappable} />}
+      <FitOnce fitKey={fitKey} churches={mappable} circle={circle} active={mobileView} />
+      {circle && <>
+        <Circle center={[circle.center.lat, circle.center.lon]} radius={circle.miles * 1609.344}
+          interactive={false} pathOptions={{ color: '#8B5E3C', fillOpacity: 0.06, weight: 2 }} />
+        <Marker position={[circle.center.lat, circle.center.lon]} zIndexOffset={1000} interactive={false}
+          keyboard={false} alt="Search center" icon={CENTER_ICON} />
+      </>}
       {selectedChurch && <MapFlyTo church={selectedChurch} />}
-      {mappable.map(c => {
-        const active = c.id === hoveredId || c.id === selectedChurchId
-        return (
-          <Marker
-            key={c.id}
-            position={[c.latitude, c.longitude]}
-            icon={churchMarkerIcon(active)}
-            eventHandlers={{
-              click: () => onSelect(c.id),
-              ...(hoverEnabled ? {
-                mouseover: () => onHover(c.id),
-                mouseout: () => onHover(null),
-              } : {}),
-            }}
-          >
-            <Popup>
-              <div className="map-popup">
-                <strong>{c.name}</strong>
-                {activeSearch?.type === 'name' && (c.city || c.state) && (
-                  <span className="popup-location">{[c.city, c.state].filter(Boolean).join(', ')}</span>
-                )}
-                {c.denomination && <span className="popup-denom">{c.denomination}</span>}
-                {c.avg_rating != null && (
-                  <span className="popup-rating">★ {c.avg_rating.toFixed(1)}</span>
-                )}
-              </div>
-            </Popup>
-          </Marker>
-        )
-      })}
+      <ChurchMapMarkers churches={mappable} hoveredId={hoveredId}
+        selectedId={selectedChurchId} onHover={hoverEnabled ? onHover : undefined}
+        onSelect={onSelect} searchCenter={circle?.center ?? null} />
     </MapContainer>
   )
 }

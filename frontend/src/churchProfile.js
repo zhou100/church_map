@@ -91,7 +91,7 @@ const norm = value => value.trim().toLowerCase()
 
 // Languages a church holds services in, from each source the list API returns,
 // first source wins: verified facts (migration 0006), the website extraction,
-// then the legacy directory field. Every "which languages" question (fit, the
+// excluding name-derived directory guesses. Every language question (fit, the
 // Search language filter, card tags) asks this one function.
 export function languageSignals(church) {
   const candidates = [
@@ -99,7 +99,6 @@ export function languageSignals(church) {
       .map(language => ({ language, source: 'verified' })),
     ...(Array.isArray(church.extracted_tags?.service_languages) ? church.extracted_tags.service_languages : [])
       .map(language => ({ language, source: 'website' })),
-    ...(typeof church.language === 'string' ? [{ language: church.language, source: 'directory' }] : []),
   ]
   const seen = new Set()
   return candidates.filter(({ language }) => {
@@ -158,7 +157,8 @@ export function fitScore(church, prefs) {
 }
 
 export function fitReason(church, prefs) {
-  return fitSignals(church, prefs).map(signal => signal.label).join(' · ')
+  const sources = { verified: 'checked source', website: 'from website', community: 'from reviews' }
+  return fitSignals(church, prefs).map(signal => `${signal.label} (${sources[signal.source]})`).join(' · ')
 }
 
 // Best fit first; equal fits keep the order they came in, so with no
@@ -173,26 +173,35 @@ export function rankForYou(churches, prefs) {
 
 // When nothing in the loaded rows matches, say what we don't know instead of
 // implying the city has no such church (TODOS F4). The count is only exact
-// when the whole city fit under the row limit. `eligible` is which rows the
-// page can show: every church on Search, only `isStartingPoint` on Landing.
-// Landing's rows come documented-first, so they can speak for the city; Search
-// pages nearest-first (`nearestFirst`), where a documented match can still be
-// on a page not loaded yet, so until the last page it speaks only of these.
-export function zeroMatchSentence(churches, prefs, { city, limit, eligible = isChurch, nearestFirst = false }) {
+// when the whole city fit under the row limit. `ranked` means the rows are
+// the top of a server ranking of the whole scope by the same evidence
+// (sort=for_you), so a later row can't match either, as long as no row on
+// the page matched at all: the server also ranks rows `eligible` drops, and
+// a match among those can sit above a real church's on a later page. Search's nearest-first
+// pages (`nearestFirst`) can still hold a documented match on a page not
+// loaded yet, so until the last page the sentence speaks only of these.
+// Otherwise a full page only speaks for the loaded rows. `eligible` is which
+// rows the page can show: every church on Search, only `isStartingPoint` on
+// Landing.
+export function zeroMatchSentence(churches, prefs, { city, limit, eligible = isChurch, ranked = false, nearestFirst = false }) {
   if (!hasPreferences(prefs)) return null
   if (churches.some(church => eligible(church) && fitScore(church, prefs) > 0)) return null
   const phrase = preferencePhrase(prefs, 'or')
+  const exact = churches.length < limit
   const known = churches.filter(church => isChurch(church) && hasFitDetails(church)).length
-  if (nearestFirst && churches.length >= limit) {
+  if (!exact && nearestFirst) {
     const subject = known === 0
       ? `We don't have details on the ${churches.length} churches nearest the middle of ${city}, so we can't tell yet which have`
       : `None of the ${churches.length} churches nearest the middle of ${city} mention`
     return `${subject} ${phrase}. Load more to check churches farther out.`
   }
-  if (known === 0) {
+  const rankedSpeaksForScope = ranked && !churches.some(church => fitScore(church, prefs) > 0)
+  if (!exact && !rankedSpeaksForScope) {
+    return `No loaded results mention ${phrase} yet. More churches in ${city} may match.`
+  }
+  if (exact && known === 0) {
     return `We don't have details on any church in ${city} yet, so we can't tell which have ${phrase}. These are still good places to start.`
   }
-  const exact = churches.length < limit
   const subject = !exact
     ? `None of the churches we have details on in ${city} mention`
     : known === 1
