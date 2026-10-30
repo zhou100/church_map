@@ -175,11 +175,20 @@ export function rankForYou(churches, prefs) {
 // implying the city has no such church (TODOS F4). The count is only exact
 // when the whole city fit under the row limit. `eligible` is which rows the
 // page can show: every church on Search, only `isStartingPoint` on Landing.
-export function zeroMatchSentence(churches, prefs, { city, limit, eligible = isChurch }) {
+// Landing's rows come documented-first, so they can speak for the city; Search
+// pages nearest-first (`nearestFirst`), where a documented match can still be
+// on a page not loaded yet, so until the last page it speaks only of these.
+export function zeroMatchSentence(churches, prefs, { city, limit, eligible = isChurch, nearestFirst = false }) {
   if (!hasPreferences(prefs)) return null
   if (churches.some(church => eligible(church) && fitScore(church, prefs) > 0)) return null
   const phrase = preferencePhrase(prefs, 'or')
   const known = churches.filter(church => isChurch(church) && hasFitDetails(church)).length
+  if (nearestFirst && churches.length >= limit) {
+    const subject = known === 0
+      ? `We don't have details on the ${churches.length} churches nearest the middle of ${city}, so we can't tell yet which have`
+      : `None of the ${churches.length} churches nearest the middle of ${city} mention`
+    return `${subject} ${phrase}. Load more to check churches farther out.`
+  }
   if (known === 0) {
     return `We don't have details on any church in ${city} yet, so we can't tell which have ${phrase}. These are still good places to start.`
   }

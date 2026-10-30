@@ -215,6 +215,7 @@ export default function Search() {
     ? zeroMatchSentence(churches, prefs, {
       city: activeSearch.city,
       limit: hasMore ? churches.length : churches.length + 1,
+      nearestFirst: true,
     })
     : null
 
