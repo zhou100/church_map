@@ -88,10 +88,11 @@ _LIST_TAG_KEYS = (
     "statement_of_faith",
 )
 # Browsers revalidate every time, so a visitor who just left a review sees it on
-# the next list. Only Vercel's CDN keeps a copy, briefly
-# (Vercel-CDN-Cache-Control is read by Vercel and not passed on to browsers).
-LIST_CACHE_CONTROL = "public, max-age=0, must-revalidate"
-LIST_CDN_CACHE_CONTROL = "max-age=60, stale-while-revalidate=300"
+# the next list. Only Vercel's CDN keeps a copy, for 60 seconds. It has to be
+# s-maxage: Vercel's rewrite cache ignored Vercel-CDN-Cache-Control on these
+# proxied responses (always MISS) while /api/stats with s-maxage got HITs.
+# No stale-while-revalidate, which browsers would also apply.
+LIST_CACHE_CONTROL = "public, max-age=0, s-maxage=60"
 
 
 def _tag_has_content(value) -> bool:
@@ -248,7 +249,6 @@ async def list_churches(
             )
     if response is not None:
         response.headers["Cache-Control"] = LIST_CACHE_CONTROL
-        response.headers["Vercel-CDN-Cache-Control"] = LIST_CDN_CACHE_CONTROL
     return [_row_to_list_church(r) for r in rows]
 
 
