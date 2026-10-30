@@ -11,7 +11,7 @@ from fastapi import FastAPI
 from fastapi.testclient import TestClient
 
 from backend.routers import churches, stats as stats_mod
-from backend.routers.churches import LIST_CACHE_CONTROL, LIST_CDN_CACHE_CONTROL, _row_to_list_church
+from backend.routers.churches import LIST_CACHE_CONTROL, _row_to_list_church
 
 LONG_SUMMARY = (
     "A neighborhood congregation gathered around a shared table, "
@@ -89,7 +89,8 @@ def test_list_trims_payload_and_sets_public_cache(monkeypatch):
     assert response.status_code == 200
     assert response.headers["cache-control"] == LIST_CACHE_CONTROL
     assert "max-age=0" in LIST_CACHE_CONTROL
-    assert response.headers["vercel-cdn-cache-control"] == LIST_CDN_CACHE_CONTROL
+    assert "s-maxage=60" in LIST_CACHE_CONTROL
+    assert "stale-while-revalidate" not in LIST_CACHE_CONTROL
     church = response.json()[0]
     assert church["website_summary"].endswith("…")
     assert len(church["website_summary"]) <= 201
