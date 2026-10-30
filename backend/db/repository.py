@@ -61,12 +61,12 @@ CITY_ORDERINGS = {
     "default": ("""
         (c.website_summary IS NOT NULL OR c.extracted_tags IS NOT NULL) DESC,
         review_count DESC,
-        c.name ASC""", 0),
+        c.name ASC, c.church_id ASC""", 0),
     "starting_point": (f"""
         {STARTING_POINT_SCORE} DESC,
         SQRT(POWER(c.latitude - {_city_median("latitude")}, 2)
            + POWER(c.longitude - {_city_median("longitude")}, 2)) ASC NULLS LAST,
-        c.name ASC""", 2),
+        c.name ASC, c.church_id ASC""", 2),
     # Search: nearest the middle of the city first, so "Load more" only ever
     # adds churches farther out. Longitude degrees are scaled to latitude
     # degrees at the city's latitude; unmapped churches come last.
@@ -74,7 +74,7 @@ CITY_ORDERINGS = {
         POWER(c.latitude - {_city_median("latitude")}, 2)
           + POWER((c.longitude - {_city_median("longitude")})
                   * COS(RADIANS({_city_median("latitude")})), 2) ASC NULLS LAST,
-        c.name ASC""", 3),
+        c.name ASC, c.church_id ASC""", 3),
 }
 
 # `_DIM_QUERY` produces the fields routers expect, including review aggregates.
@@ -148,15 +148,11 @@ def extracted_filters(
     worship_style: str | None = None,
     stance: str | None = None,
 ) -> tuple[str, list]:
-    """SQL fragment + params for filtering on `churches.extracted_tags`.
+    """SQL fragment + params for filtering on verified facts and website extraction.
 
-    This is the crawl data finally reaching search. Every predicate is
-    naturally exclusive: a church with no extraction cannot match, because
-    `extracted_tags -> ...` is NULL for it. That is the honest behaviour —
-    we don't know a church's service language until something read its
-    website — but it does mean a filter's usefulness tracks extraction
-    coverage. While the v3.1 backfill drains, `service_languages` is empty
-    for most rows, so a language filter returns little.
+    Languages combine verified service_languages and extracted_tags. Legacy
+    name-derived language/culture labels are not service-language evidence.
+    Worship style and stance continue to use website extraction only.
 
     No GIN index: these clauses always run alongside the city/state or ZIP
     predicate, which is indexed and cuts the corpus to a few hundred rows
@@ -172,11 +168,12 @@ def extracted_filters(
         # guard matters for any row whose extraction predates the current
         # schema or was written by hand.
         clauses.append(
-            "jsonb_typeof(c.extracted_tags->'service_languages') = 'array' "
-            "AND EXISTS ("
-            "  SELECT 1 FROM jsonb_array_elements_text(c.extracted_tags->'service_languages') AS lang"
-            "   WHERE LOWER(lang) = LOWER(%s)"
-            ")"
+            "EXISTS (SELECT 1 FROM ("
+            " SELECT BTRIM(unnest(string_to_array(c.service_languages, ';'))) AS lang"
+            " UNION ALL SELECT jsonb_array_elements_text("
+            " CASE WHEN jsonb_typeof(c.extracted_tags->'service_languages') = 'array'"
+            " THEN c.extracted_tags->'service_languages' ELSE '[]'::jsonb END)"
+            ") languages WHERE LOWER(lang) = LOWER(%s))"
         )
         params.append(language)
 
@@ -243,7 +240,7 @@ class ChurchRepository:
                 review_count DESC,
                 c.name ASC,
                 c.city ASC,
-                c.state ASC
+                c.state ASC, c.church_id ASC
             LIMIT %s OFFSET %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:

@@ -57,7 +57,7 @@ function CardBody({ church, userLat, userLon, showLocation, fitReason }) {
     ...(Array.isArray(extracted.vibe_tags) ? extracted.vibe_tags : []),
   ])].slice(0, 2)
   // Website-read languages already sit in the "From their website" block;
-  // these are the verified and directory ones.
+  // these are the verified ones. Name-derived language guesses stay out.
   const languageTags = languageSignals(church)
     .filter(signal => signal.source !== 'website' && signal.language.toLowerCase() !== 'english')
     .map(signal => signal.language)

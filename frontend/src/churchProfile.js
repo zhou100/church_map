@@ -91,7 +91,7 @@ const norm = value => value.trim().toLowerCase()
 
 // Languages a church holds services in, from each source the list API returns,
 // first source wins: verified facts (migration 0006), the website extraction,
-// then the legacy directory field. Every "which languages" question (fit, the
+// excluding name-derived directory guesses. Every language question (fit, the
 // Search language filter, card tags) asks this one function.
 export function languageSignals(church) {
   const candidates = [
@@ -99,7 +99,6 @@ export function languageSignals(church) {
       .map(language => ({ language, source: 'verified' })),
     ...(Array.isArray(church.extracted_tags?.service_languages) ? church.extracted_tags.service_languages : [])
       .map(language => ({ language, source: 'website' })),
-    ...(typeof church.language === 'string' ? [{ language: church.language, source: 'directory' }] : []),
   ]
   const seen = new Set()
   return candidates.filter(({ language }) => {
@@ -158,7 +157,8 @@ export function fitScore(church, prefs) {
 }
 
 export function fitReason(church, prefs) {
-  return fitSignals(church, prefs).map(signal => signal.label).join(' · ')
+  const sources = { verified: 'checked source', website: 'from website', community: 'from reviews' }
+  return fitSignals(church, prefs).map(signal => `${signal.label} (${sources[signal.source]})`).join(' · ')
 }
 
 // Best fit first; equal fits keep the order they came in, so with no

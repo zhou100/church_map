@@ -95,7 +95,7 @@ test('keeps Christian labels that share words with excluded ones', () => {
 
 const prefs = overrides => ({ ...EMPTY_PREFERENCES, ...overrides })
 
-test('languages come from verified facts, the website and the directory, first source wins', () => {
+test('service languages use verified facts and the website, excluding directory guesses', () => {
   assert.deepEqual(languageSignals(church({
     name: 'All three',
     service_languages: ['Spanish'],
@@ -104,24 +104,23 @@ test('languages come from verified facts, the website and the directory, first s
   })), [
     { language: 'Spanish', source: 'verified' },
     { language: 'English', source: 'website' },
-    { language: 'Korean', source: 'directory' },
   ])
   assert.deepEqual(churchLanguages(church({ name: 'Website only', extracted_tags: { service_languages: ['Tagalog'] } })), ['Tagalog'])
-  assert.deepEqual(churchLanguages(church({ name: 'Directory only', language: 'Haitian Creole' })), ['Haitian Creole'])
+  assert.deepEqual(churchLanguages(church({ name: 'Directory only', language: 'Haitian Creole' })), [])
   assert.deepEqual(churchLanguages(church({ name: 'Nothing', language: '', service_languages: [] })), [])
   assert.deepEqual(churchLanguages(church({ name: 'Junk', extracted_tags: { service_languages: 'Spanish' } })), [])
 })
 
 test('cultural background is not a language', () => {
   assert.equal(speaksLanguage(church({ name: 'Iglesia', cultural_background: 'Hispanic/Latino' }), 'Spanish'), false)
-  assert.equal(speaksLanguage(church({ name: 'Iglesia', language: 'spanish' }), 'Spanish'), true)
+  assert.equal(speaksLanguage(church({ name: 'Iglesia', language: 'spanish' }), 'Spanish'), false)
 })
 
 test('each preference matches each of its sources', () => {
   const spanish = prefs({ languages: ['Spanish'] })
   assert.equal(fitScore(church({ name: 'v', service_languages: ['Spanish'] }), spanish), 1)
   assert.equal(fitScore(church({ name: 'w', extracted_tags: { service_languages: ['Spanish'] } }), spanish), 1)
-  assert.equal(fitScore(church({ name: 'd', language: 'Spanish' }), spanish), 1)
+  assert.equal(fitScore(church({ name: 'd', language: 'Spanish' }), spanish), 0)
 
   const contemporary = prefs({ worship: ['contemporary'] })
   assert.equal(fitScore(church({ name: 'c', extracted_tags: { worship_style: 'contemporary' } }), contemporary), 1)
@@ -143,7 +142,7 @@ test('the score counts questions answered, not matched values', () => {
     extracted_tags: { service_languages: ['Spanish', 'English'], worship_style: 'blended', programs: ['kids'] },
   })
   assert.equal(fitScore(row, both), 3)
-  assert.equal(fitReason(row, both), 'Spanish service · English service · Blended worship · Kids program')
+  assert.equal(fitReason(row, both), 'Spanish service (from website) · English service (from website) · Blended worship (from website) · Kids program (from website)')
 })
 
 test('an unread church yields no signal and never a negative one', () => {
@@ -162,9 +161,9 @@ test('better fits rise, equal fits keep their order', () => {
   const asked = prefs({ languages: ['Spanish'], kids: true })
   const rows = [
     church({ name: 'none-1' }),
-    church({ name: 'one-a', language: 'Spanish' }),
+    church({ name: 'one-a', service_languages: ['Spanish'] }),
     church({ name: 'none-2' }),
-    church({ name: 'two', language: 'Spanish', kids_program: 'Nursery' }),
+    church({ name: 'two', service_languages: ['Spanish'], kids_program: 'Nursery' }),
     church({ name: 'one-b', tags: ['Kids programs'] }),
   ]
   assert.deepEqual(rankForYou(rows, asked).map(c => c.name), ['two', 'one-a', 'one-b', 'none-1', 'none-2'])
@@ -236,7 +235,7 @@ test('Search, nearest first: until the last page, the sentence speaks only of th
 })
 
 test('no zero-match sentence when anything matched or nothing was asked', () => {
-  const rows = [church({ name: 'A', ...READ }), church({ name: 'B', language: 'Korean' })]
+  const rows = [church({ name: 'A', ...READ }), church({ name: 'B', service_languages: ['Korean'] })]
   assert.equal(zeroMatchSentence(rows, prefs({ languages: ['Korean'] }), { city: 'X', limit: 100 }), null)
   assert.equal(zeroMatchSentence(rows, EMPTY_PREFERENCES, { city: 'X', limit: 100 }), null)
 })
@@ -248,12 +247,12 @@ test('a match on a non-church row does not count as a match', () => {
 
 test('language chips: English and Spanish first, then the city, six at most, picks always kept', () => {
   const rows = [
-    church({ name: '1', language: 'Korean' }),
+    church({ name: '1', service_languages: ['Korean'] }),
     church({ name: '2', extracted_tags: { service_languages: ['Korean', 'Tagalog'] } }),
     church({ name: '3', service_languages: ['Vietnamese', 'Spanish'] }),
-    church({ name: '4', language: 'Amharic' }),
-    church({ name: '5', language: 'Russian' }),
-    church({ name: '6', language: 'Tagalog' }),
+    church({ name: '4', service_languages: ['Amharic'] }),
+    church({ name: '5', service_languages: ['Russian'] }),
+    church({ name: '6', service_languages: ['Tagalog'] }),
   ]
   assert.deepEqual(cityLanguageChips(rows), ['English', 'Spanish', 'Korean', 'Tagalog', 'Amharic', 'Russian'])
   assert.deepEqual(cityLanguageChips(rows, ['Haitian Creole', 'korean']).slice(-1), ['Haitian Creole'])
@@ -289,6 +288,6 @@ test('landing: a match the picks would drop does not count, so the picks are exp
   const view = landingView(rows, prefs({ languages: ['Korean'] }))
   assert.deepEqual(view.picks, ['A', 'B'])
   assert.ok(view.zeroMatch)
-  // Search lists every church, so there the same row is a match.
-  assert.equal(zeroMatchSentence(rows, prefs({ languages: ['Korean'] }), { city: 'Fresno', limit: 100 }), null)
+  // Search also treats a directory guess as unknown service language.
+  assert.ok(zeroMatchSentence(rows, prefs({ languages: ['Korean'] }), { city: 'Fresno', limit: 100 }))
 })

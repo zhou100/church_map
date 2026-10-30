@@ -197,10 +197,9 @@ async def list_churches(
 ):
     """Search churches by name or list them by location.
 
-    `language`, `worship_style` and `stance` filter on `extracted_tags` —
-    what the crawler read off each church's own site. A church with no
-    extraction cannot match any of them, so coverage bounds how useful they
-    are; see `extracted_filters` in the repository layer.
+    `language` matches verified service languages or website extraction.
+    `worship_style` and `stance` use extracted_tags. Name-based language
+    heuristics do not satisfy a service-language filter.
 
     `worship_style` and `stance` are validated against the extraction
     schema. Silently returning zero results for a typo'd bucket would be

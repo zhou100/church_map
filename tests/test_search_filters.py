@@ -199,3 +199,19 @@ def test_name_search_is_global_and_case_insensitive():
         }
 
     run_with_churches(body)
+
+
+@pg
+def test_verified_language_is_searchable_without_website_extraction():
+    async def body(repo):
+        await repo.con.execute(
+            "INSERT INTO churches (name, city, state, service_languages, extracted_tags) "
+            "VALUES ('flt verified', 'Filterville', 'ZZ', ' English ; Vietnamese ', '{\"service_languages\":\"bad\"}'::jsonb)"
+        )
+        assert await _names(repo, language='vietnamese') == {'flt verified'}
+        await repo.con.execute(
+            "INSERT INTO churches (name, city, state, language) "
+            "VALUES ('flt inferred', 'Filterville', 'ZZ', 'Vietnamese')"
+        )
+        assert await _names(repo, language='Vietnamese') == {'flt verified'}
+    run_with_churches(body)
