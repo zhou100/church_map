@@ -1,4 +1,5 @@
 import { mkdir, readFile, writeFile } from 'node:fs/promises'
+import { fileURLToPath } from 'node:url'
 import React from 'react'
 import { renderToStaticMarkup } from 'react-dom/server'
 import { createServer } from 'vite'
@@ -139,10 +140,24 @@ async function writeRoute(distUrl, route, html) {
   await writeFile(outputUrl, html)
 }
 
+const routerShim = fileURLToPath(new URL('./prerenderRouterShim.js', import.meta.url))
+
 const server = await createServer({
   appType: 'custom',
   logLevel: 'error',
   server: { middlewareMode: true },
+  // react-router-dom's Node build is CommonJS, which this SSR pass cannot
+  // named-import. Only the landing page is rendered here, and it only needs
+  // real hrefs. The rest of the app keeps the real package.
+  plugins: [{
+    name: 'prerender-landing-router-shim',
+    enforce: 'pre',
+    resolveId(source, importer) {
+      if (!importer?.endsWith('/src/pages/Landing.jsx')) return null
+      if (source !== '../router' && !source.endsWith('/src/router.js')) return null
+      return routerShim
+    },
+  }],
 })
 
 try {

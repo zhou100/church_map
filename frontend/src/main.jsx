@@ -1,14 +1,21 @@
-import { StrictMode } from 'react'
+import { StrictMode, Suspense, lazy } from 'react'
 import { createRoot, hydrateRoot } from 'react-dom/client'
 import { BrowserRouter, Routes, Route } from 'react-router-dom'
 import { AuthProvider } from './context/AuthContext'
 import Landing from './pages/Landing'
-import Search from './pages/Search'
-import ChurchDetail from './pages/ChurchDetail'
-import Status from './pages/Status'
-import Privacy from './pages/Privacy'
-import 'leaflet/dist/leaflet.css'
+import { scheduleGoogleIdentity } from './googleIdentity'
 import './index.css'
+
+const Search = lazy(() => import('./pages/Search'))
+const ChurchDetail = lazy(() => import('./pages/ChurchDetail'))
+const Status = lazy(() => import('./pages/Status'))
+const Privacy = lazy(() => import('./pages/Privacy'))
+
+function RouteFallback() {
+  return <p className="loading">Loading…</p>
+}
+
+scheduleGoogleIdentity()
 
 function readPrerenderData() {
   const element = document.getElementById('churchmap-prerender-data')
@@ -25,13 +32,15 @@ const app = (
   <StrictMode>
     <AuthProvider>
       <BrowserRouter>
-        <Routes>
-          <Route path="/" element={<Landing exampleChurch={prerenderData.landingExample} />} />
-          <Route path="/search" element={<Search />} />
-          <Route path="/church/:id" element={<ChurchDetail />} />
-          <Route path="/status" element={<Status />} />
-          <Route path="/privacy" element={<Privacy />} />
-        </Routes>
+        <Suspense fallback={<RouteFallback />}>
+          <Routes>
+            <Route path="/" element={<Landing exampleChurch={prerenderData.landingExample} />} />
+            <Route path="/search" element={<Search />} />
+            <Route path="/church/:id" element={<ChurchDetail />} />
+            <Route path="/status" element={<Status />} />
+            <Route path="/privacy" element={<Privacy />} />
+          </Routes>
+        </Suspense>
       </BrowserRouter>
     </AuthProvider>
   </StrictMode>

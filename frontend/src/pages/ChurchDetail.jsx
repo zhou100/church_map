@@ -9,6 +9,7 @@ import AboutSection from '../components/AboutSection'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { churchMarkerIcon } from '../components/mapMarker'
+import 'leaflet/dist/leaflet.css'
 import { enrichChurch, getChurch, getReviews, getSimilarChurches } from '../api/client'
 import { buildChurchSeo } from '../seo/church'
 

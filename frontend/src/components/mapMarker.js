@@ -1,6 +1,6 @@
 import L from 'leaflet'
 
-export function churchMarkerIcon(active = false) {
+function makeChurchMarkerIcon(active) {
   return L.divIcon({
     className: 'church-marker',
     html: `
@@ -13,4 +13,13 @@ export function churchMarkerIcon(active = false) {
     iconAnchor: [16, 39],
     popupAnchor: [0, -38],
   })
+}
+
+// One icon per state, shared by the search map and the landing map.
+// Creating a divIcon per pin per render makes Leaflet rebuild every marker.
+const NORMAL_ICON = makeChurchMarkerIcon(false)
+const ACTIVE_ICON = makeChurchMarkerIcon(true)
+
+export function churchMarkerIcon(active = false) {
+  return active ? ACTIVE_ICON : NORMAL_ICON
 }

@@ -76,7 +76,7 @@ export default function ReviewForm({ churchId, onSubmitted }) {
     return (
       <div className="review-form review-signin-gate">
         <p className="signin-prompt">Sign in to share your experience with this church.</p>
-        <GoogleSignInButton onCredential={handleGoogleCredential} options={REVIEW_BUTTON} />
+        <GoogleSignInButton immediate onCredential={handleGoogleCredential} options={REVIEW_BUTTON} />
       </div>
     )
   }

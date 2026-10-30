@@ -11,7 +11,7 @@ import asyncio
 import json
 import os
 
-from fastapi import APIRouter, HTTPException, Query
+from fastapi import APIRouter, HTTPException, Query, Response
 from psycopg.rows import dict_row
 
 from backend import enrichment
@@ -74,6 +74,79 @@ def _iso(value) -> str | None:
     return value.isoformat() if value is not None else None
 
 
+# Fields the search cards, language filter, and "for you" / starting-point
+# ranking actually read. Long prose (theology, pull quotes, worship detail)
+# stays on the detail endpoint. A church whose only extracted content is that
+# prose still returns one short field so "website profile" does not flip off.
+_LIST_SUMMARY_LIMIT = 200
+_LIST_TAG_KEYS = (
+    "service_languages",
+    "vibe_tags",
+    "worship_style",
+    "programs",
+    "theological_stance",
+    "statement_of_faith",
+)
+LIST_CACHE_CONTROL = "public, max-age=60, s-maxage=600, stale-while-revalidate=86400"
+
+
+def _tag_has_content(value) -> bool:
+    if isinstance(value, str):
+        return bool(value.strip())
+    if isinstance(value, (list, tuple)):
+        return len(value) > 0
+    if isinstance(value, dict):
+        return False
+    return value not in (None, False)
+
+
+def _truncate_text(value: str | None, limit: int = _LIST_SUMMARY_LIMIT) -> str | None:
+    if not isinstance(value, str):
+        return None
+    text = value.strip()
+    if not text:
+        return None
+    if len(text) <= limit:
+        return text
+    cut = text[:limit].rstrip()
+    space = cut.rfind(" ")
+    if space >= limit // 2:
+        trimmed = cut[:space].rstrip(" ,;:")
+        cut = trimmed or cut
+    return f"{cut}…"
+
+
+def _list_extracted_tags(tags):
+    normalized = _normalize_extracted_tags(tags)
+    if not isinstance(normalized, dict):
+        return normalized
+    kept = {
+        key: normalized[key]
+        for key in _LIST_TAG_KEYS
+        if _tag_has_content(normalized.get(key))
+    }
+    if kept:
+        return kept
+    for key, value in normalized.items():
+        if not _tag_has_content(value):
+            continue
+        if isinstance(value, str):
+            short = _truncate_text(value, 80)
+            return {key: short} if short else None
+        if isinstance(value, list):
+            return {key: value}
+        if not isinstance(value, dict):
+            return {key: value}
+    return None
+
+
+def _row_to_list_church(row: dict) -> dict:
+    church = _row_to_church(row)
+    church["website_summary"] = _truncate_text(church.get("website_summary"))
+    church["extracted_tags"] = _list_extracted_tags(church.get("extracted_tags"))
+    return church
+
+
 def _fact_sources(rows: list[dict]) -> dict:
     """field -> {source_url, source_type, checked_at}, for "Checked <date>" links."""
     return {r["field"]: {"source_url": r["source_url"], "source_type": r["source_type"],
@@ -108,8 +181,9 @@ async def list_churches(
     worship_style: str = "",
     stance: str = "",
     sort: str = "",
-    limit: int = 50,
-    offset: int = 0,
+    limit: int = Query(50, ge=1, le=200),
+    offset: int = Query(0, ge=0),
+    response: Response = None,
 ):
     """Search churches by name or list them by location.
 
@@ -163,7 +237,9 @@ async def list_churches(
             rows = await repo.list_by_city_state(
                 city, state, limit, offset, sort=sort_key, **filters
             )
-    return [_row_to_church(r) for r in rows]
+    if response is not None:
+        response.headers["Cache-Control"] = LIST_CACHE_CONTROL
+    return [_row_to_list_church(r) for r in rows]
 
 
 @router.get("/churches/prerender")

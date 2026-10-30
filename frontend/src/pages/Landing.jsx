@@ -1,11 +1,12 @@
 import { useEffect, useRef, useState } from 'react'
+import { Link, useNavigate } from '../router'
 import AboutSection from '../components/AboutSection'
 import AccountButton from '../components/AccountButton'
 import DimensionBars from '../components/DimensionBars'
 import FitPreferences from '../components/FitPreferences'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
-import { detectLocation, getStats, listChurches } from '../api/client'
+import { detectLocation, getStats, listChurches, prefetchCitySearch } from '../api/client'
 import {
   cityLanguageChips,
   fitReason,
@@ -17,7 +18,7 @@ import {
 } from '../churchProfile'
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 
-const PREVIEW_LIMIT = 100
+const PREVIEW_LIMIT = 30
 const NO_CHURCHES = []
 const TOP_PICKS = 3
 const AUDITED_COVERAGE = { withSummary: 4332, total: 133939 }
@@ -41,6 +42,7 @@ function searchUrl({ city, state }) {
 }
 
 export default function Landing({ exampleChurch }) {
+  const navigate = useNavigate()
   const [location, setLocation] = useState('')
   const [locationError, setLocationError] = useState('')
   const [locating, setLocating] = useState(false)
@@ -61,6 +63,11 @@ export default function Landing({ exampleChurch }) {
   const userEdited = useRef(false)
   const heroCard = useRef(null)
 
+  function goToSearch(place) {
+    prefetchCitySearch(place.city, place.state)
+    navigate(searchUrl(place))
+  }
+
   function showPreview(place) {
     setPreview(place)
     if (!userEdited.current) setLocation(`${place.city}, ${place.state}`)
@@ -78,8 +85,13 @@ export default function Landing({ exampleChurch }) {
 
   useEffect(() => {
     const legacyParams = new URLSearchParams(window.location.search)
-    if (legacyParams.has('name') || (legacyParams.has('city') && legacyParams.has('state'))) {
-      window.location.replace(`/search?${legacyParams}`)
+    if (legacyParams.has('name')) {
+      navigate(`/search?${legacyParams}`, { replace: true })
+      return
+    }
+    if (legacyParams.has('city') && legacyParams.has('state')) {
+      prefetchCitySearch(legacyParams.get('city'), legacyParams.get('state'))
+      navigate(`/search?${legacyParams}`, { replace: true })
       return
     }
 
@@ -111,7 +123,7 @@ export default function Landing({ exampleChurch }) {
         .then(data => showPreview({ city: data.city, state: data.state }))
         .catch(() => {})
     }
-  }, [])
+  }, [navigate])
 
   function handleSubmit(event) {
     event.preventDefault()
@@ -120,7 +132,7 @@ export default function Landing({ exampleChurch }) {
       setLocationError('Enter a city and two-letter state, like Brooklyn, NY.')
       return
     }
-    window.location.assign(searchUrl(parsed))
+    goToSearch(parsed)
   }
 
   async function handleUseLocation() {
@@ -128,7 +140,7 @@ export default function Landing({ exampleChurch }) {
     setLocationError('')
     try {
       const data = await detectLocation()
-      window.location.assign(searchUrl(data))
+      goToSearch(data)
     } catch (err) {
       setLocationError(`${err.message}. Type a city instead.`)
       setLocating(false)
@@ -160,7 +172,7 @@ export default function Landing({ exampleChurch }) {
         <a className="landing-wordmark" href="/">ChurchMap</a>
         <div>
           <a href="#methodology">How it works</a>
-          <a className="nav-search-link" href="/search">Search churches</a>
+          <Link className="nav-search-link" to="/search">Search churches</Link>
           <AccountButton />
         </div>
       </nav>
@@ -210,7 +222,7 @@ export default function Landing({ exampleChurch }) {
                 <Icon name="pin" size={14} /> {locating ? 'Finding your city…' : 'Use my location'}
               </button>
               {previewStatus !== 'ready' && previewStatus !== 'loading' && (
-                <a href="/search?city=Brooklyn&state=NY">or try Brooklyn, NY <Icon name="arrow" size={13} /></a>
+                <Link to="/search?city=Brooklyn&state=NY" onClick={() => prefetchCitySearch('Brooklyn', 'NY')}>or try Brooklyn, NY <Icon name="arrow" size={13} /></Link>
               )}
             </div>
 
@@ -262,13 +274,13 @@ export default function Landing({ exampleChurch }) {
                     onOpenChange={setFitPanelOpen}
                     sheetAction={{
                       label: hasPreferences(prefs) ? 'Show churches that fit' : `Show churches in ${preview.city}`,
-                      onClick: () => window.location.assign(searchUrl(preview)),
+                      onClick: () => goToSearch(preview),
                     }}
                   />
                 )}
-                <a className="map-hero-all" href={searchUrl(preview)}>
+                <Link className="map-hero-all" to={searchUrl(preview)} onClick={() => prefetchCitySearch(preview.city, preview.state)}>
                   See every church in {preview.city} <Icon name="arrow" />
-                </a>
+                </Link>
               </div>
             )}
           </div>
@@ -331,7 +343,7 @@ export default function Landing({ exampleChurch }) {
               ChurchMap reviews ask about six useful dimensions instead of one generic score.
               Most churches are still waiting for their first review. Your experience can make the next visit less uncertain.
             </p>
-            <a className="primary-link" href="/search">Find a church to review <Icon name="arrow" /></a>
+            <Link className="primary-link" to="/search">Find a church to review <Icon name="arrow" /></Link>
           </div>
           <div className="dimension-demo" aria-label="Example of the six community rating dimensions">
             <p>Example ratings</p>

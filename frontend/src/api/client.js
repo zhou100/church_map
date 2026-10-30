@@ -1,4 +1,43 @@
-const API_BASE = import.meta.env.VITE_API_URL || ''
+// Same-origin `/api` when VITE_API_URL is unset or blank. Production relies on
+// the Vercel rewrite to the Render API. Set VITE_API_URL to call another host
+// (local dev against uvicorn).
+function resolveApiBase() {
+  const configured = import.meta.env.VITE_API_URL
+  if (typeof configured !== 'string') return ''
+  const trimmed = configured.trim().replace(/\/$/, '')
+  return trimmed
+}
+
+const API_BASE = resolveApiBase()
+
+export function prefetchCitySearch(city, state) {
+  if (typeof window === 'undefined' || !city || !state) return
+  const existing = window.__churchmapSearchPrefetch
+  if (existing && existing.city === city && existing.state === state) return
+  const params = new URLSearchParams({
+    limit: '50',
+    offset: '0',
+    city,
+    state,
+  })
+  const promise = fetch(`${API_BASE}/api/churches?${params}`).then(response => {
+    if (!response.ok) throw new Error('prefetch failed')
+    return response.json()
+  })
+  window.__churchmapSearchPrefetch = { city, state, promise, via: 'client' }
+}
+
+export function takeCitySearchPrefetch(city, state) {
+  if (typeof window === 'undefined') return null
+  const slot = window.__churchmapSearchPrefetch
+  if (!slot || slot.city !== city || slot.state !== state) return null
+  // The document prefetch always calls same-origin `/api`. Ignore it when
+  // this build is pointed at another host; a client prefetch already used
+  // API_BASE and is safe to consume.
+  if (API_BASE && slot.via !== 'client') return null
+  window.__churchmapSearchPrefetch = null
+  return slot.promise
+}
 
 export class ApiError extends Error {
   constructor(message, status) {
