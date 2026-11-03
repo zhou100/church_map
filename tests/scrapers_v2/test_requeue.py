@@ -325,3 +325,29 @@ def test_changed_content_still_creates_pending_extraction():
             assert await cur.fetchone() == (2,)
 
     run_with_fixture(body)
+
+
+def test_visit_pages_stay_out_of_website_v3_and_do_not_block_requeue():
+    """Pages fetched for the visit-facts stage (kids, contact, events, …) are
+    never website_v3 input. Left `pending` for that later stage, they must not
+    count as "already queued", or a stale church would never be re-queued."""
+    async def body(r, ids):
+        stale_prompt, _stale_model, _current, never = ids
+        async with r.con.cursor() as cur:
+            for cid in (stale_prompt, never):
+                await cur.execute(
+                    """INSERT INTO raw_crawl_artifacts
+                           (church_id, url, kind, content_hash, r2_key, http_status, extract_status)
+                       VALUES (%s, %s, 'kids', %s, %s, 200, 'pending')""",
+                    (cid, f"https://rq{cid}.test/kids", f"rqkids{cid}", f"rqkidskey{cid}"),
+                )
+        counts = await r.count_stale_extractions(CURRENT_VERSION, CURRENT_MODEL)
+        assert counts["awaiting_queue"] == 2
+        got = set(await r.requeue_stale_extractions(CURRENT_VERSION, CURRENT_MODEL, limit=1))
+        assert got == {stale_prompt}
+        targets = {t["church_id"]: t for t in await r.pending_extract_targets(limit=50)}
+        assert targets[stale_prompt]["kinds"] == ["homepage"]
+        assert targets[never]["kinds"] == ["homepage"]
+        assert all("kids" not in t["kinds"] for t in targets.values())
+
+    run_with_fixture(body)
