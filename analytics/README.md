@@ -60,6 +60,8 @@ python3 muse_handoff/drive_sync.py status
 What `pull` does:
 - It reads a package only after Muse writes `DONE.md`, and only if every listed file matches its sha256.
 - A package that fails validation is not ingested. It goes back to Muse as `feedback/WP-xxxx.md`, with the state set to `needs_fix`.
+- The D12 directory sweep is read in any layout (lines, wrapped bullets, slashes, tables). A discovery package goes back only for content: no churchfinder/oursweb report at all, or a stated `unresearched U` > 0 on a city that isn't `cap reached`. An entry without a stated U is listed in the status note for us to read, with listed − known − reported where it can be computed; that difference never sends a package back on its own.
+- A discovery package listed in [`muse_handoff/sweep_accepted.csv`](../muse_handoff/sweep_accepted.csv) skips the sweep checks entirely: the owner chose to take it as delivered. Its rows are still validated and re-checked. After adding a row, run `pull --again WP-xxxx`.
 - Ingested files land in `muse_handoff/returns/` as `<kind>_WP0001.csv`, with their receive times in `received.csv`. `build_seeds.py` picks them up after the lettered rounds.
 - Excerpt repair (`repair_excerpts.py`) stays a manual step.
 - After the rebuild, every pull geocodes the addresses that have no pin yet (`geocode_incremental.py --fetch`) and rebuilds again if any result changed. Skip it with `--no-geocode`.
