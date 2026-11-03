@@ -281,6 +281,7 @@ async def run_fetch_batch(
     rows_processed = 0
     rows_ok = 0
     rows_error = 0
+    errors: list[dict] = []
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
         for t in targets:
             rows_processed += 1
@@ -292,4 +293,25 @@ async def run_fetch_batch(
             except Exception as e:
                 log.exception("fetch failed church=%s: %s", t["church_id"], e)
                 rows_error += 1
-    return {"rows_processed": rows_processed, "rows_ok": rows_ok, "rows_error": rows_error}
+                errors.append({"church_id": t["church_id"], "error": type(e).__name__})
+                # Without an artifact the church keeps its old attempt time and
+                # churches_due_for_fetch puts it first in every batch again.
+                try:
+                    await repo.insert_artifact(
+                        church_id=t["church_id"],
+                        url=(t["website"] or "")[:500],
+                        kind="homepage",
+                        http_status=0,
+                        fetch_error=f"exception:{type(e).__name__}",
+                        robots_allowed=True,
+                        content_hash=None,
+                        r2_key=None,
+                        bytes_raw=None,
+                        bytes_text=None,
+                        crawl_run_id=crawl_run_id,
+                    )
+                except Exception:
+                    log.exception("could not record the failed fetch church=%s", t["church_id"])
+    # The ids land in the workflow log, so a `partial` run names its churches.
+    return {"rows_processed": rows_processed, "rows_ok": rows_ok, "rows_error": rows_error,
+            "errors": errors[:20]}
