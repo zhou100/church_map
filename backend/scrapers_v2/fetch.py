@@ -151,7 +151,8 @@ async def _fetch_one_page(
         )
 
     html = body.decode("utf-8", errors="replace")
-    text = extract_clean_text(html)
+    # trafilatura is CPU-bound; running it inline stalls every API request.
+    text = await asyncio.to_thread(extract_clean_text, html)
     if not text:
         return FetchOutcome(
             url=url, kind=kind, http_status=status, error="no-text",
@@ -223,8 +224,9 @@ async def fetch_church(
         if outcome.content_hash and outcome.raw_bytes:
             target_key = r2mod.r2_key_for(church_id, outcome.content_hash)
             try:
-                if not r2.head(target_key):
-                    r2.put_html(target_key, outcome.raw_bytes)
+                # boto3 is blocking; keep it off the event loop.
+                if not await asyncio.to_thread(r2.head, target_key):
+                    await asyncio.to_thread(r2.put_html, target_key, outcome.raw_bytes)
                 r2_key = target_key
             except r2mod.R2Error as e:
                 log.warning("R2 PUT failed for church=%s url=%s: %s", church_id, url, e)
