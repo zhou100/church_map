@@ -15,7 +15,7 @@
 | [#69](https://github.com/zhou100/church_map/pull/69) | 修复 fetch 一直 partial（robots.txt 里有 NUL 字节） | 已合并 `8a76ea5` |
 | [#70](https://github.com/zhou100/church_map/pull/70) | 多抓儿童、青少年、托育、联系、活动页面。website_v3 不受影响；每个教会要抓的页面约增加到 1.85 倍 | 已合并 `8cbc0c7`（2026-11-03 23:16 UTC） |
 | #71 | 本执行计划和三份背景文档 | 已合并 `6d14f95` |
-| PR 2 草稿（`codex/website-identity-checks`） | 离线身份比对核心、私有 JSONL 报告及反例测试 | 进行中；只支持单一、同名同站的 Church JSON-LD；未接入线上拦截，未评估 2,543 个候选 |
+| [PR 2 草稿 #72](https://github.com/zhou100/church_map/pull/72) | 离线身份比对核心、私有 JSONL 报告及反例测试 | 进行中；只支持单一、同名同站的 Church JSON-LD；未接入线上拦截，未评估 2,543 个候选 |
 
 **部署观察（2026-11-03 23:18–23:24 UTC）：** GitHub deployment
 `7533216349`（Vercel Production）和 `7533208637`（Render `main - churchmap-api`）
@@ -42,7 +42,7 @@
 | **D-G**【新】 | Muse 现在的目录扫描（D12）是否继续 | 同样的条款问题。它已经通过目录站找到了 628 个教会 |
 | **D-H**【新】 | 流水线在哪里跑（§1.1） | **已批准（2026-11-03 PT，本次接手对话）：继续使用公开 repo 的 GitHub Actions，即 §1.1(c)。** 必须先完成仅计数日志和泄漏回归测试。 |
 
-D-A、D-C、D-D、D-E、D-F、D-G 仍是建议，未获批准。业主询问私有报告能否存 R2；技术上可行，建议专用私有 bucket。尚未创建资源、获得访问凭据或迁移状态；analytics Postgres 的云端落点仍未配置。
+D-A、D-C、D-D、D-E、D-F、D-G 仍是建议，未获批准。业主随后明确选择复用现有 R2 bucket，新增 `analytics_private/` key 前缀保存私有报告、diff 与状态快照，不新建 bucket。实现前核对 bucket 的公开访问设置和凭据使用位置；前缀本身不是访问隔离。尚未写入 R2 或迁移状态；analytics Postgres 的云端落点仍未配置。
 
 已经做过的决定（11/03）：
 - 儿童项目分 3 类 × 3 段（附录 A）；
