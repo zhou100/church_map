@@ -13,8 +13,11 @@ fourth serves a 128 KB page full of NULs at /robots.txt.
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 import httpx
+import pytest
 
 from backend.scrapers_v2 import fetch as fetch_mod
 from backend.scrapers_v2.robots import get_parser
@@ -91,6 +94,8 @@ def test_a_readable_robots_txt_still_allows():
 
 
 class BatchRepo(Repo):
+    con = SimpleNamespace(transaction=nullcontext)
+
     def __init__(self, targets):
         super().__init__()
         self.targets = targets
@@ -99,10 +104,11 @@ class BatchRepo(Repo):
         return self.targets
 
 
-def test_a_church_that_raises_is_recorded_so_it_backs_off(monkeypatch):
+@pytest.mark.parametrize("error", [ValueError, TimeoutError])
+def test_a_church_that_raises_is_recorded_so_it_backs_off(monkeypatch, error):
     async def boom(client, repo, r2, church_id, website, crawl_run_id, **kw):
         if church_id == 2:
-            raise ValueError("PostgreSQL text fields cannot contain NUL (0x00) bytes")
+            raise error("fetch failed independently of the batch deadline")
         return 1
 
     monkeypatch.setattr(fetch_mod, "fetch_church", boom)
@@ -111,9 +117,9 @@ def test_a_church_that_raises_is_recorded_so_it_backs_off(monkeypatch):
     out = asyncio.run(fetch_mod.run_fetch_batch(repo, None, batch_size=50, fresh_days=30, crawl_run_id=9))
 
     assert (out["rows_processed"], out["rows_ok"], out["rows_error"]) == (2, 1, 1)
-    assert out["errors"] == [{"church_id": 2, "error": "ValueError"}]
+    assert out["errors"] == [{"church_id": 2, "error": error.__name__}]
     assert [(r["church_id"], r["kind"], r["http_status"], r["fetch_error"], r["content_hash"])
-            for r in repo.inserts] == [(2, "homepage", 0, "exception:ValueError", None)]
+            for r in repo.inserts] == [(2, "homepage", 0, f"exception:{error.__name__}", None)]
 
 
 def test_a_failure_to_record_the_failure_does_not_stop_the_batch(monkeypatch):

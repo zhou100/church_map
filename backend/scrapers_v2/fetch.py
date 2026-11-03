@@ -14,6 +14,7 @@ import asyncio
 import hashlib
 import logging
 import re
+import time
 import urllib.parse
 from dataclasses import dataclass
 
@@ -32,6 +33,11 @@ HTTP_TIMEOUT_S = 15.0
 MAX_PAGE_BYTES = 2_000_000
 RETRY_DELAY_S = 5.0
 DEFAULT_MAX_PAGES = 4
+DEFAULT_MAX_VISIT_PAGES = 4
+# Bound in-flight work too: retries, redirects and storage can outlast a
+# per-church estimate. Leave room before crawl.yml's 600 s curl deadline for
+# savepoint rollback, finish_run and commit.
+FETCH_TIME_BUDGET_S = 420.0
 
 CANDIDATE_PATHS = [
     ("about",      ["about", "about-us", "who-we-are", "our-church"]),
@@ -39,6 +45,25 @@ CANDIDATE_PATHS = [
     ("ministries", ["ministries", "ministry", "groups", "community", "kids", "youth"]),
     ("services",   ["services", "service-times", "worship", "visit"]),
 ]
+# Pages for the visit-facts stage (address, times, programs by age, activity),
+# in priority order; website_v3 never reads them (repository.WEBSITE_V3_KINDS).
+# A link the four kinds above already claimed stays theirs.
+VISIT_PATHS = [
+    ("kids",      ["kids", "kidz", "kidzone", "children", "childrens-ministry", "kids-ministry", "nursery",
+                   "sunday-school", "ninos", "vbs", "vacation-bible-school"]),
+    ("youth",     ["youth", "youthministry", "students", "student-ministry", "youth-ministry", "teens",
+                   "middle-school", "high-school", "jovenes"]),
+    ("childcare", ["preschool", "daycare", "day-care", "childcare", "child-care", "early-learning",
+                   "early-childhood", "earlychildhood", "mothers-day-out", "mdo", "school"]),
+    ("contact",   ["contact", "contact-us", "location", "locations", "directions", "find-us", "im-new",
+                   "new-here", "plan-a-visit", "plan-your-visit", "what-to-expect", "first-time"]),
+    ("events",    ["events", "calendar", "upcoming-events", "whats-happening"]),
+    ("news",      ["news", "blog", "announcements", "newsletter", "bulletin", "bulletins"]),
+    ("sermons",   ["sermons", "messages", "media", "watch", "podcast", "livestream"]),
+]
+
+_VISIT_KINDS = {k for k, _ in VISIT_PATHS}
+_PAGE_SUFFIX = re.compile(r"\.(htm|html|php|asp|aspx)$")
 
 _LINK_RE = re.compile(r'href=[\'"]([^\'"#?]+)', re.I)
 
@@ -83,14 +108,19 @@ def candidate_links(html: str, base: str) -> dict[str, str]:
             path_lower = au.path.lower().strip("/")
             if not path_lower:
                 continue
-            for kind, needles in CANDIDATE_PATHS:
+            url = urllib.parse.urlunparse((au.scheme, au.netloc, au.path, "", "", ""))
+            for kind, needles in CANDIDATE_PATHS + VISIT_PATHS:
                 if kind in found:
                     continue
                 last = path_lower.rsplit("/", 1)[-1]
+                if kind in _VISIT_KINDS:  # "children.html", "teens.php"; v3 matching is unchanged
+                    # Desktop/mobile/footer nav can repeat a v3 link. Do not
+                    # spend a visit slot on it or hide a later distinct page.
+                    if url in found.values():
+                        continue
+                    last = _PAGE_SUFFIX.sub("", last)
                 if any(n == last or last.startswith(n + "-") or last.endswith("-" + n) for n in needles):
-                    found[kind] = urllib.parse.urlunparse(
-                        (au.scheme, au.netloc, au.path, "", "", "")
-                    )
+                    found[kind] = url
                     break
         except Exception:
             continue
@@ -178,8 +208,10 @@ async def fetch_church(
     crawl_run_id: int | None,
     *,
     max_pages: int = DEFAULT_MAX_PAGES,
+    max_visit_pages: int = DEFAULT_MAX_VISIT_PAGES,
 ) -> int:
-    """Fetch homepage + up to (max_pages - 1) candidate pages. Returns artifact count."""
+    """Fetch homepage + up to (max_pages - 1) website_v3 pages + up to
+    max_visit_pages visit-fact pages. Returns artifact count."""
     base = normalize_url(website)
     if not base:
         # Record the attempt so the 48h failure backoff in churches_due_for_fetch
@@ -267,6 +299,14 @@ async def fetch_church(
             if kind in links:
                 await _do(links[kind], kind)
                 await asyncio.sleep(PER_DOMAIN_DELAY_S)
+        visit = 0
+        for kind, _ in VISIT_PATHS:
+            if visit >= max_visit_pages:
+                break
+            if kind in links:
+                await _do(links[kind], kind)
+                visit += 1
+                await asyncio.sleep(PER_DOMAIN_DELAY_S)
 
     return written
 
@@ -278,21 +318,38 @@ async def run_fetch_batch(
     batch_size: int,
     fresh_days: int,
     crawl_run_id: int | None,
+    time_budget_s: float = FETCH_TIME_BUDGET_S,
+    clock=time.monotonic,
 ) -> dict:
     targets = await repo.churches_due_for_fetch(limit=batch_size, fresh_days=fresh_days)
+    started = clock()
     rows_processed = 0
     rows_ok = 0
     rows_error = 0
     errors: list[dict] = []
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
         for t in targets:
+            remaining = time_budget_s - (clock() - started)
+            if remaining <= 0:
+                break  # the rest stay due and lead the next batch
             rows_processed += 1
+            deadline = asyncio.timeout(remaining)
             try:
-                await fetch_church(
-                    client, repo, r2, t["church_id"], t["website"], crawl_run_id
-                )
+                async with deadline:
+                    # The target SELECT has opened the outer transaction.
+                    # Roll back only this church on cancellation: a partial
+                    # homepage success must not mark it fresh for 30 days.
+                    async with repo.con.transaction():
+                        await fetch_church(
+                            client, repo, r2, t["church_id"], t["website"], crawl_run_id
+                        )
                 rows_ok += 1
             except Exception as e:
+                if isinstance(e, TimeoutError) and deadline.expired():
+                    # R2 objects already written are harmless; retries use
+                    # HEAD-before-PUT. No failure artifact/backoff for deferral.
+                    rows_processed -= 1
+                    break
                 log.exception("fetch failed church=%s: %s", t["church_id"], e)
                 rows_error += 1
                 errors.append({"church_id": t["church_id"], "error": type(e).__name__})
@@ -316,4 +373,4 @@ async def run_fetch_batch(
                     log.exception("could not record the failed fetch church=%s", t["church_id"])
     # The ids land in the workflow log, so a `partial` run names its churches.
     return {"rows_processed": rows_processed, "rows_ok": rows_ok, "rows_error": rows_error,
-            "errors": errors[:20]}
+            "errors": errors[:20], "deferred": len(targets) - rows_processed}

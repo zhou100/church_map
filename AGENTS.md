@@ -95,6 +95,9 @@ window and exclusions; never add church counts to artifact counts.
   Requeue counting, selection and updates must agree with extraction eligibility.
 - Unchanged-content fetches refresh `fetched_at` while preserving archived source
   and extraction state. Changed content creates new work. Test both transitions.
+- Fetch deadlines must bound in-flight work, including retries. Preserve the
+  per-church savepoint in `run_fetch_batch`: deadline deferral rolls back partial
+  freshness updates, keeps completed churches, and does not create failure backoff.
 - `rows_ok` for fetch means no raised exception, not necessarily archived HTML.
   `churches.extracted` includes failures; `attempts.ok` is a current status, not
   proof of a useful profile. `last_success` can describe a zero-row run.

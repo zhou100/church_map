@@ -595,6 +595,12 @@ class UserRepository:
 # ----- Crawl pipeline (Phase B) --------------------------------------------
 
 
+# The pages website_v3 reads (fetch.CANDIDATE_PATHS plus the homepage). Visit-fact
+# pages (kids, contact, events, …) are archived too but wait for their own stage;
+# extraction selection, stale counting and re-queue all filter on this one list.
+WEBSITE_V3_KINDS = ["homepage", "about", "beliefs", "ministries", "services"]
+
+
 class CrawlRepository:
     """SQL surface for the R2-backed crawl pipeline.
 
@@ -810,12 +816,13 @@ class CrawlRepository:
              WHERE a.extract_status = 'pending'
                AND a.http_status = 200
                AND a.r2_key IS NOT NULL
+               AND a.kind = ANY(%s)
              GROUP BY a.church_id
              ORDER BY MIN(a.fetched_at) ASC
              LIMIT %s
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, (limit,))
+            await cur.execute(sql, (WEBSITE_V3_KINDS, limit))
             return await cur.fetchall()
 
     async def mark_artifacts_status(
@@ -907,21 +914,23 @@ class CrawlRepository:
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
                            AND a.http_status = 200 AND a.r2_key IS NOT NULL
+                           AND a.kind = ANY(%(kinds)s)
                     )
                     AND EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'ok'
                            AND a.http_status = 200 AND a.r2_key IS NOT NULL
+                           AND a.kind = ANY(%(kinds)s)
                     )
                 ) AS awaiting_queue
               FROM churches c
              WHERE extracted_at IS NOT NULL
-               AND (extracted_prompt_version IS DISTINCT FROM %s
-                    OR extracted_model IS DISTINCT FROM %s)
+               AND (extracted_prompt_version IS DISTINCT FROM %(version)s
+                    OR extracted_model IS DISTINCT FROM %(model)s)
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, (prompt_version, model))
+            await cur.execute(sql, {"version": prompt_version, "model": model, "kinds": WEBSITE_V3_KINDS})
             return await cur.fetchone()
 
     async def requeue_stale_extractions(
@@ -969,22 +978,24 @@ class CrawlRepository:
                 SELECT church_id
                   FROM churches c
                  WHERE extracted_at IS NOT NULL
-                   AND (extracted_prompt_version IS DISTINCT FROM %s
-                        OR extracted_model IS DISTINCT FROM %s)
+                   AND (extracted_prompt_version IS DISTINCT FROM %(version)s
+                        OR extracted_model IS DISTINCT FROM %(model)s)
                    AND NOT EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'pending'
                            AND a.http_status = 200 AND a.r2_key IS NOT NULL
+                           AND a.kind = ANY(%(kinds)s)
                    )
                    AND EXISTS (
                         SELECT 1 FROM raw_crawl_artifacts a
                          WHERE a.church_id = c.church_id
                            AND a.extract_status = 'ok'
                            AND a.http_status = 200 AND a.r2_key IS NOT NULL
+                           AND a.kind = ANY(%(kinds)s)
                    )
                  ORDER BY church_id
-                 LIMIT %s
+                 LIMIT %(limit)s
             )
             UPDATE raw_crawl_artifacts a
                SET extract_status       = 'pending',
@@ -993,10 +1004,12 @@ class CrawlRepository:
              WHERE a.church_id = s.church_id
                AND a.extract_status = 'ok'
                AND a.http_status = 200 AND a.r2_key IS NOT NULL
+               AND a.kind = ANY(%(kinds)s)
             RETURNING a.church_id
         """
         async with self.con.cursor() as cur:
-            await cur.execute(sql, (prompt_version, model, limit))
+            await cur.execute(sql, {"version": prompt_version, "model": model, "limit": limit,
+                                    "kinds": WEBSITE_V3_KINDS})
             return [r[0] for r in await cur.fetchall()]
 
     async def mark_church_extract_error(self, church_id: int, status: str) -> None:
