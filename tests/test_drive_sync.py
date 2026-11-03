@@ -626,11 +626,13 @@ def test_the_discovery_template_asks_for_the_sweep():
 
 def test_check_unresearched_holds_each_directory_line(tmp_path):
     log = tmp_path / "run_log.md"
-    # WP-0042 as delivered: no unresearched count at all.
+    # WP-0042 as delivered: no unresearched count at all. A missing U is layout, not content
+    # (owner, 2026-11-03): it is noted for us with the computed gap, not sent back.
     log.write_text("- Irvine — churchfinder: listed 20, already known 0, reported 4; "
                    "oursweb: listed 29, already known 1, reported 0\n", encoding="utf-8")
-    errs = ds.check_unresearched(log)
-    assert len(errs) == 2 and "Irvine" in errs[0] and "churchfinder" in errs[0] and "oursweb" in errs[1]
+    assert ds.check_unresearched(log) == []
+    unread = ds.unread_sweep(log)
+    assert len(unread) == 2 and unread[0].startswith("churchfinder ~16") and unread[1].startswith("oursweb ~28")
     log.write_text("- Irvine — churchfinder: listed 20, already known 0, reported 4, unresearched 16; "
                    "oursweb: listed 29, already known 1, reported 19, unresearched 0\n"
                    "- Brea — churchfinder: listed 19, already known 2, reported 4, unresearched 9, cap reached; "
@@ -695,3 +697,73 @@ def test_a_discovery_delivery_with_unresearched_listings_goes_back_to_muse(queue
     assert "1 sweep segment(s) with listings unresearched; queue them" in status["WP-0042"]["note"]
     assert "partial delivery; queue the rest" in status["WP-0042"]["note"]
     assert (ret / "new_candidates_WP0042.csv").exists()
+
+
+def test_an_owner_accepted_sweep_is_ingested_with_a_note(queue, monkeypatch, tmp_path):
+    drive, ret, _ = queue
+    monkeypatch.setattr(ds, "validate", lambda *a: (True, ""))  # only the sweep is under test
+    (ds.OUTBOX / "WP-0044").mkdir()
+    (ds.OUTBOX / "WP-0044" / "known_congregations.csv").write_text("known_id\n", encoding="utf-8")
+    ds.save_status({"WP-0044": dict(wp_id="WP-0044", title="Riverside", state="queued", published_at="x")})
+    wp = drive / "returns" / "WP-0044"
+    wp.mkdir()
+    _deliver(wp, body="candidate_ref,task\nWP0044-001,WP0044\n")
+    (wp / "run_log.md").write_text("- Riverside: churchfinder 20 / known 3 / reported 5.\n", encoding="utf-8")
+    (wp / "DONE.md").write_text(f"new_candidates.csv sha256={_sha(wp / 'new_candidates.csv')}\n"
+                                f"run_log.md sha256={_sha(wp / 'run_log.md')}\npartial: no\n", encoding="utf-8")
+    ledger = tmp_path / "sweep_accepted.csv"
+    monkeypatch.setattr(ds, "SWEEP_ACCEPTED", ledger)
+    status = ds.load_status()
+    assert ds.pull_package(wp, status, recheck=False) == "needs_fix"  # not in the ledger yet
+
+    ledger.write_text("wp_id,decided_at,reason\nWP-0044,2026-11-03,format\n", encoding="utf-8")
+    status["WP-0044"]["done_sha256"] = ""  # what pull --again does
+    assert ds.pull_package(wp, status, recheck=False) == "pending_build"
+    assert "D12 sweep report accepted in-house 2026-11-03" in status["WP-0044"]["note"]
+    assert (ret / "new_candidates_WP0044.csv").exists()
+    assert not (drive / "feedback" / "WP-0044.md").exists()
+
+
+def test_the_sweep_ledger_lists_only_dashed_package_ids():
+    rows = ds.sweep_accepted()
+    assert rows and all(ds.WP_RE.match(wp) and r["decided_at"] and r["reason"] for wp, r in rows.items())
+
+
+def test_the_sweep_is_read_in_the_layouts_muse_used(tmp_path):
+    # WP-0044: slashes, a city wrapped onto the next line, "(cap met)".
+    log = tmp_path / "run_log.md"
+    log.write_text("- Norco: churchfinder 20 / known 9 / reported 1 (+1 possible match, see hard rows).\n"
+                   "  Oursweb: listed 1, already known 0, reported 1.\n"
+                   "- Cathedral City: churchfinder 18 / known 2 / reported 3 (cap met). Oursweb: listed 1, "
+                   "already known 0, reported 0.\n"
+                   "- Light of the World (San Diego, 1846 Logan Ave per churchfinder): no own site.\n",
+                   encoding="utf-8")
+    assert ds.check_sweep(log) == "" and ds.check_unresearched(log) == []
+    norco = [c for item, d, c, _ in ds.read_sweep(log) if item.startswith("- Norco")]
+    assert norco == [{"listed": 20, "known": 9, "reported": 1}, {"listed": 1, "known": 0, "reported": 1}]
+    assert [u.split(" (")[0] for u in ds.unread_sweep(log)] == ["churchfinder ~10 unresearched"]
+
+    # WP-0047 / WP-0048: a table with a "listed / known / reported / U" cell per directory.
+    log.write_text("| City | churchfinder: listed / known / reported / U | oursweb: listed / known / reported / U |\n"
+                   "|---|---|---|\n"
+                   "| Moorpark | 14 / 1 / 4 / 0 (cap reached) | unknown / — / 0 / 0* (page did not render) |\n"
+                   "| Ventura | 19 / 3 / 5 / 11 (cap NOT reached — 4 not fully researched) | unknown / — / 0 / 0* |\n"
+                   "| Goleta | page did not render (upstream 429) / still-owed | unknown / — / 0 / 0* |\n",
+                   encoding="utf-8")
+    errs = ds.check_unresearched(log)
+    assert len(errs) == 1 and "Ventura" in errs[0] and "churchfinder unresearched 11, cap not reached" in errs[0]
+    assert [u.split(":")[0] for u in ds.unread_sweep(log)] == ["churchfinder counts not readable"]
+
+    # WP-0046: one column per count, the directory named only on the first.
+    log.write_text("| City | churchfinder listed | already known (firm) | rows from this page | oursweb |\n"
+                   "|---|---|---|---|---|\n"
+                   "| Oceanside | 21 lines / 18 unique | 0 | 10 | listed 1, already known 0, reported 0 |\n",
+                   encoding="utf-8")
+    assert ds.check_unresearched(log) == []
+    assert len(ds.unread_sweep(log)) == 2  # neither directory states U: we read it
+
+
+def test_a_log_that_never_names_a_directory_has_no_sweep(tmp_path):
+    log = tmp_path / "run_log.md"
+    log.write_text("- Riverside: 5 congregations reported from web search.\n", encoding="utf-8")
+    assert ds.check_sweep(log) == "no 'churchfinder / oursweb' sweep report"

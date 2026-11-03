@@ -551,32 +551,129 @@ def check_sweep(run_log: Path) -> str:
     if not run_log.exists():
         return "run_log.md is missing"
     text = run_log.read_text(encoding="utf-8", errors="replace").lower()
-    gone = [d for d in ("churchfinder", "oursweb") if not re.search(rf"{d}\s*:\s*listed\s+\d+", text)]
-    return f"no '{' / '.join(gone)}: listed N' lines" if gone else ""
+    gone = [d for d in DIRECTORIES if d not in text]
+    return f"no '{' / '.join(gone)}' sweep report" if gone else ""
+
+
+# Owner decisions to take a package whose rows pass but whose run log reports the D12 sweep
+# in its own format (tables, slashes) or leaves listings owed: we read the sweep ourselves
+# instead of sending it back. Rows are still validated and re-checked as usual.
+SWEEP_ACCEPTED = HANDOFF / "sweep_accepted.csv"
+
+
+def sweep_accepted() -> dict[str, dict]:
+    return {r["wp_id"]: r for r in read_csv(SWEEP_ACCEPTED)} if SWEEP_ACCEPTED.exists() else {}
 
 
 UNRESEARCHED_FROM = 42  # brief v3.6: WP-0042 left ~230 listings unresearched under its caps
-# A segment runs to the next `;` outside parentheses: WP-0042/43 wrote notes like
-# "known 3 (recounted …; the v3.5 line said 1), …, unresearched 0".
-SWEEP_SEGMENT = re.compile(r"(churchfinder|oursweb)\s*:\s*listed\s+\d+(?:\([^)\n]*\)|[^;(\n])*", re.I)
+# The sweep is read in whatever layout Muse writes it (owner, 2026-11-03): only the counts
+# can send a package back. WP-0044–0048 wrapped bullets, wrote "churchfinder 20 / known 3 /
+# reported 5", or used tables with a "listed / known / reported / U" cell per directory.
+DIRECTORIES = ("churchfinder", "oursweb")
+DIRECTORY_RE = re.compile(r"churchfinder|oursweb", re.I)
+CAPPED_RE = re.compile(r"\bcap\s+(?:reached|met)\b", re.I)
+FIELD_RES = {"unique": re.compile(r"(\d+)\s+unique", re.I),
+             "listed": re.compile(r"(?:listed|^\W*(?:churchfinder|oursweb)(?:\.\w+)?\W*)\s*(\d+)", re.I),
+             "known": re.compile(r"known\s+(\d+)", re.I),
+             "reported": re.compile(r"reported\S*\s+(\d+)", re.I),
+             "unresearched": re.compile(r"unresearched\s+(\d+)", re.I)}
+
+
+def _split_outside_parens(s: str, sep: str) -> list[str]:
+    parts, depth, cur = [], 0, ""
+    for ch in s:
+        depth += (ch == "(") - (ch == ")")
+        if ch == sep and depth <= 0:
+            parts.append(cur)
+            cur = ""
+        else:
+            cur += ch
+    return parts + [cur]
+
+
+def _sweep_items(text: str) -> list[str]:
+    """One string per entry: a line plus its indented continuation lines, or a table row."""
+    items: list[str] = []
+    for line in text.splitlines():
+        if items and line[:1].isspace() and line.strip() and not line.lstrip().startswith(("-", "*", "|")) \
+                and not items[-1].startswith("|"):
+            items[-1] += " " + line.strip()
+        else:
+            items.append(line.strip())
+    return [i for i in items if i]
+
+
+def _counts(cells: list[str], fields: list[str]) -> dict[str, int]:
+    out = {}
+    for cell, field in zip(cells, fields):
+        m = re.match(r"\s*(\d+)", cell)
+        if m and field:
+            out[field] = int(m.group(1))
+    return out
+
+
+def read_sweep(run_log: Path) -> list[tuple[str, str, dict[str, int], bool]]:
+    """(entry, directory, counts, capped) for every directory segment that reports a count;
+    counts is empty where the segment names the directory but no count could be read."""
+    out, header = [], None
+    for item in _sweep_items(run_log.read_text(encoding="utf-8", errors="replace")):
+        capped = bool(CAPPED_RE.search(item))
+        if item.startswith("|"):
+            cells = _split_outside_parens(item.strip("|"), "|")
+            if any(DIRECTORY_RE.search(c) for c in cells) and not any(re.search(r"\d", c) for c in cells):
+                header, d = [], None
+                for c in cells:
+                    fields = [next((f for f in ("listed", "known", "reported") if f in p.lower()),
+                                   "unresearched" if p.strip().lower() in ("u", "unresearched") else None)
+                              for p in _split_outside_parens(c, "/")]
+                    m = DIRECTORY_RE.search(c)
+                    # A column like "already known" after "churchfinder listed" belongs to churchfinder.
+                    d = m.group(0).lower() if m else (d if any(fields) else None)
+                    header.append((d, fields))
+            elif header and len(cells) == len(header) and not set(item) <= set("|-: "):
+                per_dir: dict[str, dict[str, int]] = {}
+                for cell, (d, fields) in zip(cells, header):
+                    if d:
+                        parts = _split_outside_parens(cell, "/")
+                        per_dir.setdefault(d, {}).update(_counts(parts, fields) if len(parts) == len(fields) else {})
+                out += [(item, d, c, capped) for d, c in per_dir.items()]
+            continue
+        header = None
+        marks = list(DIRECTORY_RE.finditer(item))
+        for i, m in enumerate(marks):
+            seg = item[m.start(): marks[i + 1].start() if i + 1 < len(marks) else len(item)]
+            counts = {f: int(x.group(1)) for f, r in FIELD_RES.items() if (x := r.search(seg))}
+            if "unique" in counts:
+                counts["listed"] = counts.pop("unique")
+            # Prose that names a directory in passing ("1846 Logan Ave per churchfinder") is not a count.
+            if counts.keys() & {"listed", "unresearched"}:
+                out.append((item, m.group(0).lower(), counts, capped))
+    return out
+
+
+def unread_sweep(run_log: Path) -> list[str]:
+    """Directory segments with no stated U, for us to read: listed − known − reported is shown
+    where it can be computed, but it never sends a package back (WP-0044's supplement table
+    stated U = 0 where its earlier lines, without reported-new, computed 12)."""
+    out = []
+    for item, d, c, capped in read_sweep(run_log):
+        if "unresearched" in c or capped:
+            continue
+        if {"listed", "known", "reported"} <= c.keys():
+            u = c["listed"] - c["known"] - c["reported"]
+            if u > 0:
+                out.append(f"{d} ~{u} unresearched (listed − known − reported): `{item}`")
+        else:
+            out.append(f"{d} counts not readable: `{item}`")
+    return out
 
 
 def check_unresearched(run_log: Path) -> list[str]:
-    """One problem per sweep line whose directory segment has no `unresearched U`, or U > 0
-    on a line that doesn't say `cap reached` (brief D12, v3.6)."""
-    out = []
-    for line in run_log.read_text(encoding="utf-8", errors="replace").splitlines():
-        segs = list(SWEEP_SEGMENT.finditer(line))
-        if not segs:
-            continue
-        capped = "cap reached" in line.lower()
-        for m in segs:
-            u = re.search(r"unresearched\s+(\d+)", m.group(0), re.I)
-            if not u:
-                out.append(f"- `{line.strip()}`: no `unresearched U` for {m.group(1).lower()}")
-            elif int(u.group(1)) and not capped:
-                out.append(f"- `{line.strip()}`: {m.group(1).lower()} unresearched {u.group(1)}, cap not reached")
-    return out
+    """One problem per directory segment that states `unresearched U` > 0 on an entry that
+    doesn't say `cap reached` (brief D12, v3.6). Content, not layout: an entry without a
+    stated U is noted for us (unread_sweep), not sent back."""
+    return [f"- `{item}`: {d} unresearched {c['unresearched']}, cap not reached"
+            for item, d, c, capped in read_sweep(run_log) if c.get("unresearched") and not capped]
 
 
 def page_key(url: str | None) -> str:
@@ -793,13 +890,19 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
         errs = check_leads(wp_id, stage / f"lead_outcomes_{tag}.csv", cands if cands.exists() else None)
         if errs:
             problems.append("## `lead_outcomes.csv`\n\n```\n" + "\n".join(errs) + "\n```\n")
-    if is_discovery(wp_id) and int(wp_id[3:]) >= SWEEP_FROM:
+    accepted = sweep_accepted().get(wp_id)
+    if accepted and is_discovery(wp_id):
+        notes.append(f"D12 sweep report accepted in-house {accepted['decided_at']}; owed listings stay in run_log")
+    elif is_discovery(wp_id) and int(wp_id[3:]) >= SWEEP_FROM:
         missing = check_sweep(wp_dir / "run_log.md")
         if missing:
             problems.append(f"## `run_log.md`\n\nNo directory sweep (brief D12): {missing}. Report, per city, "
                             f"`{SWEEP_LINE}`.\n")
         elif int(wp_id[3:]) >= UNRESEARCHED_FROM:
             left = check_unresearched(wp_dir / "run_log.md")
+            unread = unread_sweep(wp_dir / "run_log.md")
+            if unread:
+                notes.append(f"{len(unread)} sweep segment(s) without a stated U; read run_log in-house")
             if left and partial:  # README step 4: deliver what is finished; we queue the rest
                 notes.append(f"{len(left)} sweep segment(s) with listings unresearched; queue them")
             elif left:

@@ -1,0 +1,6 @@
+wp_id,decided_at,reason
+WP-0044,2026-11-03,"Rows pass validation; sweep reported as 'churchfinder N / known K / reported R' lines without unresearched U. Owner: fix format in-house, ingest."
+WP-0045,2026-11-03,"Rows pass validation; sweep lines lack unresearched U, Coronado/El Cajon/Chula Vista/San Diego below cap. Owner: ingest; owed listings stay in run_log."
+WP-0046,2026-11-03,"Rows pass validation; sweep reported as a table without unresearched U, listings unaccounted in Oceanside/Escondido/Carlsbad/Vista, Del Mar 403. Owner: ingest."
+WP-0047,2026-11-03,"Rows pass validation; sweep reported as a slash table; oursweb and some churchfinder pages owed. Owner: ingest."
+WP-0048,2026-11-03,"Rows pass validation; sweep reported as a slash table; group C sweep and oursweb owed (429, not rendered). Owner: ingest."
