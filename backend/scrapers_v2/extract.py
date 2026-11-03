@@ -303,7 +303,8 @@ async def extract_for_church(
     api_key: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> bool:
-    got = _gather_text_from_r2(r2, kinds, r2_keys)
+    # Sync R2 reads + trafilatura; off the event loop so search keeps serving.
+    got = await asyncio.to_thread(_gather_text_from_r2, r2, kinds, r2_keys)
     text = got.text
     if not text:
         # Three different reasons to have no text, and only one of them means
