@@ -156,8 +156,13 @@ namespace, changes its content hash, or deletes remote objects.
   interrupted writes, corrupt/missing objects, path traversal, symlinks,
   duplicate Drive names, pagination/cycles, changed DONE, CSV embedded newlines,
   and public success/failure output. They do not prove live R2 access or privacy.
-- Actual R2 save/restore and Actions service-account access: **not run**, local
-  R2 and Drive credentials unavailable. Repository secrets cannot be read back.
+- Actual R2 save/restore and Actions service-account access: **passed once** on
+  2026-11-03 at 23:52 UTC, [run 41742471216](https://github.com/zhou100/church_map/actions/runs/41742471216),
+  revision `43130d264942fd29341bc7188c7b886dd3ab3f86`. Two files, 86 CSV
+  records, 165,790 CSV bytes. Snapshot run: `drive-check-41742471216-1`.
+  The owner confirmed private bucket settings; this is not an independent
+  Cloudflare access audit. Local credentials remain unavailable; GitHub secrets
+  were consumed by the runner, never read back. No schedule was enabled.
 - Full historical migration, cloud analytics/dbt parity, auto-publish gate,
   hourly orchestration and 24-hour observation: **not implemented/verified by
   this storage step**. Keep the Windows task until those gates pass.

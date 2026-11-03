@@ -10,7 +10,7 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
+| [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 已合并 `43130d2`；一次真实 Drive→R2 往返通过（run 41742471216）；未启用定时，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
 | [#68](https://github.com/zhou100/church_map/pull/68) | trafilatura 和 R2 调用移出事件循环 | 已合并 `4d86c9c` |
 | [#69](https://github.com/zhou100/church_map/pull/69) | 修复 fetch 一直 partial（robots.txt 里有 NUL 字节） | 已合并 `8a76ea5` |
@@ -295,7 +295,7 @@ status/status_digest.md，有问题才报告。
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|
 | **0**【新】 | #67–#71 已合并；Render/Vercel deployment 均报告 `8cbc0c7` 成功 | 等待部署后的自然 fetch | **未完成**：部署后 `ok`、`errors`、`deferred` 待核对；上线浏览器 QA 未做 |
-| 1 | §1 + §2 流水线上云 + 自动发布；已有存储子步骤，见本文件末尾 | D-B、D-H 已批准；Drive 连接器已可下载；Actions 服务账号、R2 私有设置确认和云 analytics 接入待配置 | 业主电脑关机 24 小时照常运行；云上 map_ready 和本地一致；至少一次自动 apply |
+| 1 | §1 + §2 流水线上云 + 自动发布；已有存储子步骤，见本文件末尾 | D-B、D-H 已批准；Actions 服务账号读权限及两文件 R2 往返已验证；业主确认 bucket 私有；完整历史状态和云 analytics 接入仍待完成 | 业主电脑关机 24 小时照常运行；云上 map_ready 和本地一致；至少一次自动 apply |
 | 2 | §4 brief v3.7 + 派活自动化 | D-C、D-G | WP-0049、0050 按新规则校验；新 WP 自动生成 |
 | 3 | §5 DOT 上岗 | §1.3 | DOT 连续 3 天正常（没事不说话） |
 | 4 | §3 PR 2 身份比对 | 私有候选和存档输入；线上消费端尚需接入 | 离线核心已有 21 个合成测试；**未完成** 2,543 个候选报告、普通 HTML 比对和线上拦截；不声称覆盖率或身份准确率 |
@@ -383,4 +383,16 @@ status/status_digest.md，有问题才报告。
 - `.github/workflows/muse-storage-check.yml`：仅 main 手动触发的两文件往返验证，尚未执行。不启用定时流水线，不做提取、dbt、发布或 Drive 写入。
 - 配置及恢复命令：[存储运行手册](muse_storage_runbook.md)。新增 CLI 专用 `google-auth[requests]`，理由是使用官方库处理服务账号签名/刷新；不改用户登录或运行时镜像依赖。
 - **实际检查：** 新建本地 `churchmap_storage_test`（127.0.0.1:55472），Python 3.11.15、pgvector 0.8.1，真实迁移 0001–0006；完整测试 593 passed / 5 skipped / 10 subtests passed。5 项跳过是 3 个缺 SF 数据的 parity 和 2 个已由 parity 替代的旧测试。
-- **未完成：** 真实 R2 往返（本地无凭据）、Actions 服务账号读权限、bucket 私有配置核对、业主历史状态迁移、完整 dbt、24 小时观测、自动发布判定器。不能关闭旧 Windows 任务。
+- **本节初次提交时未完成：** 真实 R2 往返、Actions 服务账号读权限、bucket 私有配置确认。下方记录了后续验证；业主历史状态迁移、完整 dbt、24 小时观测、自动发布判定器仍未完成。不能关闭旧 Windows 任务。
+
+
+### PR #73 合并与一次性存储验证（2026-11-03 23:52 UTC）
+
+- 业主已配置 Drive/Actions 并确认 R2 私有，明确授权审查、合并 #73 和运行一次往返验证，明确不启用定时。
+- 审查提交 `dd9302cefdfb60f72a902a81211737c67452927a`，未发现阻塞本次两文件手动验证的问题。其 [CI run 41741036085](https://github.com/zhou100/church_map/actions/runs/41741036085) 实际应用 0001–0006（含 pgvector），593 passed / 5 skipped / 10 subtests passed；跳过原因同上。
+- #73 squash 合并为 `43130d264942fd29341bc7188c7b886dd3ab3f86`。
+- [手动 run 41742471216](https://github.com/zhou100/church_map/actions/runs/41742471216) 绑定该 SHA，2026-11-03T23:52:01Z 创建、23:52:22Z 完成，conclusion=success。
+- 应用结果：`drive_r2_check=ok`、files=2（DONE + CSV）、CSV rows=86、CSV bytes=165790。执行路径包括只读下载、DONE 哈希绑定、保存 R2、读取 manifest 与 blobs、逐文件哈希检查以及恢复后的 CSV 字节比对。
+- 私有快照 run ID：`drive-check-41742471216-1`；固定前缀 `analytics_private/v1/`。未删远端对象；显式 run/hash 恢复路径见运行手册。公开应用输出仅步骤/状态/计数。
+- **范围限制：** 仅验证 WP-0048 的两个文件。没有执行完整历史状态迁移、dbt、生产发布或 24 小时观察；没有改 Drive 内容或旧 Windows 任务。新 workflow 仍只有 `workflow_dispatch`，没有 `schedule`；既有 crawl 定时任务未改。
+- 此记录不声称此次 main 合并在 Render/Vercel 的部署已核验；Actions 验证以自己的精确 SHA 为准。
