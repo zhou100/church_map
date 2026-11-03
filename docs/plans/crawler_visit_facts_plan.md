@@ -6,16 +6,26 @@
 
 > 业主只在三种时候出手：一次性授权（secrets、服务账号）、批准第 0 节的决定、处理标成"待审"的发布 diff。其余都由 agent 实现，DOT 负责盯状态。
 
-### 代码进度（2026-11-03 22:46 UTC）
+### 代码进度（2026-11-03 23:24 UTC）
 
 | PR | 内容 | 状态 |
 |---|---|---|
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
 | [#68](https://github.com/zhou100/church_map/pull/68) | trafilatura 和 R2 调用移出事件循环 | 已合并 `4d86c9c` |
 | [#69](https://github.com/zhou100/church_map/pull/69) | 修复 fetch 一直 partial（robots.txt 里有 NUL 字节） | 已合并 `8a76ea5` |
-| [#70](https://github.com/zhou100/church_map/pull/70) | 多抓儿童、青少年、托育、联系、活动页面。website_v3 不受影响；每个教会要抓的页面约增加到 1.85 倍 | 已经 rebase 到 main，**还没合并** |
+| [#70](https://github.com/zhou100/church_map/pull/70) | 多抓儿童、青少年、托育、联系、活动页面。website_v3 不受影响；每个教会要抓的页面约增加到 1.85 倍 | 已合并 `8cbc0c7`（2026-11-03 23:16 UTC） |
+| #71 | 本执行计划和三份背景文档 | 已合并 `6d14f95` |
+| [PR 2 草稿 #72](https://github.com/zhou100/church_map/pull/72) | 离线身份比对核心、私有 JSONL 报告及反例测试 | 进行中；只支持单一、同名同站的 Church JSON-LD；未接入线上拦截，未评估 2,543 个候选 |
 
-已经合并到 main，不等于已经部署。部署的 SHA、fetch 有没有回到 `ok`，都还没核对，见 §6 第 0 步。
+**部署观察（2026-11-03 23:18–23:24 UTC）：** GitHub deployment
+`7533216349`（Vercel Production）和 `7533208637`（Render `main - churchmap-api`）
+均报告 `8cbc0c7d4268eeca0be6c88a820b83aca3e791b8` 部署成功。
+`/api/stats` 的 `generated_at=2026-11-03T23:18:38.790694+00:00`，
+`fetch.last_success` 仍是 10/25。最近一次自然 fetch 是部署前的
+[Actions run 41703909895](https://github.com/zhou100/church_map/actions/runs/41703909895)
+（19:30 UTC；服务端 run 1402）：`partial`，50 processed / 48 ok / 2 error，
+旧响应没有 `errors` 明细或 `deferred`。尚不能判定 #69/#70 的生产效果；未手动触发。
+部署记录不等于完成浏览器上线 QA。
 
 ---
 
@@ -24,13 +34,15 @@
 | # | 决定 | 建议 |
 |---|---|---|
 | D-A | "到访信息提取"的 LLM 预算 | 批准试跑：只跑有 Muse 结果的 2,543 个候选。跑完前 200 个先报告实测成本，再跑剩下的 |
-| D-B | 自动发布规则（§2） | 批准 |
+| D-B | 自动发布规则（§2） | **已批准（2026-11-03 PT，本次接手对话）：§2 八项条件全部满足才自动 apply，否则待审。** 判定器尚未实现；不表示现在可直接调用现有 `--apply`。 |
 | D-C | brief v3.7（§4） | 批准 |
 | D-D | USPS 地址核验服务 | 先确认 USPS 现在的 API 能不能提供 DPV/RDI/CMRA、免费额度多少、结果能不能存下来；确认后再试用，只用在没有教会自己来源的地址上【改】 |
 | D-E | 停止按网页语言推断聚会语言 | 批准，但要先看 §3 PR 4 写的代价【改】 |
 | **D-F**【新】 | 自动扫目录站（churchfinder、oursweb） | 两家的使用条款都限制复制和再利用它们的数据（见目录站检查文档）。建议搁置，或者先写信申请许可 |
 | **D-G**【新】 | Muse 现在的目录扫描（D12）是否继续 | 同样的条款问题。它已经通过目录站找到了 628 个教会 |
-| **D-H**【新】 | 流水线在哪里跑（§1.1） | repo 是**公开**的，GitHub Actions 的日志任何人都能看。建议放在私有 repo 或 Render cron 上跑 |
+| **D-H**【新】 | 流水线在哪里跑（§1.1） | **已批准（2026-11-03 PT，本次接手对话）：继续使用公开 repo 的 GitHub Actions，即 §1.1(c)。** 必须先完成仅计数日志和泄漏回归测试。 |
+
+D-A、D-C、D-D、D-E、D-F、D-G 仍是建议，未获批准。业主随后明确选择复用现有 R2 bucket，新增 `analytics_private/` key 前缀保存私有报告、diff 与状态快照，不新建 bucket。实现前核对 bucket 的公开访问设置和凭据使用位置；前缀本身不是访问隔离。尚未写入 R2 或迁移状态；analytics Postgres 的云端落点仍未配置。
 
 已经做过的决定（11/03）：
 - 儿童项目分 3 类 × 3 段（附录 A）；
@@ -53,7 +65,7 @@
      - (a) 一个**私有** repo，专门放这个 workflow；
      - (b) Render cron job，和 API 同一个平台；
      - (c) 留在公开 repo，但所有步骤都改成只输出计数、不打印内容，还要有一个测试来保证这一点。
-   - 推荐 (a) 或 (b)。
+   - **业主已选 (c)**（2026-11-03 PT）：继续使用公开 repo；原推荐 (a)/(b) 不再作为执行方案。
    - 不管放在哪里：每小时触发，再加手动触发；`concurrency: { group: muse-pull, cancel-in-progress: false }` 取代原来的锁文件；固定在 `main` 上运行。
    - 步骤：`validate_returns.py` → `recheck_sources.py` → `repair_excerpts.py`（按需）→ `build_seeds.py` → `geocode_incremental` → `dbt build` → `publish_verified.py`（dry run，按 §2 的规则判定是否 apply）→ 生成状态摘要（§1.3）。
 3. **持久状态要搬走【改】。** 下面这些现在只存在这台电脑上，而且都是 gitignore 的，CI 每次运行都是全新环境，用完就丢：
@@ -281,11 +293,11 @@ status/status_digest.md，有问题才报告。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|
-| **0**【新】 | ~~合并 #67、#68、#69~~（已完成）；合并 #70。核对 Render 和 Vercel 实际部署的 SHA | 业主 review #70 | fetch 回到 `ok`；`errors` 能看出是哪几个教会；记录下 `deferred` 的数量 |
-| 1 | §1 + §2 流水线上云 + 自动发布 | 业主一次性授权、D-B、D-H | 业主电脑关机 24 小时照常运行；云上 map_ready 和本地一致；至少一次自动 apply |
+| **0**【新】 | #67–#71 已合并；Render/Vercel deployment 均报告 `8cbc0c7` 成功 | 等待部署后的自然 fetch | **未完成**：部署后 `ok`、`errors`、`deferred` 待核对；上线浏览器 QA 未做 |
+| 1 | §1 + §2 流水线上云 + 自动发布 | D-B、D-H 已批准；Drive、私有状态存储和云 analytics 接入待提供 | 业主电脑关机 24 小时照常运行；云上 map_ready 和本地一致；至少一次自动 apply |
 | 2 | §4 brief v3.7 + 派活自动化 | D-C、D-G | WP-0049、0050 按新规则校验；新 WP 自动生成 |
 | 3 | §5 DOT 上岗 | §1.3 | DOT 连续 3 天正常（没事不说话） |
-| 4 | §3 PR 2 身份比对 | — | 2,543 个候选都有 `match` / `conflict` / `no_comparable` 结果 |
+| 4 | §3 PR 2 身份比对 | 私有候选和存档输入；线上消费端尚需接入 | 离线核心已有 21 个合成测试；**未完成** 2,543 个候选报告、普通 HTML 比对和线上拦截；不声称覆盖率或身份准确率 |
 | 5 | §3 PR 3 存原始响应 + 结构化解析器 | — | 新抓的页面都有 `raw_sha256` 和 HTTP 头；`content_hash` 的去重测试通过；JSON-LD / RSS / .ics 有产出 |
 | 6 | §3 PR 4 LLM 到访信息 + 评估 | D-A、D-E、5 | 评估报告完成（含 Wilson 区间和各类错误计数）；业主决定是否全量 |
 | **7**【新】 | §3 PR 5 API、详情页、卡片、偏好 | 6 | `npm test`、`npm run build` 通过，浏览器里检查过；fit 两边用例一致 |
@@ -348,3 +360,15 @@ status/status_digest.md，有问题才报告。
   - "年龄未写明"的儿童或青少年项目，算弱证据；
   - 没有任何信息，算 0，**不扣分**。
 - 服务器端的 `fit_sql` 和前端的 `fitScore` 一起改，`fitParityCases.json` 同步加用例。
+
+
+## 接手验证记录（2026-11-03 UTC）
+
+- 代码基线：`8cbc0c7`；工作分支 `codex/website-identity-checks`，隔离 worktree，原 checkout 未切换。
+- 离线核心：`backend/scrapers_v2/identity.py`。仅单一 Church JSON-LD、同名同站的实体可比较；完整街道/城市/州及规范化电话同时矛盾才返回 `conflict`。单项矛盾、多堂点、其他实体、缺数据均不拦截。这是保守的初始实现，不是对全部 HTML 的覆盖声明；也不验证活跃状态或聚会地址。
+- 离线入口：`python -m scripts.check_website_identity --input <private.jsonl> --output <new-private-report.jsonl>`。每行包含 `subject_id`、`html_path`（相对 manifest）、`source_url`、`fetched_at`、`reference`；reference 包含 `name`、`website`、`phone`、schema.org 格式 `address`。报告绑定原始字节 SHA-256、reference SHA-256 和版本，包含 `allow_extraction`；目前没有线上消费者或自动派 Muse。
+- 输入/输出文件保持私有，报告文件不覆盖已有文件；stdout 仅计数，错误不回显内容。未读写 Drive、R2 或生产库。
+- **通过**：Python 3.11.15；新建专用测试库 `churchmap_identity_test`，`127.0.0.1:55472`；pgvector 0.8.1；真实执行 `python -m backend.db.migrate`（0001–0006 全部执行），`python -m pytest -q`：590 passed、5 skipped、10 subtests passed。
+- **跳过**：3 个 parity 测试缺 San Francisco 真实数据；2 个旧测试已被 parity 测试替代。没有删掉或放宽测试。
+- **早期失败及纠正**：现有 `venv` 实为 Python 3.10，首次无 DB 测试 6 failed / 507 passed / 82 skipped，失败源于 `asyncio.timeout` 不存在；改用已有 Python 3.11 环境，不修改生产代码兼容错误测试环境。随后真实 DB 全套结果见上。
+- **未运行**：私有候选评估、dbt（缺输入及 sidecar）、生产发布、付费调用、前端测试/浏览器（无 UI 改动）。本地通过不代表生产验证。
