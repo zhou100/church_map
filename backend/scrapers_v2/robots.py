@@ -47,6 +47,15 @@ async def get_parser(
     except (httpx.HTTPError, httpx.TimeoutException):
         body = ""
 
+    if "\x00" in body:
+        # Not a robots.txt we can read: a Brotli body httpx can't decode (sent
+        # despite Accept-Encoding: gzip, deflate), or binary at /robots.txt.
+        # Postgres can't store NUL, and the raise left the church without an
+        # artifact, so it headed every batch (fetch `partial` from 2026-10-26).
+        # Disallow and don't cache: the robots-disallow artifact backs it off.
+        rp.parse(["User-agent: *", "Disallow: /"])
+        return rp
+
     await repo.upsert_robots(host, body, ROBOTS_TTL_SECONDS)
     rp.parse(body.splitlines())
     return rp
