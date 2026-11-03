@@ -3,6 +3,8 @@ contact, events, news, sermons) without changing what website_v3 reads."""
 from __future__ import annotations
 
 import asyncio
+from contextlib import nullcontext
+from types import SimpleNamespace
 
 import httpx
 
@@ -55,12 +57,12 @@ class R2:
         return True
 
 
-def _fetch(monkeypatch, **kw):
+def _fetch(monkeypatch, *, html=HOME, **kw):
     monkeypatch.setattr(fetch_mod, "PER_DOMAIN_DELAY_S", 0)
     monkeypatch.setattr(fetch_mod, "extract_clean_text", lambda html: "Some page text.")
 
     def handler(req):
-        return httpx.Response(200, content=HOME.encode() if req.url.path == "/" else b"<p>page</p>")
+        return httpx.Response(200, content=html.encode() if req.url.path == "/" else b"<p>page</p>")
 
     async def main():
         repo = Repo()
@@ -89,6 +91,8 @@ def test_every_visit_kind_is_outside_website_v3():
 
 
 class BatchRepo(Repo):
+    con = SimpleNamespace(transaction=nullcontext)
+
     async def churches_due_for_fetch(self, limit, fresh_days):
         return [{"church_id": i, "website": f"https://c{i}.example/"} for i in range(5)]
 
@@ -118,3 +122,72 @@ def test_visit_pages_match_with_a_file_suffix_and_run_together_names():
     assert links["youth"].endswith("/youthministry") and links["childcare"].endswith("/earlychildhood")
     # website_v3's kinds still need the bare slug: "about.html" stays unmatched as before.
     assert "about" not in fetch_mod.candidate_links('<a href="/about.html">A</a>', "https://a.example/")
+
+
+def test_repeated_navigation_does_not_hide_a_distinct_kids_page(monkeypatch):
+    html = ('<a href="/kids">Kids</a><a href="https://grace.example/kids#mobile">Kids mobile</a>'
+            '<a href="/children">Children</a><a href="/students">Students</a>'
+            '<a href="/preschool">Preschool</a><a href="/contact">Contact</a>')
+    links = fetch_mod.candidate_links(html, "https://grace.example/")
+    assert links["ministries"] == "https://grace.example/kids"
+    assert links["kids"] == "https://grace.example/children"
+    n, kinds = _fetch(monkeypatch, html=html)
+    assert n == 6
+    assert kinds == ["homepage", "ministries", "kids", "youth", "childcare", "contact"]
+
+
+def test_budget_interrupts_a_church_and_counts_it_as_deferred(monkeypatch):
+    seen = []
+    cancelled = []
+
+    async def fake_fetch(client, repo, r2, church_id, website, crawl_run_id, **kw):
+        seen.append(church_id)
+        if church_id == 1:
+            try:
+                await asyncio.sleep(0.2)
+            finally:
+                cancelled.append(church_id)
+        return 1
+
+    monkeypatch.setattr(fetch_mod, "fetch_church", fake_fetch)
+    ticks = iter([0, 0, 419, 1000])
+    # Scale the real timer down without waiting hundreds of seconds.
+    timeout = asyncio.timeout
+    monkeypatch.setattr(fetch_mod.asyncio, "timeout", lambda seconds: timeout(seconds / 1000))
+    repo = BatchRepo()
+    out = asyncio.run(fetch_mod.run_fetch_batch(
+        repo, None, batch_size=5, fresh_days=30, crawl_run_id=1,
+        time_budget_s=420, clock=lambda: next(ticks)))
+    assert seen == [0, 1] and cancelled == [1]
+    assert (out["rows_processed"], out["rows_ok"], out["rows_error"], out["deferred"]) == (1, 1, 0, 4)
+    assert repo.inserts == []  # deadline deferral must not trigger the 48-hour failure backoff
+
+
+def test_deadline_interrupts_the_real_page_retry(monkeypatch):
+    requests = []
+    deadlines = []
+    real_timeout = asyncio.timeout
+
+    def timeout(seconds):
+        deadline = real_timeout(seconds)
+        deadlines.append(deadline)
+        return deadline
+
+    def handler(request):
+        requests.append(request.url.path)
+        if request.url.path == "/":
+            return httpx.Response(200, content=HOME.encode())
+        # Homepage is already recorded. Expire as the first subpage fails;
+        # the production retry delay must be interrupted before another GET.
+        deadlines[-1].reschedule(asyncio.get_running_loop().time())
+        raise httpx.ReadTimeout("slow subpage")
+
+    client = httpx.AsyncClient(transport=httpx.MockTransport(handler))
+    monkeypatch.setattr(fetch_mod.httpx, "AsyncClient", lambda **kw: client)
+    monkeypatch.setattr(fetch_mod.asyncio, "timeout", timeout)
+    monkeypatch.setattr(fetch_mod, "PER_DOMAIN_DELAY_S", 0)
+    monkeypatch.setattr(fetch_mod, "extract_clean_text", lambda html: "Some page text.")
+    out = asyncio.run(fetch_mod.run_fetch_batch(
+        BatchRepo(), R2(), batch_size=5, fresh_days=30, crawl_run_id=1))
+    assert requests == ["/", "/about"]
+    assert (out["rows_processed"], out["rows_error"], out["deferred"]) == (0, 0, 5)

@@ -34,8 +34,9 @@ MAX_PAGE_BYTES = 2_000_000
 RETRY_DELAY_S = 5.0
 DEFAULT_MAX_PAGES = 4
 DEFAULT_MAX_VISIT_PAGES = 4
-# crawl.yml's curl gives up at 600 s. Stop starting churches after this, so one
-# slow church (8 pages × timeout + delay) still finishes inside the request.
+# Bound in-flight work too: retries, redirects and storage can outlast a
+# per-church estimate. Leave room before crawl.yml's 600 s curl deadline for
+# savepoint rollback, finish_run and commit.
 FETCH_TIME_BUDGET_S = 420.0
 
 CANDIDATE_PATHS = [
@@ -107,16 +108,19 @@ def candidate_links(html: str, base: str) -> dict[str, str]:
             path_lower = au.path.lower().strip("/")
             if not path_lower:
                 continue
+            url = urllib.parse.urlunparse((au.scheme, au.netloc, au.path, "", "", ""))
             for kind, needles in CANDIDATE_PATHS + VISIT_PATHS:
                 if kind in found:
                     continue
                 last = path_lower.rsplit("/", 1)[-1]
                 if kind in _VISIT_KINDS:  # "children.html", "teens.php"; v3 matching is unchanged
+                    # Desktop/mobile/footer nav can repeat a v3 link. Do not
+                    # spend a visit slot on it or hide a later distinct page.
+                    if url in found.values():
+                        continue
                     last = _PAGE_SUFFIX.sub("", last)
                 if any(n == last or last.startswith(n + "-") or last.endswith("-" + n) for n in needles):
-                    found[kind] = urllib.parse.urlunparse(
-                        (au.scheme, au.netloc, au.path, "", "", "")
-                    )
+                    found[kind] = url
                     break
         except Exception:
             continue
@@ -325,15 +329,27 @@ async def run_fetch_batch(
     errors: list[dict] = []
     async with httpx.AsyncClient(headers={"User-Agent": USER_AGENT}, follow_redirects=True) as client:
         for t in targets:
-            if clock() - started > time_budget_s:
+            remaining = time_budget_s - (clock() - started)
+            if remaining <= 0:
                 break  # the rest stay due and lead the next batch
             rows_processed += 1
+            deadline = asyncio.timeout(remaining)
             try:
-                await fetch_church(
-                    client, repo, r2, t["church_id"], t["website"], crawl_run_id
-                )
+                async with deadline:
+                    # The target SELECT has opened the outer transaction.
+                    # Roll back only this church on cancellation: a partial
+                    # homepage success must not mark it fresh for 30 days.
+                    async with repo.con.transaction():
+                        await fetch_church(
+                            client, repo, r2, t["church_id"], t["website"], crawl_run_id
+                        )
                 rows_ok += 1
             except Exception as e:
+                if isinstance(e, TimeoutError) and deadline.expired():
+                    # R2 objects already written are harmless; retries use
+                    # HEAD-before-PUT. No failure artifact/backoff for deferral.
+                    rows_processed -= 1
+                    break
                 log.exception("fetch failed church=%s: %s", t["church_id"], e)
                 rows_error += 1
                 errors.append({"church_id": t["church_id"], "error": type(e).__name__})
