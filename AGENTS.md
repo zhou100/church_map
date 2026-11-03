@@ -133,6 +133,16 @@ freshness budgets come from code/config; do not copy them into evergreen prose.
   idempotent candidate keys, never blank fields from null inputs, never put
   Facebook URLs into `website`. The publisher commits batches: do not assume
   whole-run atomicity or a revert that is safe across later edits.
+- Owner authorization (2026-11-03): automatic publishing is permitted only
+  when **all eight conditions** in [the execution plan §2](docs/plans/crawler_visit_facts_plan.md#2-发布自动化并入-pr-1)
+  pass against the current run's exact dry-run diff. The automated gate must
+  inspect the changed fields; anything outside the approved subset remains
+  pending explicit review. This authorizes the future checked path, not a
+  direct `--apply` before the gate exists. Retain run IDs and publish logs.
+- The owner selected public-repository GitHub Actions for the Muse pipeline
+  (D-H, same plan §1). Public logs must contain counts and step status only;
+  keep returns, excerpts, notes, phone numbers, detailed diffs, and credentials
+  in private storage. Test success and failure paths for leaks before activation.
 - Route frontend requests through the API client. Keep filter/ranking semantics
   consistent across API, loaded pages, cards and details. Preferences currently
   rank evidence; unknown attributes must not become negative matches. Test a
