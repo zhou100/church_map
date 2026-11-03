@@ -1,0 +1,4 @@
+# Optional CLI-only dependencies for authenticated, read-only Drive downloads.
+# google-auth handles service-account signing/refresh; no handmade JWT code and
+# no changes to browser/user authentication or the production API image.
+google-auth[requests]>=2.29,<3
