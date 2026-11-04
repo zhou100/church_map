@@ -120,6 +120,12 @@ freshness budgets come from code/config; do not copy them into evergreen prose.
   `RETURNING`. Routes never open SQLite or direct psycopg connections. Add a new
   numbered migration for schema changes; test the real migration sequence.
   Preserve `prepare_threshold=None` for transaction pooling.
+- Before dropping/retyping `public.churches` columns, inspect optional database
+  views and test migrations with and without them. If the proposed private
+  snapshot view is installed, it must be dropped/recreated with its approved
+  owner/grants in the same migration window; it is not in the base migration
+  fixtures. See [migration and recovery procedure](docs/plans/supabase_isolation/README.md#production-migration-dependency-before-rollout-and-every-schema-change).
+  This is a conditional rule, not a claim that the view is deployed.
 - Preserve GSI/tokeninfo user auth and separate `X-Crawl-Token` admin auth.
   Preserve `READ_ONLY` write protection. Never print secret values.
 - Keep source URLs public and re-check redirect destinations in source-fetching

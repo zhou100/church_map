@@ -63,7 +63,9 @@ ALTER ROLE churchmap_snapshot_reader SET statement_timeout = '30s';
 -- Keep this schema outside Data API and outside analytics role ownership.
 CREATE SCHEMA churchmap_snapshot;
 REVOKE ALL ON SCHEMA churchmap_snapshot FROM PUBLIC, anon, authenticated, service_role;
-CREATE VIEW churchmap_snapshot.churches WITH (security_barrier = true) AS
+-- This view creates a production migration dependency. See README's
+-- migration-window procedure before dropping/retyping referenced columns.
+CREATE VIEW churchmap_snapshot.churches AS
 SELECT church_id,name,address,city,state,zip_code,latitude,longitude,
        website,phone,source,external_id,denomination,
        coalesce(btrim(google_address) <> '', false) AS has_google_address
@@ -92,10 +94,19 @@ BEGIN
       RAISE EXCEPTION 'Production write grant is inherited; review PUBLIC ACLs';
     END IF;
   END LOOP;
-  IF has_any_column_privilege('churchmap_snapshot_reader',
-      'public.churches','SELECT') THEN
-    RAISE EXCEPTION 'Reader can bypass sanitized view; review inherited SELECT';
-  END IF;
+  -- Application relations only: extension monitoring views in other schemas
+  -- can legitimately grant PUBLIC SELECT. Review new application schemas here.
+  FOR r IN
+    SELECT c.oid FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
+    WHERE n.nspname='public' AND c.relkind IN ('r','p','v','m','f')
+  LOOP
+    IF has_table_privilege('churchmap_snapshot_reader',r.oid,'SELECT')
+       OR has_any_column_privilege('churchmap_snapshot_reader',r.oid,'SELECT')
+       OR has_table_privilege('churchmap_analytics',r.oid,'SELECT')
+       OR has_any_column_privilege('churchmap_analytics',r.oid,'SELECT') THEN
+      RAISE EXCEPTION 'Application SELECT bypasses private view; review inherited grants';
+    END IF;
+  END LOOP;
   IF EXISTS (
     SELECT 1 FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace
     WHERE c.relkind='S' AND n.nspname NOT IN
@@ -118,7 +129,22 @@ BEGIN
   END IF;
 END $$;
 REVOKE SET OPTION FOR churchmap_analytics FROM CURRENT_USER;
--- Normalize creator membership on the other new role as well.
-GRANT churchmap_snapshot_reader TO CURRENT_USER WITH INHERIT FALSE, SET FALSE;
+-- Auto-created memberships may have a different grantor. A new GRANT cannot
+-- normalize them, and the REVOKE above affects only its own grantor's row.
+-- Fail closed on e.g. createrole_self_grant='set,inherit'; do not alter that
+-- server configuration or another grantor's memberships as incidental cleanup.
+DO $$
+BEGIN
+  IF EXISTS (
+    SELECT 1 FROM pg_auth_members m
+    JOIN pg_roles target ON target.oid=m.roleid
+    JOIN pg_roles member_role ON member_role.oid=m.member
+    WHERE member_role.rolname=current_user
+      AND target.rolname IN ('churchmap_analytics','churchmap_snapshot_reader')
+      AND (m.set_option OR m.inherit_option)
+  ) THEN
+    RAISE EXCEPTION 'Provisioner retains SET/INHERIT through a membership grantor';
+  END IF;
+END $$;
 -- No credentials, LOGIN, database-wide grants or publisher role in this draft.
 ROLLBACK;

@@ -293,7 +293,7 @@ status/status_digest.md，有问题才报告。
 
 ## 6. 顺序和完成标准
 
-**Supabase 隔离准备（2026-11-03 PT）：** 仓库定义的前端→Render→psycopg 链路未发现 Data API 依赖；生产环境和外部消费者未验证。[SQL 和回退草案](supabase_isolation/README.md) 已准备，默认 ROLLBACK，未执行。审阅后补充容量硬门禁、脱敏快照视图、PG16+ 临时 SET 授权和分离回退文件；真实 PG 主版本及测试仍待确认。现有 Supabase 共用方案仍待批准，不能直接用 postgres 运行 analytics；先核实 Data API 消费者和实际运行角色，再审阅隔离配置。
+**Supabase 隔离准备（2026-11-03 PT）：** 仓库定义的前端→Render→psycopg 链路未发现 Data API 依赖；生产环境和外部消费者未验证。[SQL 和回退草案](supabase_isolation/README.md) 已准备，默认 ROLLBACK，未执行。审阅后补充容量硬门禁、脱敏快照视图、PG16+ 临时 SET 授权和分离回退文件；第二轮补充视图迁移依赖与恢复规则、快照行数门禁要求、public 全表 SELECT 拒绝检查和跨 grantor 成员权限断言；真实 PG 主版本及测试仍待确认。现有 Supabase 共用方案仍待批准，不能直接用 postgres 运行 analytics；先核实 Data API 消费者和实际运行角色，再审阅隔离配置。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|

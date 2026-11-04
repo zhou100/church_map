@@ -73,8 +73,22 @@ PG15 needs a separate reviewed membership variant, not blind syntax substitution
    Current dbt profiles separately consume ANALYTICS_PG* variables and need an
    explicit adapter/configuration update, TLS and threads=1. load_snapshot.py
    still reads SQLite; a bounded production reader of churchmap_snapshot.churches must be implemented.
-   Its admin-owned view uses the owner's RLS permissions; test it after any RLS
-   change. No broad snapshot-reader policy on production tables is intended.
+   Its admin-owned view uses the owner's RLS permissions. An ownership/RLS change
+   can produce a successful but empty SELECT; a raised SQL error is not assured.
+   The future reader must fail closed BEFORE replacing raw.churches: materialize
+   one bounded, consistent source snapshot, validate its schema/identity and count,
+   abort on zero rows or a >20% decrease from the last accepted count for the same
+   source/scope. The 20% threshold is a proposed reviewable safeguard, not a
+   measured quality tolerance. First load requires an independently checked
+   nonzero baseline; missing/mismatched baseline blocks, rather than auto-resets.
+   raw.snapshot_meta currently has no accepted row count/scope/hash fields: the
+   reader change must add them (or equivalent immutable metadata), preserve the
+   previous snapshot on failure, and atomically commit data plus metadata after
+   checks. Do not run the old DROP/reload path first. Legitimate large decreases
+   require an explicitly reviewed new baseline. Tests must cover empty reads,
+   exactly 20%, >20%, first load, changed scope, concurrent changes and failures.
+   No broad snapshot-reader policy on production tables is intended. This gate
+   is not implemented by the SQL drafts; reader activation remains blocked.
    Do not run the current loader against production as postgres. Publisher
    check_schema currently lacks schema qualification and must be corrected
    before coexistence with raw.churches and churchmap_snapshot.churches; unqualified runtime/publisher queries
@@ -99,6 +113,32 @@ PG15 needs a separate reviewed membership variant, not blind syntax substitution
    An administrator's SET ROLE alone is not a complete login/default-settings test.
    Then a separately authorized manual import/dbt parity run, measuring peak
    resources. No schedule or publish authorization is implied.
+
+## Production migration dependency (before rollout and every schema change)
+
+If installed, churchmap_snapshot.churches depends on selected columns of
+public.churches. Dropping/retyping a referenced column or dropping/recreating the
+base table can fail on the view dependency. The Render entrypoint executes
+backend.db.migrate before Uvicorn, so a failed migration can prevent API startup.
+The optional view is not currently in the numbered migration sequence; ordinary
+migration CI without it does not cover that deployment state.
+
+Before a relevant migration, inspect pg_depend and retain the exact view
+SQL, owner, grants and current source/snapshot identities privately. Test both
+states (optional view present and absent) on the matching-major isolated database.
+Pause snapshot readers. In the same authorized migration transaction/window,
+drop only the view with RESTRICT, change the base schema, recreate a compatible
+sanitized view with its original approved owner and narrowly scoped grants,
+then verify view shape, permissions and a nonempty same-scope result. Do not
+recreate it as the analytics role or change runtime credentials. No CASCADE.
+If these operations cannot be transactional, stop and design an explicit staged
+migration/recovery plan before deployment; do not leave a missing view unnoticed.
+
+A transaction failure should roll back both table and view changes. For a
+committed migration rollback, restore the compatible base schema and saved view
+in the same reviewed window, preserving owner/grants, and rerun reader guards.
+A view drop/recreate is not an analytics data reset; retain the last accepted
+raw snapshot throughout. Restart readers only after the gate succeeds.
 
 ## Rollback
 
@@ -142,3 +182,10 @@ abort gate added; boolean-only admin view; accessible-schema function and sequen
 guards; split containment/removal; matching-version Supabase fixture requirements;
 cloud-profile/timeout activation gates; PR link and pg_catalog-first search path.
 Version, actual-role tests and runtime identity remain pending. No SQL was run.
+
+Second review: documented optional-view migration dependencies and recovery;
+required a future fail-closed snapshot-count gate; extended both new roles'
+SELECT guard to all public application relations; replaced ineffective membership
+normalization with an all-grantor SET/INHERIT assertion. Removed the unnecessary
+security_barrier option on the projection-only view. No SQL executed. The gate
+and membership cases need the matching-major fixture tests before activation.
