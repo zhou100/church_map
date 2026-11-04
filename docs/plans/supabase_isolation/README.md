@@ -29,11 +29,16 @@ UI shows 138.46 MB / 0.5 GB; do not silently equate the different observations.
 The local analytics DB is 64,004,899 bytes, so static capacity looks sufficient;
 full-refresh peak disk, CPU/RAM and WAL remain unmeasured.
 
-The export shows anon/authenticated CRUD on churches, church_fact_sources and
-publish_log, all without RLS. UI exposes public/graphql_public and automatically
-exposes new tables. No external write probe was attempted. The full set of
-11 public tables, 91 exposed functions, views and column-level grants still
-needs an access review; the three-table finding is not a complete security audit.
+Operational access findings are kept in the private owner handoff. Address any
+confirmed access issue separately and before the analytics rollout, after
+confirming the actual runtime role; do not wait for the full analytics audit.
+The public document does not serve as an incident report. Earlier Git revisions
+and review comments may retain removed text; this edit is not history erasure.
+
+Project PostgreSQL major version: **unknown**, not included in the supplied CSV.
+Owner asked for `SELECT current_setting('server_version');`. Revised SQL targets
+PG16+ explicitly and must not be applied until the version is recorded and tested.
+PG15 needs a separate reviewed membership variant, not blind syntax substitution.
 
 ## Proposed sequence (requires approval, no changes made)
 
@@ -45,28 +50,51 @@ needs an access review; the three-table finding is not a complete security audit
    SQL settings. This leaves PostgreSQL connections available. Separately turn
    off automatic exposure of new tables, recording any actual ACL changes.
    Turning off automatic exposure alone does not fix existing table grants.
-3. Review `prepare.sql`: creates two dedicated NOLOGIN roles, three private
-   schemas, restricted snapshot column access and private defaults. It fails
+3. Review `prepare.sql`: creates two dedicated NOLOGIN roles, three analytics
+   schemas and an administrator-owned private snapshot schema/view. The view
+   returns only has_google_address, never raw google_address. It fails
    on preexisting role/schema collisions and detected inherited write grants or
-   callable public SECURITY DEFINER functions. It neither edits production data
+   callable SECURITY DEFINER functions in any non-system schema accessible to the role, plus sequence mutation grants. It neither edits production data
    nor revokes existing runtime access. Do not expose its schemas to Data API.
+   Provisioner temporarily receives SET (not INHERIT) on churchmap_analytics,
+   then loses SET at transaction end. PG16 creator ADMIN-only membership is
+   retained to permit later containment/removal without superuser privileges;
+   removing that as well would require another authorized role administrator.
+   No application role becomes a member of a privileged role.
 4. Provision passwords privately and enable LOGIN only after grant verification.
    Use Session pooler + TLS; custom-role usernames include the project reference.
-   Analytics builds as churchmap_analytics; never as postgres. Start dbt threads=1.
+   Analytics builds as churchmap_analytics; never as postgres. The existing profile still has threads=4: LOGIN and execution remain blocked
+   until a tested TLS/cloud-profile change ships with threads=1. The proposed
+   120s statement timeout is unmeasured; benchmark it on the isolated matching
+   version and review any adjustment before activation.
    Do not give either role publisher privileges, pg_read_all_data, membership in
    service_role, or database CREATE. Runtime DATABASE_URL stays unchanged.
 5. Configure Actions ANALYTICS_DATABASE_URL and PROD_READONLY_DATABASE_URL.
    Current dbt profiles separately consume ANALYTICS_PG* variables and need an
    explicit adapter/configuration update, TLS and threads=1. load_snapshot.py
-   still reads SQLite; a bounded sanitized production reader must be implemented.
+   still reads SQLite; a bounded production reader of churchmap_snapshot.churches must be implemented.
+   Its admin-owned view uses the owner's RLS permissions; test it after any RLS
+   change. No broad snapshot-reader policy on production tables is intended.
    Do not run the current loader against production as postgres. Publisher
    check_schema currently lacks schema qualification and must be corrected
-   before coexistence with raw.churches; unqualified runtime/publisher queries
+   before coexistence with raw.churches and churchmap_snapshot.churches; unqualified runtime/publisher queries
    must keep the intended public search path.
-6. Test exact allow/deny behavior on isolated Postgres before any production
-   application, then re-check effective privileges using the actual login roles.
+6. Before BOTH load and build, execute `capacity_gate.sql` with stop-on-error.
+   It blocks at 300,000,000 current bytes, or projected bytes >=400,000,000 using
+   an incremental reserve of max(128,000,000, twice current analytics relation
+   bytes). These are conservative proposed budgets, not measured guarantees.
+   A fresh disk/WAL/free-space observation and bounded input-growth estimate are
+   also mandatory; missing evidence blocks execution. Serialize analytics stages;
+   recheck between stages. Never run on the assumption that initial size is peak.
+   Shared quota exhaustion affects production writes as well as analytics.
+7. Test exact allow/deny behavior on isolated Postgres before any production
+   application. Use the same PostgreSQL major version with the local Supabase
+   stack, or fixtures reproducing anon/authenticated/service_role, PUBLIC/default
+   ACLs, existing functions and a non-superuser CREATEROLE administrator. Vanilla
+   PG14/superuser-only tests cannot establish Supabase membership behavior.
+   Then re-check effective privileges using the actual login roles.
    Verify analytics DDL only in its schemas, denied production writes (including
-   column grants), denied access to users/reviews, restricted snapshot columns,
+   column grants), denied access to users/reviews, boolean-only snapshot view with raw google_address/base-table access denied,
    denied anon/authenticated access to private objects, and function bypasses.
    An administrator's SET ROLE alone is not a complete login/default-settings test.
    Then a separately authorized manual import/dbt parity run, measuring peak
@@ -76,19 +104,19 @@ needs an access review; the three-table finding is not a complete security audit
 
 Every SQL draft ends in ROLLBACK. Nothing here is connected to the migration
 runner or Actions. Only replace it with COMMIT after review and explicit apply
-authorization; never paste both rollback alternatives as one operation.
+authorization; containment and empty removal are separate files and separate authorizations.
 
 - Before commit: ROLLBACK undoes provisioning atomically.
-- After import: stop analytics jobs, make only the two new roles NOLOGIN and
+- After import: stop analytics jobs, use `contain.sql` to make only the two new roles NOLOGIN and
   drain their existing sessions. Retain the schemas and all evidence. Existing
   application credentials/connections remain unchanged. Restore a previous
   analytics snapshot only under a separate checked recovery operation.
-- Before any import: optional RESTRICT cleanup in rollback.sql removes only
+- Before any import: optional RESTRICT cleanup in remove_empty.sql removes only
   the newly provisioned empty schemas and roles. It fails if data/objects or
   new dependencies exist. Never use DROP ... CASCADE or DROP OWNED here.
 - Dashboard change: if a confirmed dependent consumer fails, restore the recorded
   Data API configuration after explicit incident approval. Reopening it may
-  restore the known exposure; prefer fixing that consumer with restricted access.
+  restore the earlier access configuration; prefer fixing that consumer with restricted access.
   Restore changed ACLs only from the exact pre-change snapshot, not blanket GRANT
   ALL. No ACL rollback SQL is invented from the incomplete nine-row report.
 
@@ -96,10 +124,21 @@ authorization; never paste both rollback alternatives as one operation.
 
 Passed: repository dependency searches, producer/consumer review, documentation
 link existence and git diff --check. No dependency added or application changed.
-NOT RUN: either SQL draft, local migrations/tests, production changes, browser
+NOT RUN: all SQL drafts, local migrations/tests, production changes, browser
 QA, Data API request-log audit, actual-role privilege tests, dbt load test.
 The owner explicitly requested preparation without execution; these SQL files
 are review drafts, not tested or approved deployment artifacts.
 
 Sources: [Supabase secure data](https://supabase.com/docs/guides/database/secure-data),
-[connection methods](https://supabase.com/docs/guides/database/connecting-to-postgres).
+[connection methods](https://supabase.com/docs/guides/database/connecting-to-postgres),
+[PG16 role creation](https://www.postgresql.org/docs/16/sql-createrole.html),
+[role membership](https://www.postgresql.org/docs/16/role-membership.html).
+
+## Review follow-up
+
+Nine review topics addressed in draft source: public operational detail removed;
+PG16 SET membership added with ADMIN-only lifecycle authority retained; capacity
+abort gate added; boolean-only admin view; accessible-schema function and sequence
+guards; split containment/removal; matching-version Supabase fixture requirements;
+cloud-profile/timeout activation gates; PR link and pg_catalog-first search path.
+Version, actual-role tests and runtime identity remain pending. No SQL was run.
