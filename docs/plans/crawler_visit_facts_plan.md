@@ -10,6 +10,7 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
+| [PR 1 剩余状态迁移 #75](https://github.com/zhou100/church_map/pull/75) | 本机历史状态、一致性数据库备份与恢复核对 | 私有 R2 上传及远端恢复通过；742 文件哈希一致、远端 analytics 备份隔离恢复 20 表行数一致；尚未接入云端运行 |
 | [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
 | [#68](https://github.com/zhou100/church_map/pull/68) | trafilatura 和 R2 调用移出事件循环 | 已合并 `4d86c9c` |
@@ -291,6 +292,8 @@ status/status_digest.md，有问题才报告。
 ---
 
 ## 6. 顺序和完成标准
+
+**2026-11-03 PT 状态迁移进展：** 详见 [剩余状态迁移记录](remaining_state_migration.md)。旧 Windows 任务已按业主后续要求删除；新定时未开启。742 个本地状态文件已形成私有备份，SHA-256 全部通过，analytics dump 已在隔离库恢复并核对 20 张表行数。业主提供本机凭据后，已上传 R2 并完成远端恢复验证（run `initial-state-20261104T053851Z`）；恢复回执也保存在私有 R2 和本机配置目录。未写生产库、未运行发布或源站复核。现有 Supabase 共用实例的隔离 schema 方案仅作可行性评估，尚未配置或批准执行。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|
