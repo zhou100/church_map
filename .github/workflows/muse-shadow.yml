@@ -1,0 +1,69 @@
+name: muse-shadow
+on:
+  workflow_dispatch:
+    inputs:
+      baseline_identity:
+        description: Independent first-baseline identity (blank after accepted.json exists)
+        required: false
+        type: string
+      baseline_scope:
+        description: Independent first-baseline scope
+        default: all_congregations_v1
+        required: false
+        type: string
+      baseline_rows:
+        description: Independently corroborated first-baseline row count
+        required: false
+        type: string
+permissions:
+  contents: read
+concurrency:
+  group: muse-pull
+  cancel-in-progress: false
+jobs:
+  shadow:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    timeout-minutes: 120
+    services:
+      postgres:
+        image: postgres:17
+        env:
+          POSTGRES_USER: shadow
+          POSTGRES_PASSWORD: ephemeral-shadow-only
+          POSTGRES_DB: churchmap_run_00000000
+        ports:
+          - 127.0.0.1:5432:5432
+        options: >-
+          --health-cmd "pg_isready -U shadow -d churchmap_run_00000000"
+          --health-interval 10s --health-timeout 5s --health-retries 5
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+      - name: Install existing analytics dependencies
+        run: |
+          if python -m pip install boto3 -r analytics/requirements.txt -r analytics/requirements-drive.txt > "$RUNNER_TEMP/muse-install.log" 2>&1; then
+            echo '{"step":"dependencies","status":"ok"}'
+          else
+            echo '{"step":"dependencies","status":"failed"}'
+            exit 1
+          fi
+      - name: Run private shadow pipeline
+        env:
+          GDRIVE_SA_JSON: ${{ secrets.GDRIVE_SA_JSON }}
+          GDRIVE_FOLDER_ID: ${{ vars.GDRIVE_FOLDER_ID }}
+          R2_PRIVATE_CONFIRMED: ${{ vars.R2_PRIVATE_CONFIRMED }}
+          R2_ACCOUNT_ID: ${{ secrets.R2_ACCOUNT_ID }}
+          R2_ACCESS_KEY_ID: ${{ secrets.R2_ACCESS_KEY_ID }}
+          R2_SECRET_ACCESS_KEY: ${{ secrets.R2_SECRET_ACCESS_KEY }}
+          R2_BUCKET: ${{ secrets.R2_BUCKET }}
+          PROD_READONLY_DATABASE_URL: ${{ secrets.PROD_READONLY_DATABASE_URL }}
+          ANALYTICS_DATABASE_URL: postgresql://shadow:ephemeral-shadow-only@127.0.0.1:5432/churchmap_run_00000000
+          MUSE_STATE_RUN_ID: ${{ vars.MUSE_STATE_RUN_ID }}
+          MUSE_STATE_MANIFEST_SHA256: ${{ secrets.MUSE_STATE_MANIFEST_SHA256 }}
+          MUSE_BASELINE_IDENTITY: ${{ inputs.baseline_identity }}
+          MUSE_BASELINE_SCOPE: ${{ inputs.baseline_scope }}
+          MUSE_BASELINE_ROWS: ${{ inputs.baseline_rows }}
+        run: python -m scripts.muse_shadow

@@ -927,7 +927,7 @@ def pull_package(wp_dir: Path, status: dict[str, dict], recheck: bool) -> str:
     shutil.rmtree(stage, ignore_errors=True)
     cited = [str(RET / p.name) for p in staged if p.name.rsplit("_", 1)[0] in RECHECKED]
     if recheck and cited:  # lead_outcomes.csv alone (say, every lead no_trace) cites nothing to re-check
-        p = subprocess.run([str(ROOT / "analytics/.venv/bin/python"), str(ROOT / "analytics/scripts/recheck_sources.py"),
+        p = subprocess.run([os.environ.get("CHURCHMAP_ANALYTICS_PYTHON", str(ROOT / "analytics/.venv/bin/python")), str(ROOT / "analytics/scripts/recheck_sources.py"),
                             *cited])
         if p.returncode != 0:  # DONE.md not recorded as handled, so the next pull retries
             return "waiting: source re-check failed; will retry"
