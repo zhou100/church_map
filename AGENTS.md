@@ -120,6 +120,14 @@ freshness budgets come from code/config; do not copy them into evergreen prose.
   `RETURNING`. Routes never open SQLite or direct psycopg connections. Add a new
   numbered migration for schema changes; test the real migration sequence.
   Preserve `prepare_threshold=None` for transaction pooling.
+- Before dropping/retyping columns or recreating a table, check the target
+  database for dependent views outside `migrations/` using `pg_depend` or
+  `information_schema.view_column_usage`, and test with those dependencies
+  present. If direct inspection is unavailable, ask the owner for read-only
+  dependency results; do not treat missing access as proof of no dependencies.
+  Preserve approved view definitions, owners and grants in the migration and
+  recovery window. See the [snapshot-view procedure](docs/plans/supabase_isolation/README.md#production-migration-dependency-before-rollout-and-every-schema-change)
+  for one example, not a claim that the proposed view is deployed.
 - Preserve GSI/tokeninfo user auth and separate `X-Crawl-Token` admin auth.
   Preserve `READ_ONLY` write protection. Never print secret values.
 - Keep source URLs public and re-check redirect destinations in source-fetching
