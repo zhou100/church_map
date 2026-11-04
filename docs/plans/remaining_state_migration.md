@@ -54,18 +54,32 @@ storage is not a durable remote backup; retain it until remote verification.
 - First identity check stopped because `inet_server_addr()::text` includes
   `/32`; corrected with `host(inet_server_addr())` and reran the identity check.
   No identity assertion was removed.
-- R2 upload/remote restore: **not run**. No local R2 environment or .env
-  credentials are available; GitHub Secrets cannot be read back. Owner asked
-  to supply a mode-0600 credential-file path, never values in chat.
+- R2 upload/remote restore: **passed**, completed 2026-11-04T05:39:12Z
+  (2026-11-03 PT), run `initial-state-20261104T053851Z`. Nine snapshot objects
+  (eight archive parts plus archive metadata), 131,340,484 payload bytes. All
+  742 source files and both database backups match after remote retrieval.
+- Downloaded analytics dump restored into new isolated `churchmap_r2_restore_test`
+  at `127.0.0.1:55472`; all 20 table counts match. Downloaded SQLite integrity
+  check passed. Test Postgres stopped afterward.
+- Owner supplied an ignored, untracked local credential file; its permissions
+  were tightened from 0644 to 0600. Values were never logged. No GitHub secret
+  changes or public artifact uploads were performed.
 - No application code changed. Backend/frontend/dbt suites are not rerun for
   this operational backup/documentation step; no claim of fresh dbt success.
 
-## Finish the migration
+## Completed remote backup and recovery
 
-Use the existing `scripts.muse_state_store` with root `snapshot/`, a new
-immutable run ID and a private receipt outside that snapshot. Restore to a new
-directory using the receipt hash, validate every part and reconstructed archive
-hash, then validate the contained file inventory and database restore again.
+The existing `scripts.muse_state_store` saved root `snapshot/` under immutable
+run `initial-state-20261104T053851Z`, with storage-code revision `43130d2`.
+Remote restore into a new directory used the receipt manifest hash; every part,
+reconstructed archive, original inventory and database backup was verified.
+Private `remote-receipt.json` and `remote-verification.json` are committed with
+conditional writes under the same R2 run directory and read back byte-for-byte.
+Independent local copies are in `/home/yujunz/.config/churchmap/migration-receipts/`
+(mode 0600). The immutable manifest does not list these companion receipts.
+This completes backup migration of the captured local state, not adoption by
+a live hourly pipeline. Current Drive completeness and cloud analytics/dbt
+parity remain unverified.
 Do not overwrite working state or adopt a stale snapshot automatically. Keep
 the receipt in durable private storage. Do not print credentials, raw state,
 private URLs or detailed manifests in public Actions logs.
