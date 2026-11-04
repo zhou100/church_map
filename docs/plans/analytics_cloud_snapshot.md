@@ -1,165 +1,164 @@
-# Analytics cloud snapshot and single-thread dbt
+# Disposable analytics jobs and private snapshot acceptance
 
-Scope: implement the code path for the existing private snapshot view. No role
-LOGIN/password changes, production writes, Drive changes, publishing, rechecks,
-geocoding or schedule activation are included. Visitor-facing hypothesis: a bad
-or silently empty source read must not replace the last accepted directory used
-by analytics. Counterchecks: empty/RLS-filtered read, >20% drop, changed source,
-stale capture, duplicate IDs, failed COPY and overlapping jobs retain old state.
+PR #77 was revised after review: analytics uses a fresh Postgres service per job,
+not permanent schemas in production Supabase. All dbt models are views/tables,
+rebuilt with --full-refresh; no incremental models or dbt snapshots need a permanent
+analytics database. Research returns, receive timestamps, recheck/geocode history
+and other file inputs must still be restored from their selected private R2 state.
+This does not imply that all required inputs have been restored into a cloud job.
 
-## Producer, identity and acceptance
+Visitor-facing hypothesis: an empty/partial/stale source read must not become the
+accepted directory input to analytics. Counterchecks include empty reads, >20%
+drops, source/scope changes, delayed results, failed COPY/dbt builds, and two jobs
+racing to advance the same accepted state. No command publishes facts.
 
-Run from the repository root with the analytics Python environment:
+## Read-only source and first baseline
 
 ```
-python -m analytics.scripts.cloud_snapshot --report /private/new-inspection.json
+python -m analytics.scripts.cloud_snapshot --report /private/inspection.json
 ```
 
-This defaults to **source read only**. PROD_READONLY_DATABASE_URL must authenticate
-as churchmap_snapshot_reader (non-superuser, no BYPASSRLS). Remote TLS is forced;
-loopback-only fixtures use a non-TLS connection. prepare_threshold=None is retained.
-The query reads only the exact 14 approved columns of churchmap_snapshot.churches,
-rejects a changed full view shape and never selects raw google_address. A single
-REPEATABLE READ, READ ONLY transaction fixes both rows and observation timestamp.
-A named cursor fetches bounded batches, with at most 100,000 rows / 64 MiB canonical
-payload. Duplicate IDs, non-boolean flags and nonfinite JSON numbers are rejected.
-No business record is printed or included in the report; it contains hashes,
-source identity, scope, counts, bytes, timestamp and whether install committed.
-Report files are new mode-0600 files; use an ignored/private directory, not public
-GitHub artifacts. Public success/failure output contains status/counts only.
+PROD_READONLY_DATABASE_URL authenticates as churchmap_snapshot_reader, with neither
+superuser nor BYPASSRLS. Remote TLS is forced and prepare_threshold=None retained.
+REPEATABLE READ + READ ONLY fixes the observation time and rows. The complete view
+shape must match the 14 approved columns of churchmap_snapshot.churches; raw
+Google address is replaced by has_google_address. A bounded cursor rejects empty
+reads, duplicate IDs, non-boolean flags, nonfinite numbers, >100,000 rows or >64 MiB.
+Rows (including phones) remain private and never enter public logs or receipts.
 
-Identity binds host, port, database, the fixed view and scope, without credentials.
-A pooler endpoint change therefore requires deliberate identity reconciliation.
-The only current scope is all_congregations_v1; California filtering belongs in
-consumers, not in a changing partial snapshot. taken_at is the source transaction
-start, not a new verification time for any congregation fact.
+Identity hashes host/port/database/view/scope; changing pooler endpoint needs
+explicit reconciliation. Scope is all_congregations_v1, not an implicitly changing
+California subset. Capture time is not a congregation fact's verification time.
+The inspection report contains only identity, scope, hash, counts, size and time;
+it is NOT acceptance. Files are created atomically, mode 0600, without overwriting.
+A read failure leaves no empty report, so the same filename can be retried.
 
-First install requires an independently reviewed private baseline JSON:
+The first accepted run needs a private independent baseline JSON:
 
 ```
 {"identity":"<inspection identity>","scope":"all_congregations_v1","expected_rows":12345}
 ```
 
-The count shown is an example, not a known project count. Owner/source-side counts
-must corroborate it under the same scope and cutoff; copying the inspection report
-unreviewed is not independent validation. Exact equality is required on first load.
-Legacy SQLite metadata with no identity also requires this explicit baseline.
-After acceptance, metadata is authoritative: supplying another baseline cannot
-silently override source/scope changes or a large drop. A new snapshot must be
-newer than the accepted observation; equal/older timestamps fail. Exactly 20%
-decrease is accepted, >20% or zero fails. Scope changes/resets need a separately
-reviewed migration; there is no bypass flag.
+12345 is an example. The owner/source-side count must corroborate the same scope
+and cutoff; blindly copying an inspection receipt is not independent validation.
+Subsequent runs compare to R2 accepted state, never a replacement baseline: reject
+zero, >20% decline, source/scope change, or non-increasing observation time. Exactly
+20% decline is allowed. A new source/scope needs separately reviewed reconciliation.
 
-## Atomic analytics install
+## Disposable database and manual job
 
-Only an explicitly authorized invocation adds --apply:
+The caller provisions a new empty local Postgres database per run, named
+churchmap_run_<8-to-32 lowercase hex characters>, and destroys it when the job
+ends. A future Actions job can use a postgres service with a generated database
+name. No workflow is activated in this PR, and no existing database is dropped by
+these scripts. The service/database lifecycle remains the caller's responsibility.
+
+ANALYTICS_DATABASE_URL must use a literal loopback host (127.0.0.1/localhost/::1)
+and this disposable name. Remote hosts, alternate libpq hostaddr/services/options,
+and databases containing user schemas/tables/functions are refused. The guarded
+loader creates raw tables and COPYs the snapshot in one transaction. COPY failure
+rolls back newly created objects. Existing raw tables or dependent views are never
+dropped/replaced; even a previously failed job database is not reused after load.
+There is no production analytics migration, capacity JSON or hourly human check.
+
+Use an environment with analytics/requirements.txt and the existing boto3 storage
+client (already used by #73). No new dependency is introduced. Restore private
+seeds from the selected R2 inputs before building. Then, only after authorization:
 
 ```
-python -m analytics.scripts.cloud_snapshot --apply \
+python -m analytics.scripts.cloud_dbt --run \
   --baseline /private/approved-first-baseline.json \
-  --capacity-evidence /private/current-capacity.json \
-  --report /private/new-install-receipt.json
+  --revision <full-40-character-code-SHA> \
+  --private-dir /private/new-run
 ```
 
-ANALYTICS_DATABASE_URL must authenticate as churchmap_analytics with neither
-superuser nor BYPASSRLS. The raw schema must already exist with correct ownership.
-The installer holds an advisory transaction lock shared with the cloud dbt runner;
-it refuses concurrent work rather than waits indefinitely. It applies the numbered
-**analytics-only** migration `analytics/migrations/0001_snapshot_gate.sql` inside
-the same transaction. This is intentionally outside runtime `migrations/`, so
-Render startup cannot create analytics state as a side effect. The migration
-preserves legacy metadata columns consumed by mart_coverage_snapshot.
+Supply the existing R2_* variables and R2_PRIVATE_CONFIRMED=true. --baseline is only
+needed when accepted.json does not exist. The job performs, serially:
 
-The accepted rows are staged in bounded memory before target mutation. The target
-transaction locks/checks the latest metadata, DELETEs/COPYs raw.churches, and replaces
-the singleton metadata only after all checks. It preserves table identity and dbt
-view dependencies; no DROP/CASCADE or recreation of churches occurs. Rollback
-restores the old rows and metadata on any failure, including COPY failure. Multiple
-metadata rows fail closed. Statement/lock timeouts bound database operations.
-A report filesystem error after DB commit is not proof of rollback: inspect
-raw.snapshot_meta identity/hash/time before retrying. Reports never authorize publishing.
+1. Read private R2 accepted metadata and its ETag; only NoSuchKey means absent.
+2. Capture the source and validate against that metadata or the first baseline.
+3. Load the new disposable database.
+4. Run dbt build --full-refresh with target job, threads=1, no retries, a 15-minute
+   timeout and explicit today's America/Los_Angeles as_of_date. Both successful
+   exit and nonempty run_results containing only success/pass are required.
+5. Store an immutable build receipt and conditionally advance accepted.json.
 
-## Capacity evidence and cloud build
+The job profile uses non-TLS only for its loopback service; production snapshot
+reads retain TLS. The dbt child receives job connection variables but no production
+connection string, R2 credentials or ambient PG* defaults. Its logs/compiled output
+stay under the new mode-0700 private directory; public output is counts/status
+only, on success and failure. Telemetry is disabled. The job leaves the local
+marts available for a separately authorized downstream step until service teardown.
 
-Before each load and each build, current database size must be <300,000,000 bytes,
-and projected size must be <400,000,000. Growth reserve is the maximum of
-128,000,000 bytes, twice current analytics relation size and (for loading) four
-times canonical payload size. These are conservative budgets, not peak guarantees.
-The private capacity JSON must contain:
+## R2 concurrency, failure and recovery
 
-```
-{"database_identity":"<hash>","observed_at":"<UTC timestamp>","disk_free_bytes":123456789}
-```
+Private prefix: analytics_private/v1/snapshot_gate/.
+- runs/<run-id>.json is an immutable successful-build receipt.
+- accepted.json is the authoritative cross-run count/source/time/hash baseline.
 
-This is an operator observation of current free disk after WAL/system use, at
-most one hour old, bound to the target host/port/database hash. It must cover the
-computed reserve. It is not inferred from pg_database_size. For the approved
-shared-project layout and the same session-pooler endpoint, the inspection report's
-database_identity also identifies the analytics target. A different endpoint or
-database needs its own reviewed identity; do not copy evidence between targets.
-Missing, stale, future-dated, mismatched or insufficient evidence fails closed.
+First creation uses If-None-Match: *; replacement uses If-Match with the exact ETag
+read before capture. R2 evaluates these conditions atomically ([R2 consistency
+contract](https://developers.cloudflare.com/r2/reference/consistency/)). Two jobs
+reading the same baseline cannot both advance it. A conflict fails the run and
+blocks downstream use; it is never retried as an unconditional write. Future
+Actions orchestration should also serialize the entire analytics/publish job with
+cancel-in-progress:false. CAS is a state guard, not a production publishing lock.
 
-```
-python -m analytics.scripts.cloud_dbt \
-  --capacity-evidence /private/current-capacity.json \
-  --private-dir /private/new-dbt-run
-```
+A failed capture/load/build leaves accepted.json unchanged. A receipt uploaded
+before a failed CAS is only build evidence, not acceptance. A network failure after
+PUT or failure writing the local receipt has an ambiguous acknowledgement: compare
+accepted.json's run_id/revision/hash with the immutable run receipt before retrying.
+Never reset/delete accepted.json to bypass a rejected count. After failure discard
+the disposable DB; do not publish its marts. R2 permission/server errors, invalid
+metadata/version, and oversized state fail closed instead of becoming first runs.
+The actual R2 conditional-write integration has not yet been exercised live.
 
-Install `analytics/requirements.txt` in that environment. The runner parses
-ANALYTICS_DATABASE_URL into the cloud profile env variables in memory; no shell
-expansion, owner fallback or printed connection string. Cloud uses TLS require,
-Session pooler port 5432, schema analytics, threads=1, no retries. Local profile
-remains unchanged and is not selected by this runner. The cloud runner requires
-accepted snapshot_gate_v1 metadata, rechecks capacity and holds the shared lock
-through dbt completion (15-minute subprocess timeout). It runs build --full-refresh
-with today's America/Los_Angeles as_of_date explicitly, addressing the existing
-local project's frozen default date for cloud runs. Model SQL/seeds are unchanged.
+## Security boundary and activation limits
 
-stdout/stderr, target artifacts and dbt logs stay under a new mode-0700 directory;
-only step/status reaches the public log. Anonymous dbt telemetry is disabled.
-The runner does not automatically archive that directory to R2 yet. Operators
-must retain private reports before discarding a runner; no workflow activates this
-code. Partial dbt builds are possible: failure blocks downstream publishing, does
-not pretend to roll back all dbt models, and leaves the source snapshot intact.
+A dedicated reader protects source credentials only while the job has no writable
+production credential. Putting reader and publisher secrets in the same process
+or job weakens that separation; this code never receives a production writer URL
+for its operations. Future workflow design must scope secrets by step/job and keep
+untrusted PR jobs away from all production/R2 secrets. A loopback/name check guards
+against accidental targeting; it is not protection against a malicious local proxy.
 
-## Verification and remaining limits
+Do not enable the production churchmap_analytics role. Existing NOLOGIN roles and
+schemas created during #76 are untouched; any cleanup is a separate reviewed SQL
+change. Only source-reader login/transport verification will eventually be needed.
+No production connection, write, role change, schedule or paid call was made here.
 
-Regression tests are `tests/test_cloud_snapshot.py`: pure gates and real SQL tests
-use only an explicitly identified loopback test database. They cover exact-20%
-boundary, source/scope identity, first baseline, stale captures, repeatable-read
-under concurrent source changes, failed COPY rollback, view/OID preservation,
-empty/shape errors, legacy metadata, advisory-lock exclusion, capacity evidence,
-and private stdout on successful/failed snapshot/dbt commands.
+Before activation: approve the first count baseline, verify the real source reader,
+restore/verify all private inputs, test live R2 CAS and report retention, and compare
+actual cloud job outputs. Detailed logs are private locally, but automatic R2 log
+archiving is still a separate step. Publishing still requires its schema handling,
+exact diff gate and authorization. An accepted source snapshot is not authorization
+to publish. No hosted persistent analytics database is required by this path.
 
-The shared-project provisioning roles remain NOLOGIN in production. No production
-connection or acceptance test is implied by local checks. Before activation:
-finish source count adjudication and disk evidence, private seed/state restore
-selection, hosted role/TLS verification, actual cloud dbt parity/resource checks,
-private report persistence, and separately approved login/manual execution. The
-SQL publisher's unqualified check_schema remains a known separate prerequisite
-before publication; these commands never invoke the publisher. Timers stay off.
+## Verification
 
+The revision replaces permanent-database-specific capacity/lock/migration tests
+with disposable-target refusal, rollback and R2 CAS tests; it does not relax the
+snapshot count/identity/time gates. Repeatable-read and private-output regressions
+remain. Checks on 2026-11-04 PT:
 
-### Checks actually run (2026-11-04 UTC)
-
-- Fresh loopback-only PostgreSQL 17.6 database
-  `churchmap_snapshot_acceptance_test`, port 55473, pgvector 0.8.1. Confirmed test
-  target before `python -m backend.db.migrate`; migrations 0001–0006 applied.
-- `python -m pytest -q` (Python 3.11.15): **611 passed, 5 skipped,
-  10 subtests passed**. New cloud tests: 18 passed. Two legacy modules are
-  superseded; three parity cases lack SF/CA fixture rows. No cloud SQL test skipped.
+- Confirmed fresh loopback test DB churchmap_pr77_review_test, PostgreSQL 17.6,
+  port 55473, pgvector 0.8.1. `python -m backend.db.migrate`: 0001–0006 applied.
+- `python -m pytest -q -rs`: **625 passed, 5 skipped, 10 subtests passed**;
+  all 32 snapshot/job tests ran, including real SQL and SDK conditional parameters.
+  Two superseded modules and three missing SF/CA parity inputs account for skips.
   Existing Starlette/httpx deprecation warning remains.
-- Required `DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build
-  --project-dir analytics/dbt --full-refresh` on a separate isolated PG17.6
-  analytics restore: **28 successful build nodes, 90 passing tests**, no failures.
-  Private inputs/logs remained ignored/private. This used the local profile and
-  its existing default date; it does not establish cloud/current-date parity.
-- `dbt parse --target cloud --no-partial-parse` with synthetic connection values:
-  passed; no database connection. Command/timeout/private-output behavior is
-  tested with a subprocess substitute, not a hosted dbt build.
-- Initial restore failed because the temporary PG17 client lacked compression;
-  the first build consequently failed on missing raw tables. Recreated only the
-  isolated analytics test database, restored with the available PG14 client
-  (exit 0), and then completed the full dbt build above.
-- Frontend/browser checks not run: no UI changes. Production queries, writes,
-  login activation, hosted TLS/pooler checks, timers and paid calls not run.
+- Real `run_build` in fresh local churchmap_run_77abcdef, loaded with private
+  sidecar snapshot/seeds: dbt 1.8.8, target job, threads=1, full-refresh,
+  as_of_date=2026-11-04: **28 success, 90 pass, no errors/skips**. The subprocess
+  itself ran, not a substitute; logs and artifacts stayed private. Capture/read
+  concurrency was tested separately with synthetic data and a real reader role.
+- Required local-path compatibility command:
+  `DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build --project-dir analytics/dbt --full-refresh`
+  with explicit loopback test connection variables: **28 success, 90 pass**.
+  This separate check uses the unchanged local target/default date, not the job date.
+- `git diff --check`: passed.
+- R2 state read/CAS/failure tests use an offline S3 substitute; botocore Stubber
+  confirms both conditional parameters are supported by the installed SDK.
+  No live R2 operations, hosted reader/pooler check or production SQL executed.
+- No frontend changes; frontend/browser checks not run. No timer/login enabled.
+  Local results do not establish an activated cloud workflow or publication safety.

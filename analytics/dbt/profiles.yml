@@ -12,16 +12,16 @@ churchmap_analytics:
       dbname: "{{ env_var('ANALYTICS_PGDATABASE', 'churchmap_analytics') }}"
       schema: analytics
       threads: 4
-    # Selected only by the gated cloud runner; no localhost/owner fallback.
-    cloud:
+    # Only the guarded disposable-job runner selects this target.
+    job:
       type: postgres
-      host: "{{ env_var('ANALYTICS_CLOUD_PGHOST', '') }}"
-      port: "{{ env_var('ANALYTICS_CLOUD_PGPORT', '5432') | int }}"
-      user: "{{ env_var('ANALYTICS_CLOUD_PGUSER', '') }}"
-      password: "{{ env_var('ANALYTICS_CLOUD_PGPASSWORD', '') }}"
-      dbname: "{{ env_var('ANALYTICS_CLOUD_PGDATABASE', '') }}"
+      host: "{{ env_var('ANALYTICS_JOB_PGHOST', '') }}"
+      port: "{{ env_var('ANALYTICS_JOB_PGPORT', '5432') | int }}"
+      user: "{{ env_var('ANALYTICS_JOB_PGUSER', '') }}"
+      password: "{{ env_var('ANALYTICS_JOB_PGPASSWORD', '') }}"
+      dbname: "{{ env_var('ANALYTICS_JOB_PGDATABASE', '') }}"
       schema: analytics
       threads: 1
-      sslmode: require
+      sslmode: disable
       connect_timeout: 10
       retries: 0

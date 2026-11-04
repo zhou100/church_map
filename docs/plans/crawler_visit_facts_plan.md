@@ -10,7 +10,7 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| [PR 1 云端快照接入 #77](https://github.com/zhou100/church_map/pull/77) | 脱敏视图只读快照、原子替换和行数/容量门禁、dbt cloud 单线程 | 本地 PG17.6：611 passed / 5 skipped；dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
+| [PR 1 云端快照接入 #77](https://github.com/zhou100/church_map/pull/77) | 脱敏只读快照、R2 条件更新行数基线、临时 Postgres 单线程 dbt | 审阅后取消生产常驻 analytics；本地 PG17.6：625 passed / 5 skipped；临时库 dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
 | [PR 1 Supabase 隔离方案 #76](https://github.com/zhou100/church_map/pull/76) | Data API 依赖核对、角色/schema SQL 草案及保留数据的回退 | PG17.6 合成隔离测试通过；未在生产执行；见 [隔离方案](supabase_isolation/README.md) |
 | [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
@@ -84,8 +84,8 @@ D-A、D-C、D-D、D-E、D-F、D-G 仍是建议，未获批准。业主随后明�
 
    - 业主已选复用现有 R2 bucket 的 `analytics_private/` 前缀保存文件状态；启用前核对私有访问设置，前缀不是权限边界；
    - Muse 返回的文件每次从 Drive 拉；
-   - 目录快照改成用一个**只读角色**从生产库读，`load_snapshot.py` 要跟着改。
-4. **analytics 库上云。** 本地 Postgres（5433）换成一个小的托管 Postgres（另开一个 Supabase 项目或 Neon），连接串放进 secrets；dbt 顺便接上 CI。
+   - 目录快照改成用一个**只读角色**从生产库读；#77 新增 `cloud_snapshot.py`，原 `load_snapshot.py` 保留本地 SQLite 路径。
+4. **analytics 每次运行临时重建【改，2026-11-04 PR #77 审阅及业主要求处理评论】。** 原案的托管 Postgres（另开 Supabase/Neon）和随后尝试的生产共用 schema 均不作为当前代码方案；未来 Actions job 起临时 Postgres，恢复私有输入后运行 dbt，结束销毁。上次接受的快照身份/范围/时间/行数存私有 R2，以 ETag 条件写入防止并发覆盖。保留首次独立行数基线、空快照/超过 20% 降幅/旧快照拒绝。无新增付费服务，不再要求每小时人工磁盘证据。此处是代码方案变更，尚未激活工作流，也不授权删除生产已有角色/schema。
 5. `dbt build` 传入 `--vars '{as_of_date: <当天>}'`，修掉 `mart_coverage_snapshot` 停在 10/19 的问题。D-3 的 12 个月新鲜度依赖这个日期。
 6. **复核会被挡【改】。** 云上的机器是数据中心 IP，有些教会网站会对它返回 403。上云后要比较 `recheck_sources` 的 `fetch_failed` 和 `robots_blocked` 比例，比本地明显升高就要处理。被挡的不能绕过（AGENTS）。
 
@@ -296,7 +296,7 @@ status/status_digest.md，有问题才报告。
 
 **Supabase 隔离准备（2026-11-04 PT 更新）：** #76 已合并。业主提供的 SQL Editor 验证结果显示隔离角色和 schema 权限符合预期，两角色仍为 NOLOGIN；这些是业主提供的结果，不是 agent 实际云端登录验证。此前 PG17.6 合成隔离/回退测试 27 项通过。具体权限证据保留于私有交接，不能直接用 postgres 运行 analytics。
 
-**云端代码接入（#77）：** 已实现只读脱敏快照、首次独立行数基线、空结果/超过 20% 降幅/身份变化/旧快照拒绝、事务替换和共享任务锁；cloud dbt 使用专用角色、TLS 和单线程。隔离库完整测试和本地 dbt build 通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#checks-actually-run-2026-11-04-utc)。下一步仍需独立基线与磁盘证据、私有种子/状态恢复选择、经授权的云端登录及实际 dbt 对比、私有报告归档；未执行生产写入、发布或启用定时任务。
+**云端代码接入（#77，审阅后修订）：** 改为临时 Postgres + 私有 R2 基线；生产只读脱敏快照保留，dbt 单线程并显式传当天 PT 日期。删除常驻库容量证据、共享锁和 analytics 迁移；R2 条件写入处理跨运行竞争。新库拒绝复用已有对象，dbt 失败不推进基线。隔离库完整测试及真实临时库单线程构建通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#verification)。下一步仍需首次独立基线、私有输入恢复核对、经授权的源只读角色登录验证、真实 R2 CAS 和运行报告归档；生产角色/schema 原样保留，未执行生产写入、发布或启用定时任务。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|

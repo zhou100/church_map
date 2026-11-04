@@ -3,7 +3,8 @@
 A small, tested analytics layer that explains the product numbers (plan §7–8 in
 `churchmap_data_quality_dbt_plan.md`). The local path reads a sanitized SQLite snapshot plus seeds built from Muse returns.
 The optional cloud path reads only a restricted PostgreSQL snapshot view and writes
-only the separate analytics schemas using its own role; it never publishes facts.
+only a fresh disposable loopback Postgres job database; it never publishes facts.
+Cross-run acceptance metadata lives in private R2, not production Supabase.
 
 ```
 holyhub.db (local SQLite snapshot) ──load_snapshot.py──▶ raw.churches ─┐
@@ -14,7 +15,7 @@ denomination_scope.csv, fact_holds.csv (hand-maintained)                ─┘
 ## Cloud snapshot and dbt (manual, not activated)
 
 See [cloud ingestion runbook](../docs/plans/analytics_cloud_snapshot.md) for explicit
-first-load baselines, private reports, capacity evidence and the manual commands.
+first-load baselines, private reports, conditional R2 state and manual commands.
 No login, production write or scheduled run is enabled by these code changes.
 
 ## Run it

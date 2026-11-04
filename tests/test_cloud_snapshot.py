@@ -11,6 +11,11 @@ import pytest
 
 from analytics.scripts import cloud_snapshot as s
 from analytics.scripts import cloud_dbt as d
+from analytics.scripts import snapshot_state as state
+from botocore.exceptions import ClientError
+import hashlib
+from io import BytesIO
+import uuid
 
 
 def snap(n=10):
@@ -53,15 +58,20 @@ def test_first_load_needs_independent_exact_baseline():
         s.validate_count(snap(0), None, baseline(snap(0)))
 
 
-def test_cloud_profile_mapping_and_session_only():
-    env = d.cloud_env('postgresql://churchmap_analytics.project:fixture@db.example:5432/postgres')
-    assert env['ANALYTICS_CLOUD_PGUSER'] == 'churchmap_analytics.project'
+def test_job_target_and_secret_isolation(monkeypatch):
+    monkeypatch.setenv('DATABASE_URL', 'production-secret')
+    monkeypatch.setenv('R2_SECRET_ACCESS_KEY', 'private')
+    monkeypatch.setenv('PGHOSTADDR', '203.0.113.1')
+    env = d.job_env('postgresql://job:fixture@127.0.0.1:5432/churchmap_run_abcdef12')
+    assert env['ANALYTICS_JOB_PGUSER'] == 'job'
+    assert not {'DATABASE_URL','R2_SECRET_ACCESS_KEY','PGHOSTADDR'} & env.keys()
     for url in ['postgresql://postgres:fixture@db.example/postgres',
-                'postgresql://churchmap_analytics:fixture@db.example:6543/postgres']:
+                'postgresql://job@localhost/churchmap_analytics',
+                'postgresql://job@localhost/churchmap_run_abcdef12?hostaddr=203.0.113.1']:
         with pytest.raises(s.GateError):
-            d.cloud_env(url)
-    profile = Path('analytics/dbt/profiles.yml').read_text().split('    cloud:',1)[1]
-    assert 'threads: 1' in profile and 'sslmode: require' in profile
+            d.job_connection(url)
+    profile = Path('analytics/dbt/profiles.yml').read_text().split('    job:',1)[1]
+    assert 'threads: 1' in profile and 'sslmode: disable' in profile
 
 
 def test_failure_output_never_echoes_client_or_credential(monkeypatch, capsys, tmp_path):
@@ -73,6 +83,9 @@ def test_failure_output_never_echoes_client_or_credential(monkeypatch, capsys, t
     assert s.main(['--report', str(tmp_path/'private.json')]) == 1
     out = capsys.readouterr()
     assert out.err == '' and out.out == '{"step":"cloud_snapshot","status":"failed"}\n'
+    assert not (tmp_path/'private.json').exists()
+    monkeypatch.setattr(s, 'capture', lambda _: snap())
+    assert s.main(['--report', str(tmp_path/'private.json')]) == 0
 
 
 def test_inspection_does_not_connect_target(monkeypatch, capsys, tmp_path):
@@ -81,7 +94,7 @@ def test_inspection_does_not_connect_target(monkeypatch, capsys, tmp_path):
     monkeypatch.setattr(s, 'connect', lambda _: pytest.fail('target connection in inspect'))
     report = tmp_path/'report.json'
     assert s.main(['--report', str(report)]) == 0
-    assert json.loads(report.read_text())['applied'] is False
+    assert json.loads(report.read_text())['accepted'] is False
     assert report.stat().st_mode & 0o777 == 0o600
     assert 'fixture' not in capsys.readouterr().out
     assert s.main(['--report', str(report)]) == 1  # never overwrite
@@ -97,11 +110,10 @@ def db():
         pytest.fail('refusing non-loopback/non-test database')
     admin = psycopg.connect(url, autocommit=True)
     assert admin.execute('SELECT current_database()').fetchone()[0] == info['dbname']
-    roles = ('churchmap_analytics','churchmap_snapshot_reader')
+    roles = ('churchmap_snapshot_reader',)
     for role in roles:
         assert not admin.execute('SELECT 1 FROM pg_roles WHERE rolname=%s',(role,)).fetchone(), 'test role collision'
         admin.execute(psycopg.sql.SQL("CREATE ROLE {} LOGIN PASSWORD 'fixture-only' NOSUPERUSER NOBYPASSRLS").format(psycopg.sql.Identifier(role)))
-    admin.execute('CREATE SCHEMA raw AUTHORIZATION churchmap_analytics')
     admin.execute('CREATE SCHEMA churchmap_snapshot')
     admin.execute('CREATE TABLE churchmap_snapshot.fixture (' + ','.join(
         ["church_id bigint", *[f'{n} text' for n in s.FIELDS[1:6]],
@@ -113,7 +125,7 @@ def db():
     urls = {r: make_conninfo(url, user=r, password='fixture-only') for r in roles}
     yield admin, urls
     # Only synthetic schemas/roles this module created, in a verified test DB.
-    admin.execute('DROP SCHEMA raw CASCADE; DROP SCHEMA churchmap_snapshot CASCADE')
+    admin.execute('DROP SCHEMA churchmap_snapshot CASCADE')
     for role in roles:
         admin.execute(psycopg.sql.SQL('DROP ROLE {}').format(psycopg.sql.Identifier(role)))
     admin.close()
@@ -124,75 +136,54 @@ def fresh(db):
     admin, urls = db
     admin.execute('TRUNCATE churchmap_snapshot.fixture')
     admin.execute("INSERT INTO churchmap_snapshot.fixture(church_id,name,has_google_address) SELECT n,'synthetic',false FROM generate_series(1,10) n")
-    admin.execute('DROP SCHEMA raw CASCADE; CREATE SCHEMA raw AUTHORIZATION churchmap_analytics')
     return admin, urls
 
 
-def evidence(con):
-    return {'database_identity': s.database_identity(con),
-            'observed_at': datetime.now(timezone.utc).isoformat(), 'disk_free_bytes': 1_000_000_000}
+@pytest.fixture
+def disposable(db):
+    admin, _ = db
+    name = 'churchmap_run_' + uuid.uuid4().hex
+    admin.execute(psycopg.sql.SQL('CREATE DATABASE {}').format(psycopg.sql.Identifier(name)))
+    url = make_conninfo(os.environ['DATABASE_URL'], dbname=name)
+    yield url
+    admin.execute(psycopg.sql.SQL('DROP DATABASE {} WITH (FORCE)').format(psycopg.sql.Identifier(name)))
 
 
-def apply(url, x, b=None):
-    with s.connect(url) as con:
-        s.install(con, x, b, evidence(con))
-
-
-def test_real_capture_and_atomic_replacement_preserves_views(fresh):
+def test_real_capture_and_disposable_install(fresh, disposable):
     admin, urls = fresh
     x = s.capture(urls['churchmap_snapshot_reader'])
     assert len(x.rows) == 10 and all(r[-1] is False for r in x.rows)
-    apply(urls['churchmap_analytics'], x, baseline(x))
-    admin.execute('CREATE VIEW raw.consumer AS SELECT count(*) AS n FROM raw.churches')
-    old_oid = admin.execute("SELECT 'raw.churches'::regclass::oid").fetchone()[0]
-    admin.execute('DELETE FROM churchmap_snapshot.fixture WHERE church_id>8')
-    new = s.capture(urls['churchmap_snapshot_reader'])
-    apply(urls['churchmap_analytics'], new)
-    assert admin.execute('SELECT n FROM raw.consumer').fetchone() == (8,)
-    assert admin.execute("SELECT 'raw.churches'::regclass::oid").fetchone()[0] == old_oid
-    assert admin.execute('SELECT snapshot_row_count,snapshot_sha256 FROM raw.snapshot_meta').fetchone() == (8,new.sha256)
+    d.install(disposable, x)
+    with s.connect(disposable) as con:
+        assert con.execute('SELECT count(*) FROM raw.churches').fetchone() == (10,)
+        assert con.execute('SELECT snapshot_source FROM raw.snapshot_meta').fetchone() == (s.VIEW,)
+        con.execute('CREATE VIEW raw.consumer AS SELECT count(*) n FROM raw.churches')
+    with pytest.raises(s.GateError, match='target_not_empty'):
+        d.install(disposable, x)
+    with s.connect(disposable) as con:
+        assert con.execute('SELECT n FROM raw.consumer').fetchone() == (10,)
 
 
-def test_real_failure_keeps_prior_data_and_metadata(fresh):
-    admin, urls = fresh
-    x = s.capture(urls['churchmap_snapshot_reader']); apply(urls['churchmap_analytics'], x, baseline(x))
-    before = admin.execute('SELECT * FROM raw.snapshot_meta').fetchall()
-    broken = replace(x, taken_at=x.taken_at+timedelta(seconds=1), rows=x.rows+(x.rows[0],))
+def test_real_copy_failure_rolls_back_all_new_objects(fresh, disposable):
+    _, urls = fresh
+    x = s.capture(urls['churchmap_snapshot_reader'])
     with pytest.raises(psycopg.errors.UniqueViolation):
-        apply(urls['churchmap_analytics'], broken)
-    assert admin.execute('SELECT count(*) FROM raw.churches').fetchone() == (10,)
-    assert admin.execute('SELECT * FROM raw.snapshot_meta').fetchall() == before
-    with pytest.raises(s.GateError, match='stale'):
-        apply(urls['churchmap_analytics'], x)
+        d.install(disposable, replace(x, rows=x.rows+(x.rows[0],)))
+    with s.connect(disposable) as con:
+        assert con.execute("SELECT count(*) FROM pg_namespace WHERE nspname='raw'").fetchone() == (0,)
 
 
-def test_real_empty_shape_and_count_drop(fresh):
+def test_real_empty_and_shape_refused(fresh):
     admin, urls = fresh
-    x=s.capture(urls['churchmap_snapshot_reader']); apply(urls['churchmap_analytics'],x,baseline(x))
-    admin.execute('DELETE FROM churchmap_snapshot.fixture WHERE church_id>7')
-    with pytest.raises(s.GateError, match='count_drop'):
-        apply(urls['churchmap_analytics'],s.capture(urls['churchmap_snapshot_reader']))
     admin.execute('TRUNCATE churchmap_snapshot.fixture')
     with pytest.raises(s.GateError, match='empty'):
         s.capture(urls['churchmap_snapshot_reader'])
     admin.execute("CREATE OR REPLACE VIEW churchmap_snapshot.churches AS SELECT *, 'private'::text AS google_address FROM churchmap_snapshot.fixture")
-    with pytest.raises(s.GateError, match='shape'):
-        s.capture(urls['churchmap_snapshot_reader'])
-    admin.execute('DROP VIEW churchmap_snapshot.churches; CREATE VIEW churchmap_snapshot.churches AS SELECT * FROM churchmap_snapshot.fixture; GRANT SELECT ON churchmap_snapshot.churches TO churchmap_snapshot_reader')
-    assert admin.execute('SELECT count(*) FROM raw.churches').fetchone() == (10,)
-
-
-def test_real_concurrent_lock_and_capacity_refusal(fresh):
-    admin, urls = fresh
-    x=s.capture(urls['churchmap_snapshot_reader'])
-    with s.connect(urls['churchmap_analytics']) as holder:
-        holder.execute('SELECT pg_advisory_xact_lock(%s)',(s.LOCK_ID,))
-        with pytest.raises(s.GateError,match='analytics_busy'):
-            apply(urls['churchmap_analytics'],x,baseline(x))
-    with s.connect(urls['churchmap_analytics']) as con:
-        with pytest.raises(s.GateError,match='disk_evidence_required'):
-            s.install(con,x,baseline(x),None)
-    assert admin.execute("SELECT to_regclass('raw.churches')").fetchone() == (None,)
+    try:
+        with pytest.raises(s.GateError, match='shape'):
+            s.capture(urls['churchmap_snapshot_reader'])
+    finally:
+        admin.execute('DROP VIEW churchmap_snapshot.churches; CREATE VIEW churchmap_snapshot.churches AS SELECT * FROM churchmap_snapshot.fixture; GRANT SELECT ON churchmap_snapshot.churches TO churchmap_snapshot_reader')
 
 
 def test_snapshot_repeatable_read_under_concurrent_source_change(fresh, monkeypatch):
@@ -225,70 +216,167 @@ def test_snapshot_repeatable_read_under_concurrent_source_change(fresh, monkeypa
     assert admin.execute('SELECT name FROM churchmap_snapshot.fixture WHERE church_id=1001').fetchone()==('after',)
 
 
-def test_capacity_evidence_binding_and_age(fresh):
-    _, urls = fresh
-    with s.connect(urls['churchmap_analytics']) as c:
-        e=evidence(c)
-        s.capacity_gate(c,e)
-        for bad,match in [({**e,'database_identity':'other'},'required'),
-                          ({**e,'observed_at':(datetime.now(timezone.utc)-timedelta(hours=2)).isoformat()},'stale'),
-                          ({**e,'disk_free_bytes':1},'headroom')]:
-            with pytest.raises(s.GateError,match=match):s.capacity_gate(c,bad)
+class FakeS3:
+    """ETag/CAS semantics, with independent clients sharing one object store."""
+    def __init__(self): self.objects = {}
+    def get_object(self, Bucket, Key):
+        if Key not in self.objects:
+            raise ClientError({'Error': {'Code': 'NoSuchKey'}}, 'GetObject')
+        data = self.objects[Key]
+        return {'Body': BytesIO(data), 'ETag': hashlib.sha256(data).hexdigest()}
+    def put_object(self, Bucket, Key, Body, **kwargs):
+        old = self.objects.get(Key)
+        if (kwargs.get('IfNoneMatch') == '*' and old is not None or
+                'IfMatch' in kwargs and (old is None or hashlib.sha256(old).hexdigest() != kwargs['IfMatch'])):
+            raise ClientError({'Error': {'Code': 'PreconditionFailed'}}, 'PutObject')
+        self.objects[Key] = Body
 
 
-def test_legacy_metadata_and_bad_baseline_preserve_previous_snapshot(fresh):
-    admin, urls=fresh
-    with s.connect(urls['churchmap_analytics']) as c:
-        c.execute(s.MIGRATION.read_text(),prepare=False)
-    admin.execute("INSERT INTO raw.churches(church_id,name) VALUES(99,'legacy')")
-    admin.execute("INSERT INTO raw.snapshot_meta(snapshot_source,snapshot_taken_at,loaded_at) VALUES('sqlite:holyhub.db',now(),now())")
-    x=s.capture(urls['churchmap_snapshot_reader'])
-    with pytest.raises(s.GateError,match='baseline_required'):
-        apply(urls['churchmap_analytics'],x)
-    assert admin.execute('SELECT church_id FROM raw.churches').fetchall()==[(99,)]
-    apply(urls['churchmap_analytics'],x,baseline(x))
-    assert admin.execute('SELECT count(*) FROM raw.churches').fetchone()==(10,)
+def accepted(store, x, etag=None):
+    return store.accept(x, etag, uuid.uuid4().hex, 'a'*40, '2026-11-04')
 
 
-@pytest.mark.parametrize('returncode',[0,1])
-def test_dbt_runner_private_logs_and_fixed_options(monkeypatch,tmp_path,capsys,returncode):
+def test_r2_first_baseline_and_concurrent_cas():
+    client = FakeS3(); store = state.AcceptanceStore(client, 'private')
+    assert store.read() == (None, None)
+    x = snap()
+    accepted(store, x)
+    before, etag = store.read()
+    with pytest.raises(ClientError): accepted(store, x)  # racing first writers
+    newer = replace(x, taken_at=x.taken_at+timedelta(seconds=1))
+    accepted(store, newer, etag)
+    with pytest.raises(ClientError): accepted(store, x, etag)  # stale ETag
+    assert store.read()[0]['taken_at'] == newer.taken_at.isoformat()
+    with pytest.raises(s.GateError, match='stale'):
+        s.validate_count(x, state.previous_record(store.read()[0]))
+
+
+@pytest.mark.parametrize('code', ['AccessDenied', 'InternalError', 'NoSuchBucket'])
+def test_r2_error_is_not_missing_baseline(code):
+    class Broken:
+        def get_object(self, **kwargs): raise ClientError({'Error':{'Code':code}}, 'GetObject')
+    with pytest.raises(ClientError): state.AcceptanceStore(Broken(),'private').read()
+
+
+def test_r2_invalid_metadata_and_oversize():
+    client=FakeS3();store=state.AcceptanceStore(client,'private')
+    accepted(store,snap())
+    good=client.objects[state.KEY]
+    for change in [{'gate_version':'unknown'}, {'expected_rows':0}, {'dbt_status':'failed'},
+                   {'taken_at':'2026-11-04T00:00:00'}]:
+        client.objects[state.KEY]=s.encoded({**json.loads(good), **change})
+        with pytest.raises(s.GateError):store.read()
+    client.objects[state.KEY]=b' '* (state.LIMIT+1)
+    with pytest.raises(s.GateError):store.read()
+
+
+@pytest.mark.parametrize('failure', ['install', 'build', 'conflict', None])
+def test_job_only_accepts_after_build(monkeypatch, tmp_path, failure):
+    client=FakeS3();store=state.AcceptanceStore(client,'private')
+    x=snap();accepted(store,replace(x,taken_at=x.taken_at-timedelta(seconds=1)))
+    before=client.objects[state.KEY]
+    monkeypatch.setattr(s,'capture',lambda _:x)
+    order=[]
+    def install(*args):
+        order.append('install')
+        if failure=='install':raise ValueError('private copy error')
+    def build(*args):
+        order.append('build')
+        if failure=='build':raise ValueError('private dbt error')
+        if failure=='conflict':
+            _,etag=store.read()
+            accepted(store,replace(x,taken_at=x.taken_at+timedelta(seconds=1)),etag)
+    monkeypatch.setattr(d,'install',install);monkeypatch.setattr(d,'run_build',build)
+    call=lambda:d.run_job('postgresql://job@localhost/churchmap_run_abcdef12','private',store,tmp_path,None,'a'*40)
+    if failure:
+        with pytest.raises(Exception):call()
+        assert not (tmp_path/'accepted.json').exists()
+        if failure != 'conflict':assert client.objects[state.KEY]==before
+    else:
+        assert call()==10 and order==['install','build']
+        assert json.loads((tmp_path/'accepted.json').read_text())==store.read()[0]
+
+
+@pytest.mark.parametrize('count', [0,7])
+def test_bad_snapshot_never_installs_or_accepts(monkeypatch,tmp_path,count):
+    store=state.AcceptanceStore(FakeS3(),'private');x=snap();accepted(store,x)
+    before=store.read()[0]
+    monkeypatch.setattr(s,'capture',lambda _:replace(snap(count),taken_at=x.taken_at+timedelta(seconds=1)))
+    monkeypatch.setattr(d,'install',lambda *a:pytest.fail('must reject before mutation'))
+    with pytest.raises(s.GateError):
+        d.run_job('postgresql://job@localhost/churchmap_run_abcdef12','private',store,tmp_path,None,'a'*40)
+    assert store.read()[0]==before
+
+
+@pytest.mark.parametrize('returncode,status', [(0,'pass'),(1,'error'),(0,'skipped')])
+def test_dbt_options_and_private_logs(monkeypatch,tmp_path,returncode,status):
     from types import SimpleNamespace
-    class Fake:
-        def __enter__(self):return self
-        def __exit__(self,*args):pass
-        def execute(self,q,args=None):return self
-        def fetchone(self):return (True,)
-        def fetchall(self):return [('identity',10,'snapshot_gate_v1')]
-    monkeypatch.setenv('ANALYTICS_DATABASE_URL','postgresql://churchmap_analytics:private@db.example:5432/postgres')
-    monkeypatch.setattr(d,'connect',lambda _:Fake())
-    monkeypatch.setattr(d,'require_role',lambda *args:None)
-    monkeypatch.setattr(d,'capacity_gate',lambda *args:None)
-    evidence_path=tmp_path/'evidence.json';evidence_path.write_text('{}')
     def run(cmd,**kwargs):
         assert cmd[1:4]==['-m','dbt.cli.main','build']
-        assert cmd[cmd.index('--target')+1]=='cloud'
+        assert cmd[cmd.index('--target')+1]=='job'
+        assert json.loads(cmd[cmd.index('--vars')+1])=={'as_of_date':'2026-11-04'}
         assert kwargs['timeout']==900
-        print('PRIVATE PROVIDER ERROR')
+        assert 'R2_SECRET_ACCESS_KEY' not in kwargs['env']
         kwargs['stdout'].write('PRIVATE DBT DETAILS')
+        target=Path(cmd[cmd.index('--target-path')+1]);target.mkdir()
+        (target/'run_results.json').write_text(json.dumps({'results':[{'status':status}]}))
         return SimpleNamespace(returncode=returncode)
     monkeypatch.setattr(d.subprocess,'run',run)
-    logdir=tmp_path/'private'
-    result=d.main(['--capacity-evidence',str(evidence_path),'--private-dir',str(logdir)])
-    assert result==(0 if returncode==0 else 1)
+    call=lambda:d.run_build('postgresql://job@localhost/churchmap_run_abcdef12',tmp_path,'2026-11-04')
+    if returncode or status=='skipped':
+        with pytest.raises(s.GateError):call()
+    else:call()
+    assert (tmp_path/'build.log').stat().st_mode & 0o777==0o600
+
+
+@pytest.mark.parametrize('failure', [False,True])
+def test_job_cli_public_output(monkeypatch,tmp_path,capsys,failure):
+    class R2:
+        bucket='private'
+        def _ensure(self):return FakeS3()
+    monkeypatch.setattr(d,'R2Client',R2)
+    for key in ['ANALYTICS_DATABASE_URL','PROD_READONLY_DATABASE_URL']:monkeypatch.setenv(key,'private')
+    monkeypatch.setenv('R2_PRIVATE_CONFIRMED','true')
+    def run(*args):
+        print('PRIVATE NOTES')
+        if failure:raise RuntimeError('PRIVATE PASSWORD')
+        return 10
+    monkeypatch.setattr(d,'run_job',run)
+    directory=tmp_path/'job'
+    assert d.main(['--run','--private-dir',str(directory),'--revision','a'*40])==int(failure)
     out=capsys.readouterr()
-    assert 'PRIVATE' not in out.out+out.err and out.err==''
-    assert (logdir/'build.log').read_text()=='PRIVATE DBT DETAILS'
-    assert logdir.stat().st_mode & 0o777==0o700
+    assert out.err=='' and 'PRIVATE' not in out.out
+    assert json.loads(out.out)['status']==('failed' if failure else 'ok')
+    assert directory.stat().st_mode & 0o777==0o700
 
 
-def test_gate_version_and_metadata_grain_fail_closed(fresh):
-    admin, urls=fresh
-    x=s.capture(urls['churchmap_snapshot_reader']);apply(urls['churchmap_analytics'],x,baseline(x))
-    newer=replace(x,taken_at=x.taken_at+timedelta(seconds=1))
-    admin.execute("UPDATE raw.snapshot_meta SET snapshot_gate_version='future_version'")
-    with pytest.raises(s.GateError,match='gate_version_changed'):
-        apply(urls['churchmap_analytics'],newer)
-    admin.execute('INSERT INTO raw.snapshot_meta SELECT * FROM raw.snapshot_meta')
-    with pytest.raises(s.GateError,match='metadata_grain'):
-        apply(urls['churchmap_analytics'],newer)
-    assert admin.execute('SELECT count(*) FROM raw.churches').fetchone()==(10,)
+@pytest.mark.parametrize('limit,value', [('MAX_ROWS',9),('MAX_BYTES',1)])
+def test_capture_resource_bounds(fresh,monkeypatch,limit,value):
+    _,urls=fresh
+    monkeypatch.setattr(s,limit,value)
+    with pytest.raises(s.GateError,match='snapshot_limit'):
+        s.capture(urls['churchmap_snapshot_reader'])
+
+
+def test_r2_sdk_supports_both_conditional_writes():
+    import boto3
+    from botocore.stub import Stubber, ANY
+    client=boto3.client('s3',region_name='auto',endpoint_url='https://r2.invalid',
+                        aws_access_key_id='fixture',aws_secret_access_key='fixture')
+    store=state.AcceptanceStore(client,'private')
+    with Stubber(client) as stub:
+        for etag in (None,'previous-etag'):
+            run=uuid.uuid4().hex
+            stub.add_response('put_object',{}, {'Bucket':'private',
+                'Key':f'{state.PREFIX}/runs/{run}.json','Body':ANY,
+                'ContentType':'application/octet-stream','IfNoneMatch':'*'})
+            stub.add_response('put_object',{}, {'Bucket':'private','Key':state.KEY,
+                'Body':ANY,'ContentType':'application/json',
+                **({'IfMatch':etag} if etag else {'IfNoneMatch':'*'})})
+            store.accept(snap(),etag,run,'a'*40,'2026-11-04')
+        stub.assert_no_pending_responses()
+
+
+def test_null_remote_state_cannot_reinitialize():
+    client=FakeS3();client.objects[state.KEY]=b'null'
+    with pytest.raises(s.GateError):state.AcceptanceStore(client,'private').read()

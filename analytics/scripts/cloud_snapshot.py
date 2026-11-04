@@ -1,20 +1,21 @@
 """Bounded sanitized PostgreSQL snapshots. CLI defaults to read-only inspection.
 
-Only explicit --apply writes analytics. Neither mode writes the source. Reports
-are private; stdout is restricted to counts/status, including failure paths.
+Inspection only: never writes either database. Reports are private; stdout is
+restricted to counts/status, including failure paths.
 """
 from __future__ import annotations
 
 import argparse
 from contextlib import redirect_stderr, redirect_stdout
 from dataclasses import dataclass
-from datetime import datetime, timedelta, timezone
+from datetime import datetime
 import hashlib
 import json
 import logging
 import os
 from pathlib import Path
 import sys
+import tempfile
 
 import psycopg
 from psycopg.conninfo import conninfo_to_dict
@@ -27,8 +28,6 @@ SCOPE = 'all_congregations_v1'
 VERSION = 'snapshot_gate_v1'
 MAX_ROWS = 100_000
 MAX_BYTES = 64 * 1024 * 1024
-LOCK_ID = 731704601
-MIGRATION = Path(__file__).resolve().parents[1] / 'migrations/0001_snapshot_gate.sql'
 
 
 class GateError(ValueError):
@@ -129,57 +128,23 @@ def validate_count(snapshot, previous, baseline=None):
             raise GateError('initial_count_mismatch')
 
 
-def capacity_gate(con, evidence, payload_bytes=0):
-    used = con.execute('SELECT pg_database_size(current_database())').fetchone()[0]
-    rebuilt = con.execute("SELECT coalesce(sum(pg_total_relation_size(c.oid)),0) "
-                          "FROM pg_class c JOIN pg_namespace n ON n.oid=c.relnamespace "
-                          "WHERE n.nspname IN ('raw','analytics','analytics_seeds') "
-                          "AND c.relkind IN ('r','m')").fetchone()[0]
-    growth = max(128_000_000, 2 * int(rebuilt), 4 * payload_bytes)
-    if used >= 300_000_000 or used + growth >= 400_000_000:
-        raise GateError('capacity_limit')
-    if not evidence or evidence.get('database_identity') != database_identity(con):
-        raise GateError('disk_evidence_required')
-    observed = datetime.fromisoformat(evidence['observed_at'])
-    age = datetime.now(timezone.utc) - observed
-    if age < timedelta(0) or age > timedelta(hours=1):
-        raise GateError('disk_evidence_stale')
-    free = evidence.get('disk_free_bytes')
-    if type(free) is not int or free < growth:
-        raise GateError('disk_headroom')
-    # Disk/WAL free space is operator evidence, not inferred from DB size.
+def metadata(snapshot):
+    return {'identity': snapshot.identity, 'scope': snapshot.scope,
+            'database_identity': snapshot.database, 'gate_version': VERSION,
+            'expected_rows': len(snapshot.rows), 'sha256': snapshot.sha256,
+            'taken_at': snapshot.taken_at.isoformat(), 'bytes': snapshot.bytes}
 
 
-def install(con, snapshot, baseline, evidence):
-    # Caller owns this transaction. Any failure rolls back DDL, data and metadata.
-    require_role(con, 'churchmap_analytics')
-    con.execute("SET LOCAL lock_timeout='3s'")
-    con.execute("SET LOCAL statement_timeout='120s'")
-    if not con.execute('SELECT pg_try_advisory_xact_lock(%s)', (LOCK_ID,)).fetchone()[0]:
-        raise GateError('analytics_busy')
-    capacity_gate(con, evidence, snapshot.bytes)
-    con.execute(MIGRATION.read_text(), prepare=False)
-    meta = con.execute('SELECT snapshot_identity,snapshot_scope,snapshot_row_count,'
-                       'snapshot_taken_at,snapshot_gate_version FROM raw.snapshot_meta FOR UPDATE').fetchall()
-    if len(meta) > 1:
-        raise GateError('metadata_grain')
-    previous = meta[0][:4] if meta and meta[0][0] is not None else None
-    if previous and meta[0][4] != VERSION:
-        raise GateError('gate_version_changed')
-    validate_count(snapshot, previous, baseline)
-    # Preserve relation OID and dependent dbt views. DELETE and COPY are atomic;
-    # readers see the old committed snapshot until the entire transaction commits.
-    con.execute('DELETE FROM raw.churches')
-    with con.cursor().copy('COPY raw.churches (' + ','.join(FIELDS) + ') FROM STDIN') as cp:
-        for row in snapshot.rows:
-            cp.write_row(row)
-    con.execute('DELETE FROM raw.snapshot_meta')
-    con.execute('INSERT INTO raw.snapshot_meta '
-                '(snapshot_source,snapshot_taken_at,loaded_at,snapshot_identity,'
-                'snapshot_scope,snapshot_row_count,snapshot_sha256,snapshot_gate_version) '
-                'VALUES (%s,%s,now(),%s,%s,%s,%s,%s)',
-                (VIEW, snapshot.taken_at, snapshot.identity, snapshot.scope,
-                 len(snapshot.rows), snapshot.sha256, VERSION))
+def write_report(path, result):
+    # Publish only complete JSON, never overwrite existing evidence. A failed
+    # capture creates no file; failed filesystem operations clean up staging.
+    fd, staging = tempfile.mkstemp(prefix='.snapshot-', dir=path.parent)
+    try:
+        with os.fdopen(fd, 'w') as report:
+            json.dump(result, report)
+        os.link(staging, path)
+    finally:
+        os.unlink(staging)
 
 
 def load_json(path):
@@ -197,27 +162,14 @@ def main(argv=None):
     try:
         with open(os.devnull, 'w') as sink, redirect_stdout(sink), redirect_stderr(sink):
             p = SafeParser(description=__doc__)
-            p.add_argument('--apply', action='store_true')
-            p.add_argument('--baseline', type=Path)
-            p.add_argument('--capacity-evidence', type=Path)
             p.add_argument('--report', type=Path, required=True)
             args = p.parse_args(argv)
-            # Reserve report before remote work; don't overwrite earlier evidence.
-            fd = os.open(args.report, os.O_WRONLY | os.O_CREAT | os.O_EXCL, 0o600)
-            with os.fdopen(fd, 'w') as report:
-                snapshot = capture(os.environ['PROD_READONLY_DATABASE_URL'])
-                result = {'identity': snapshot.identity, 'scope': snapshot.scope,
-                          'database_identity': snapshot.database, 'gate_version': VERSION,
-                          'expected_rows': len(snapshot.rows), 'sha256': snapshot.sha256,
-                          'taken_at': snapshot.taken_at.isoformat(), 'bytes': snapshot.bytes,
-                          'applied': False}
-                if args.apply:
-                    with connect(os.environ['ANALYTICS_DATABASE_URL']) as con:
-                        install(con, snapshot, load_json(args.baseline), load_json(args.capacity_evidence))
-                    result['applied'] = True
-                json.dump(result, report)
+            if args.report.exists() or args.report.is_symlink():
+                raise GateError('report_exists')
+            snapshot = capture(os.environ['PROD_READONLY_DATABASE_URL'])
+            write_report(args.report, {**metadata(snapshot), 'accepted': False})
         print(json.dumps({'step': 'cloud_snapshot', 'status': 'ok',
-                          'rows': len(snapshot.rows), 'applied': args.apply}))
+                          'rows': len(snapshot.rows)}))
         return 0
     except Exception:
         print('{"step":"cloud_snapshot","status":"failed"}')
