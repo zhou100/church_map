@@ -10,7 +10,7 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| [PR 1 云端快照接入 #77](https://github.com/zhou100/church_map/pull/77) | 脱敏只读快照、R2 条件更新行数基线、临时 Postgres 单线程 dbt | 审阅后取消生产常驻 analytics；本地 PG17.6：633 passed / 5 skipped；临时库 dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
+| [PR 1 云端快照接入 #77](https://github.com/zhou100/church_map/pull/77) | 脱敏只读快照、R2 条件更新行数基线、临时 Postgres 单线程 dbt | 审阅后取消生产常驻 analytics；本地 PG17.6：670 passed / 5 skipped；临时库 dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
 | [PR 1 Supabase 隔离方案 #76](https://github.com/zhou100/church_map/pull/76) | Data API 依赖核对、角色/schema SQL 草案及保留数据的回退 | PG17.6 合成隔离测试通过；未在生产执行；见 [隔离方案](supabase_isolation/README.md) |
 | [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
@@ -296,7 +296,7 @@ status/status_digest.md，有问题才报告。
 
 **Supabase 隔离准备（2026-11-04 PT 更新）：** #76 已合并。业主提供的 SQL Editor 验证结果显示隔离角色和 schema 权限符合预期，两角色仍为 NOLOGIN；这些是业主提供的结果，不是 agent 实际云端登录验证。此前 PG17.6 合成隔离/回退测试 27 项通过。具体权限证据保留于私有交接，不能直接用 postgres 运行 analytics。
 
-**云端代码接入（#77，审阅后修订）：** 改为临时 Postgres + 私有 R2 基线；生产只读脱敏快照保留，dbt 单线程并显式传当天 PT 日期。删除常驻库容量证据、共享锁和 analytics 迁移；R2 条件写入处理跨运行竞争。新库拒绝复用已有对象，dbt 失败不推进基线；第二轮增加 seed 输入哈希和缺失/变化拒绝；同日 job/local 的 6 个 coverage 分组与候选计数一致，当天日期让候选 map_ready 从 1052 降为 1051，已按 Facebook 状态新鲜度边界解释。此为固定私有输入的隔离库结果；该旧快照 133,939 行超过 capture 的 100,000 上限，实际源行数仍待核对，未放宽门禁。隔离库完整测试及真实临时库单线程构建通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#verification)。下一步仍需首次独立基线、私有输入恢复核对、经授权的源只读角色登录验证、真实 R2 CAS 和运行报告归档；生产角色/schema 原样保留，未执行生产写入、发布或启用定时任务。
+**云端代码接入（#77，审阅后修订）：** 改为临时 Postgres + 私有 R2 基线；生产只读脱敏快照保留，dbt 单线程并显式传当天 PT 日期。删除常驻库容量证据、共享锁和 analytics 迁移；R2 条件写入处理跨运行竞争。新库拒绝复用已有对象，dbt 失败不推进基线；第二轮增加 seed 输入哈希和缺失/变化拒绝；同日 job/local 的 6 个 coverage 分组与候选计数一致，当天日期让候选 map_ready 从 1052 降为 1051，已按 Facebook 状态新鲜度边界解释。此为固定私有输入的隔离库结果。第三轮只读核对公开 /api/stats（2026-11-04 22:05 UTC，300 秒缓存）观察到 134,377 行，修正此前过低的上限为 250,000；本地 133,939 行 payload 实测 17,655,399 字节，保留 64 MiB 字节门禁。聚合数不代替首次独立基线。固定 GateError 码可公开辨别，敏感 traceback 仅存 0600 的私有 failure.json。隔离库完整测试及真实临时库单线程构建通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#verification)。下一步仍需首次独立基线、私有输入恢复核对、经授权的源只读角色登录验证、真实 R2 CAS 和运行报告归档；生产角色/schema 原样保留，未执行生产写入、发布或启用定时任务。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|

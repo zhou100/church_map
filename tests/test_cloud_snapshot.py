@@ -82,7 +82,7 @@ def test_failure_output_never_echoes_client_or_credential(monkeypatch, capsys, t
     monkeypatch.setattr(s, 'capture', fail)
     assert s.main(['--report', str(tmp_path/'private.json')]) == 1
     out = capsys.readouterr()
-    assert out.err == '' and out.out == '{"step":"cloud_snapshot","status":"failed"}\n'
+    assert out.err == '' and json.loads(out.out) == {'step':'cloud_snapshot','status':'failed','error_code':'job_failed'}
     assert not (tmp_path/'private.json').exists()
     monkeypatch.setattr(s, 'capture', lambda _: snap())
     assert s.main(['--report', str(tmp_path/'private.json')]) == 0
@@ -436,3 +436,57 @@ def test_receipts_bind_exact_seed_hashes():
     immutable=json.loads(store.client.objects[f'{state.PREFIX}/runs/{run}.json'])
     assert immutable==store.read()[0]
     assert immutable['seed_sha256']==hashes
+
+
+@pytest.mark.parametrize('rows,passes', [(135_000,True),(250_001,False)])
+def test_realistic_capture_scale_and_upper_bound(fresh,rows,passes):
+    admin,urls=fresh
+    admin.execute('TRUNCATE churchmap_snapshot.fixture')
+    admin.execute("INSERT INTO churchmap_snapshot.fixture(church_id,name,has_google_address) SELECT n,'synthetic',false FROM generate_series(1,%s) n",(rows,))
+    if passes:
+        captured=s.capture(urls['churchmap_snapshot_reader'])
+        assert len(captured.rows)==135_000 and captured.bytes<s.MAX_BYTES
+    else:
+        with pytest.raises(s.GateError,match='snapshot_limit'):
+            s.capture(urls['churchmap_snapshot_reader'])
+
+
+@pytest.mark.parametrize('code', sorted(s.PUBLIC_GATE_CODES))
+def test_only_allowlisted_gate_codes_are_public(code):
+    assert s.public_error_code(s.GateError(code))==code
+    assert s.public_error_code(RuntimeError(code))=='job_failed'
+
+
+def test_all_gate_error_literals_are_registered():
+    import ast
+    for name in ('cloud_snapshot.py','cloud_dbt.py','snapshot_state.py'):
+        tree=ast.parse(Path('analytics/scripts',name).read_text())
+        for call in ast.walk(tree):
+            if isinstance(call,ast.Call) and (getattr(call.func,'id',None)=='GateError' or getattr(call.func,'attr',None)=='GateError'):
+                assert len(call.args)==1 and isinstance(call.args[0],ast.Constant)
+                assert call.args[0].value in s.PUBLIC_GATE_CODES
+
+
+@pytest.mark.parametrize('kind', ['gate','unknown_gate','login','cas'])
+def test_private_failure_diagnostics_and_public_redaction(monkeypatch,tmp_path,capsys,kind):
+    class R2:
+        bucket='private'
+        def _ensure(self):return FakeS3()
+    monkeypatch.setattr(d,'R2Client',R2)
+    monkeypatch.setenv('R2_PRIVATE_CONFIRMED','true')
+    for key in ('ANALYTICS_DATABASE_URL','PROD_READONLY_DATABASE_URL'):monkeypatch.setenv(key,'private')
+    errors={'gate':s.GateError('count_drop'), 'unknown_gate':s.GateError('PRIVATE PHONE PASSWORD'),
+            'login':psycopg.OperationalError('PRIVATE LOGIN PASSWORD'),
+            'cas':ClientError({'Error':{'Code':'PreconditionFailed','Message':'PRIVATE R2 DETAIL'}},'PutObject')}
+    def fail(*args):raise errors[kind]
+    monkeypatch.setattr(d,'run_job',fail)
+    directory=tmp_path/'private'
+    assert d.main(['--run','--private-dir',str(directory),'--revision','a'*40])==1
+    out=capsys.readouterr();public=json.loads(out.out)
+    assert out.err=='' and 'PRIVATE' not in out.out
+    assert public['error_code']==('count_drop' if kind=='gate' else 'job_failed')
+    path=directory/'failure.json'
+    assert path.stat().st_mode & 0o777==0o600
+    diagnostic=json.loads(path.read_text())
+    assert diagnostic['exception_type']==type(errors[kind]).__name__
+    assert str(errors[kind]) in diagnostic['traceback']

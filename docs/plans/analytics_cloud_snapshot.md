@@ -23,7 +23,7 @@ superuser nor BYPASSRLS. Remote TLS is forced and prepare_threshold=None retaine
 REPEATABLE READ + READ ONLY fixes the observation time and rows. The complete view
 shape must match the 14 approved columns of churchmap_snapshot.churches; raw
 Google address is replaced by has_google_address. A bounded cursor rejects empty
-reads, duplicate IDs, non-boolean flags, nonfinite numbers, >100,000 rows or >64 MiB.
+reads, duplicate IDs, non-boolean flags, nonfinite numbers, >250,000 rows or >64 MiB.
 Rows (including phones) remain private and never enter public logs or receipts.
 
 Identity hashes host/port/database/view/scope; changing pooler endpoint needs
@@ -101,7 +101,16 @@ The job profile uses non-TLS only for its loopback service; production snapshot
 reads retain TLS. The dbt child receives job connection variables but no production
 connection string, R2 credentials or ambient PG* defaults. Its logs/compiled output
 stay under the new mode-0700 private directory; public output is counts/status
-only, on success and failure. Telemetry is disabled. The job leaves the local
+only, on success and failure. Fixed GateError codes are public only when present
+in PUBLIC_GATE_CODES; all other exceptions (including unknown GateError strings)
+produce job_failed. For example snapshot_limit, count_drop, stale_snapshot and
+initial_baseline_required are distinguishable without exposing source data.
+Once the new private directory exists, failures write failure.json atomically with
+mode 0600, containing exception type, error code and traceback. This distinguishes
+reader authentication errors and R2 PreconditionFailed/CAS conflicts privately.
+Treat this file as sensitive: never upload it to public artifacts or print it.
+If directory creation or diagnostic writing itself fails, no diagnostic file is
+guaranteed; the public error remains sanitized. Telemetry is disabled. The job leaves the local
 marts available for a separately authorized downstream step until service teardown.
 
 ## R2 concurrency, failure and recovery
@@ -155,7 +164,9 @@ archiving is still a separate step. Publishing still requires its schema handlin
 exact diff gate and authorization. An accepted source snapshot is not authorization
 to publish. No hosted persistent analytics database is required by this path.
 
-## Verification — second review, 2026-11-04 PT
+## Verification
+
+Second review (2026-11-04 PT):
 
 Passed:
 - Confirmed fresh loopback test DB churchmap_pr77_round2_test, PostgreSQL 17.6,
@@ -224,15 +235,48 @@ this explains the entire -1, rather than a target/thread regression. No model or
 freshness rule was changed to make the builds agree.
 
 Limits / not run:
-- This private legacy sidecar snapshot contains 133,939 rows, above capture()'s
-  100,000-row limit. The matrix loaded the already available snapshot into isolated
-  databases; it is **not** end-to-end production capture acceptance. Real source
-  size is unverified; a source exceeding the existing limit will fail closed.
-  The limit was not increased. Bounded capture is separately tested with synthetic
-  data and a real local reader role.
+- Round 2 used an existing 133,939-row legacy snapshot and did not exercise full
+  production capture. Its then-100,000-row cap was too small. Round 3 corrects this
+  based on a public production aggregate; see the observation and tests below.
+  No live production reader session has been tested.
 - Five pytest skips: two superseded modules and three missing SF/CA parity inputs.
   Existing Starlette/httpx deprecation warning remains.
 - R2 tests are offline CAS simulation plus SDK parameter validation, not live R2.
   Production reader login/TLS, Actions lifecycle and automatic private-log archival
   remain unverified. No frontend/browser checks (no UI changes), production SQL,
   login activation, timers, publishing or paid calls were run.
+
+
+## Third review — source size and private failure diagnostics
+
+The earlier statement that production size was unknown was too broad: the public
+aggregate is observable, although it is not an exact source-transaction baseline.
+Read-only GET https://churchmap.vercel.app/api/stats at
+2026-11-04T22:05:11Z returned churches.total=134377, generated_at
+2026-11-04T22:04:18.669547Z. Its cache lifetime is 300 seconds. The source view is
+unfiltered public.churches, so the previous 100,000-row cap was inadequate.
+MAX_ROWS is now 250,000 (~1.86× the observed aggregate), with this provenance in
+code. The owner's independently checked first expected_rows remains mandatory;
+this API aggregate is never automatically adopted as a baseline.
+
+Canonical bytes were measured with the same encoded(row) + newline operation as
+capture(), on the fixed private 133,939-row snapshot: **17,655,399 bytes**, 26.3%
+of **67,108,864 bytes (64 MiB)**, leaving 49,453,465 bytes. MAX_BYTES is unchanged;
+this is evidence for this input, not a guarantee about future row sizes.
+Observation/measurement receipts are private /tmp/churchmap-pr77-round3-stats.json
+and /tmp/churchmap-pr77-round3-payload.json.
+
+Passed: new loopback PG17.6/pgvector test database churchmap_pr77_round3_test,
+confirmed before migrations; `python -m backend.db.migrate` applied 0001–0006.
+`python -m pytest -q -rs`: **670 passed, 5 skipped, 10 subtests passed**.
+All 77 snapshot/job tests passed, including real reader capture of 135,000 rows,
+rejection of 250,001 rows, the byte-limit regression, every public GateError code,
+unknown-code redaction, CAS/login private diagnostics and failure.json mode 0600.
+Skipped tests/warning are unchanged from the second review. No model changes or
+production SQL, role activation, scheduled run, publishing or paid call.
+
+Required `DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build
+--project-dir analytics/dbt --full-refresh` rerun against explicit loopback
+isolated analytics database: **28 success / 90 pass**, no failures or skips.
+`git diff --check` passed. The second-review target/date comparison remains
+applicable: model SQL, seeds and date semantics were not changed in round 3.

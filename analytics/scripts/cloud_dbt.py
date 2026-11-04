@@ -14,6 +14,7 @@ import re
 import subprocess
 import sys
 import uuid
+import traceback
 from zoneinfo import ZoneInfo
 
 from psycopg.conninfo import conninfo_to_dict
@@ -140,6 +141,7 @@ def run_job(url, source_url, store, directory, baseline, revision):
 def main(argv=None):
     previous_logging = logging.root.manager.disable
     logging.disable(logging.CRITICAL)
+    private_dir = None
     try:
         with open(os.devnull, 'w') as sink, redirect_stdout(sink), redirect_stderr(sink):
             p = snapshot.SafeParser(description=__doc__)
@@ -148,9 +150,10 @@ def main(argv=None):
             p.add_argument('--private-dir', type=Path, required=True)
             p.add_argument('--revision', required=True)
             args = p.parse_args(argv)
+            args.private_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
+            private_dir = args.private_dir
             if os.environ.get('R2_PRIVATE_CONFIRMED') != 'true':
                 raise snapshot.GateError('private_store_required')
-            args.private_dir.mkdir(mode=0o700, parents=False, exist_ok=False)
             r2 = R2Client()
             store = AcceptanceStore(r2._ensure(), r2.bucket)
             count = run_job(os.environ['ANALYTICS_DATABASE_URL'],
@@ -159,10 +162,18 @@ def main(argv=None):
         print(json.dumps({'step': 'cloud_dbt', 'status': 'ok', 'rows': count}))
         return 0
     except Exception as error:
-        # Only fixed codes may reach public logs; never exception text/filenames.
-        code = str(error) if isinstance(error, snapshot.GateError) else ''
-        code = code if code in {'seed_missing', 'seed_invalid', 'seed_changed'} else 'job_failed'
-        print(json.dumps({'step': 'cloud_dbt', 'status': 'failed', 'error_code': code}))
+        # Tracebacks may contain credentials or private rows; never print them.
+        if private_dir is not None:
+            try:
+                snapshot.write_report(private_dir / 'failure.json', {
+                    'exception_type': type(error).__name__,
+                    'error_code': snapshot.public_error_code(error),
+                    'traceback': ''.join(traceback.format_exception(error)),
+                })
+            except Exception:
+                pass  # Filesystem failure must not leak the original exception.
+        print(json.dumps({'step': 'cloud_dbt', 'status': 'failed',
+                          'error_code': snapshot.public_error_code(error)}))
         return 1
     finally:
         logging.disable(previous_logging)

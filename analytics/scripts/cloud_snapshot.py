@@ -26,12 +26,56 @@ FIELDS = ('church_id', 'name', 'address', 'city', 'state', 'zip_code',
 VIEW = 'churchmap_snapshot.churches'
 SCOPE = 'all_congregations_v1'
 VERSION = 'snapshot_gate_v1'
-MAX_ROWS = 100_000
+# GET https://churchmap.vercel.app/api/stats observed 2026-11-04 22:05 UTC:
+# churches.total=134377 (generated_at=22:04:18Z; 300s aggregate cache).
+# 250k provides ~1.86x headroom, not an independently approved first baseline.
+MAX_ROWS = 250_000
+# Local 133939-row snapshot measured 2026-11-04: 17655399 canonical bytes
+# (26.3% of 64 MiB); keep an independent byte bound for unusually large rows.
 MAX_BYTES = 64 * 1024 * 1024
 
 
 class GateError(ValueError):
     pass
+
+
+PUBLIC_GATE_CODES = frozenset({
+    'arguments',
+    'count_drop',
+    'dbt_failed',
+    'dbt_incomplete',
+    'disposable_target_required',
+    'empty_snapshot',
+    'initial_baseline_required',
+    'initial_count_mismatch',
+    'invalid_accepted_metadata',
+    'invalid_accepted_timestamp',
+    'invalid_previous_metadata',
+    'invalid_revision',
+    'invalid_run_identity',
+    'invalid_seed_hashes',
+    'invalid_snapshot_row',
+    'invalid_state_object',
+    'oversized_receipt',
+    'private_store_required',
+    'report_exists',
+    'seed_changed',
+    'seed_invalid',
+    'seed_missing',
+    'snapshot_limit',
+    'source_not_readonly',
+    'source_scope_changed',
+    'source_shape_changed',
+    'stale_snapshot',
+    'target_not_empty',
+    'unexpected_role',
+    'wrong_target',
+})
+
+
+def public_error_code(error):
+    code = str(error) if isinstance(error, GateError) else ''
+    return code if code in PUBLIC_GATE_CODES else 'job_failed'
 
 
 def encoded(value):
@@ -171,8 +215,9 @@ def main(argv=None):
         print(json.dumps({'step': 'cloud_snapshot', 'status': 'ok',
                           'rows': len(snapshot.rows)}))
         return 0
-    except Exception:
-        print('{"step":"cloud_snapshot","status":"failed"}')
+    except Exception as error:
+        print(json.dumps({'step': 'cloud_snapshot', 'status': 'failed',
+                          'error_code': public_error_code(error)}))
         return 1
     finally:
         logging.disable(previous_logging)
