@@ -6,10 +6,11 @@
 
 > 业主只在三种时候出手：一次性授权（secrets、服务账号）、批准第 0 节的决定、处理标成"待审"的发布 diff。其余都由 agent 实现，DOT 负责盯状态。
 
-### 代码进度（2026-11-03 23:24 UTC）
+### 代码进度（2026-11-04；部署观察时间见下文）
 
 | PR | 内容 | 状态 |
 |---|---|---|
+| PR 1 云端快照接入（本 PR） | 脱敏视图只读快照、原子替换和行数/容量门禁、dbt cloud 单线程 | 本地 PG17.6：611 passed / 5 skipped；dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
 | [PR 1 Supabase 隔离方案 #76](https://github.com/zhou100/church_map/pull/76) | Data API 依赖核对、角色/schema SQL 草案及保留数据的回退 | PG17.6 合成隔离测试通过；未在生产执行；见 [隔离方案](supabase_isolation/README.md) |
 | [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
@@ -293,7 +294,9 @@ status/status_digest.md，有问题才报告。
 
 ## 6. 顺序和完成标准
 
-**Supabase 隔离准备（2026-11-03 PT）：** 仓库定义的前端→Render→psycopg 链路未发现 Data API 依赖；生产环境和外部消费者未验证。[SQL 和回退草案](supabase_isolation/README.md) 已准备，默认 ROLLBACK，未执行。审阅后补充容量硬门禁、脱敏快照视图、PG16+ 临时 SET 授权和分离回退文件；第二轮补充视图迁移依赖与恢复规则、快照行数门禁要求、public 全表 SELECT 拒绝检查和跨 grantor 成员权限断言；第三轮将 AGENTS 迁移依赖规则改为通用规则，并明确无权限时由业主提供只读结果；2026-11-04 PT 业主提供 SQL Editor 结果确认 PG17.6，并完成 Render 配置角色核对（身份细节保留于私有交接）；2026-11-04 PT 隔离 PG17.6 实测发现并修复 schema ACL 的角色切换缺陷，27 项门禁/回退检查通过；实际生产会话验证仍未完成。现有 Supabase 共用方案仍待批准，不能直接用 postgres 运行 analytics；仍需核实 Data API 消费者和实际运行会话，再验证隔离配置。
+**Supabase 隔离准备（2026-11-04 PT 更新）：** #76 已合并。业主提供的 SQL Editor 验证结果显示隔离角色和 schema 权限符合预期，两角色仍为 NOLOGIN；这些是业主提供的结果，不是 agent 实际云端登录验证。此前 PG17.6 合成隔离/回退测试 27 项通过。具体权限证据保留于私有交接，不能直接用 postgres 运行 analytics。
+
+**云端代码接入（本 PR）：** 已实现只读脱敏快照、首次独立行数基线、空结果/超过 20% 降幅/身份变化/旧快照拒绝、事务替换和共享任务锁；cloud dbt 使用专用角色、TLS 和单线程。隔离库完整测试和本地 dbt build 通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#checks-actually-run-2026-11-04-utc)。下一步仍需独立基线与磁盘证据、私有种子/状态恢复选择、经授权的云端登录及实际 dbt 对比、私有报告归档；未执行生产写入、发布或启用定时任务。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|
