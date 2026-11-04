@@ -6,4 +6,3 @@ ALTER ROLE churchmap_snapshot_reader NOLOGIN;
 -- workflow and let in-flight transactions end; inspect pg_stat_activity.
 -- Do not terminate the runtime application's connections.
 ROLLBACK;
-
