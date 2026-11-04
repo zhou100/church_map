@@ -207,3 +207,27 @@ def test_breakdown_totals_match_the_headline_extracted_count():
 
     extracted, bucketed = _run(body)
     assert extracted == bucketed
+
+
+def test_visible_counts_leave_out_rows_hidden_from_search():
+    """`visible_*` uses the same predicate as every public read: hidden rows
+    stay in the whole-table counts and nowhere else; unreviewed (NULL) rows
+    count as visible."""
+    async def body(con, repo):
+        before = await repo.church_counts()
+        async with con.cursor() as cur:
+            for status in (None, "in_scope", "in_scope_labeled", "out_of_scope", "duplicate"):
+                await cur.execute(
+                    """
+                    INSERT INTO churches (name, website, website_summary, scope_status)
+                    VALUES (%s, %s, 'summary', %s)
+                    """,
+                    (f"visible test {status}", f"https://visible-{status}.test", status),
+                )
+        after = await repo.church_counts()
+        return before, after
+
+    before, after = _run(body)
+    delta = {k: after[k] - before[k] for k in after}
+    assert delta["total"] == delta["with_website"] == delta["with_summary"] == 5
+    assert delta["visible_total"] == delta["visible_with_website"] == delta["visible_with_summary"] == 3

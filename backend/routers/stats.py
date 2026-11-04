@@ -109,6 +109,8 @@ def build_stats(
     total = counts.get("total") or 0
     with_website = counts.get("with_website") or 0
     extracted = counts.get("extracted") or 0
+    visible_total = counts.get("visible_total") or 0
+    visible_with_website = counts.get("visible_with_website") or 0
 
     # "Current" means prompt version AND model, matching the staleness
     # predicate the re-queue uses. Version alone reported churches as current
@@ -184,6 +186,15 @@ def build_stats(
             "extracted_pct_of_website": _pct(extracted, with_website),
             "with_summary": counts.get("with_summary") or 0,
             "google_enriched": counts.get("enriched") or 0,
+            # What a visitor can find: rows hidden by the scope decision (D-1)
+            # are excluded. The counts above keep the whole-table denominator
+            # the crawl metrics share; pages quoting the directory use these.
+            "visible": {
+                "total": visible_total,
+                "with_website": visible_with_website,
+                "with_website_pct": _pct(visible_with_website, visible_total),
+                "with_summary": counts.get("visible_with_summary") or 0,
+            },
         },
         "extraction": {
             "current_prompt_version": current_prompt_version,

@@ -19,6 +19,7 @@ import {
 import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } from '../preferences'
 import { prefetchFirstPage } from '../searchScope'
 import { previewKey, previewStatus as previewStatusOf, previewStep } from '../landingPreview'
+import { directoryCounts } from '../directoryCounts'
 
 const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
@@ -148,10 +149,10 @@ export default function Landing({ exampleChurch }) {
       .catch(() => {})
 
     getStats()
-      .then(data => setCoverage({
-        withSummary: data.churches.with_summary,
-        total: data.churches.total,
-      }))
+      .then(data => {
+        const { withSummary, total } = directoryCounts(data.churches)
+        setCoverage({ withSummary, total })
+      })
       .catch(() => {})
 
     setPrefs(loadPreferences())
