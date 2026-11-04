@@ -10,7 +10,7 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| PR 1 云端快照接入（本 PR） | 脱敏视图只读快照、原子替换和行数/容量门禁、dbt cloud 单线程 | 本地 PG17.6：611 passed / 5 skipped；dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
+| [PR 1 云端快照接入 #77](https://github.com/zhou100/church_map/pull/77) | 脱敏视图只读快照、原子替换和行数/容量门禁、dbt cloud 单线程 | 本地 PG17.6：611 passed / 5 skipped；dbt 28 success / 90 pass；未启用云端登录或定时任务；见 [接入说明](analytics_cloud_snapshot.md) |
 | [PR 1 Supabase 隔离方案 #76](https://github.com/zhou100/church_map/pull/76) | Data API 依赖核对、角色/schema SQL 草案及保留数据的回退 | PG17.6 合成隔离测试通过；未在生产执行；见 [隔离方案](supabase_isolation/README.md) |
 | [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
@@ -296,7 +296,7 @@ status/status_digest.md，有问题才报告。
 
 **Supabase 隔离准备（2026-11-04 PT 更新）：** #76 已合并。业主提供的 SQL Editor 验证结果显示隔离角色和 schema 权限符合预期，两角色仍为 NOLOGIN；这些是业主提供的结果，不是 agent 实际云端登录验证。此前 PG17.6 合成隔离/回退测试 27 项通过。具体权限证据保留于私有交接，不能直接用 postgres 运行 analytics。
 
-**云端代码接入（本 PR）：** 已实现只读脱敏快照、首次独立行数基线、空结果/超过 20% 降幅/身份变化/旧快照拒绝、事务替换和共享任务锁；cloud dbt 使用专用角色、TLS 和单线程。隔离库完整测试和本地 dbt build 通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#checks-actually-run-2026-11-04-utc)。下一步仍需独立基线与磁盘证据、私有种子/状态恢复选择、经授权的云端登录及实际 dbt 对比、私有报告归档；未执行生产写入、发布或启用定时任务。
+**云端代码接入（#77）：** 已实现只读脱敏快照、首次独立行数基线、空结果/超过 20% 降幅/身份变化/旧快照拒绝、事务替换和共享任务锁；cloud dbt 使用专用角色、TLS 和单线程。隔离库完整测试和本地 dbt build 通过，详见 [命令、结果与限制](analytics_cloud_snapshot.md#checks-actually-run-2026-11-04-utc)。下一步仍需独立基线与磁盘证据、私有种子/状态恢复选择、经授权的云端登录及实际 dbt 对比、私有报告归档；未执行生产写入、发布或启用定时任务。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|
