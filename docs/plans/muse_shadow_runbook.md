@@ -11,20 +11,71 @@ CAS rule. A later archive/count failure does not undo that acceptance.
 1. Run **muse-storage-check** on main first and verify success. Confirm bucket
    privacy using [the storage runbook](muse_storage_runbook.md); a prefix alone
    is not access control.
-2. Wait for the local hourly pull to finish. Capture a quiescent initial snapshot
-   under the existing lock; independent intake/geocode writers must also be idle:
+2. Prepare the local uploader, then wait for the local hourly pull to finish.
+   Run these commands in **Bash on the owner's WSL host**, after the reviewed
+   changes are merged and the owner has chosen to update the hourly checkout to
+   main. Do not switch that checkout as an incidental development step; use a
+   separate worktree for PR fixes. The commands below assume that approved code
+   is present at `~/llm_projects/holyhub`.
+
+   The local `venv/` and `analytics/.venv/` are not the uploader environment.
+   Create a dedicated Python 3.11 environment outside the checkout using the
+   Python 3.11 installation already available on this host:
 
    ```bash
-   flock -n muse_handoff/returns/.drive_pull.lock \
-     python -m scripts.muse_state_store save --root ~/llm_projects/holyhub \
-     --run-id shadow-input-YYYYMMDD --revision "$(git rev-parse HEAD)" \
-     --receipt /private/new-input-receipt.json
+   cd "$HOME/llm_projects/holyhub"
+   MUSE_PYTHON="$HOME/.local/share/uv/python/cpython-3.11-linux-x86_64-gnu/bin/python3.11"
+   "$MUSE_PYTHON" -c 'import sys; assert sys.version_info[:2] == (3, 11)'
+   mkdir -p "$HOME/.local/share/churchmap"
+   "$MUSE_PYTHON" -m venv "$HOME/.local/share/churchmap/muse-tools"
+   "$HOME/.local/share/churchmap/muse-tools/bin/python" -m pip install \
+     boto3 -r analytics/requirements.txt -r analytics/requirements-drive.txt
+   "$HOME/.local/share/churchmap/muse-tools/bin/python" -c 'import boto3, psycopg'
    ```
 
-   `/private` is an example existing private directory, not a required path.
-   Keep the receipt private. Restore requires its exact manifest hash. Capture
-   all three state trees, including the package definitions/status, received
-   records, recheck history and geocode ledgers. The runner rejects missing trees.
+   Local R2 credentials are **not** supplied by GitHub Actions secrets. In
+   Cloudflare → R2 → Manage API Tokens, create a local-use token with **Object
+   Read & Write**, scoped to the existing private bucket only. Record its Access
+   Key ID and Secret Access Key in your password manager. No account-wide Admin
+   permission is needed. See [Cloudflare's token instructions](https://developers.cloudflare.com/r2/api/tokens/).
+   Before confirming privacy, check the bucket as described in the storage
+   runbook. Enter values through hidden prompts below, never literal assignments
+   in shell history, chat or repository files. The subshell clears these
+   environment variables when it exits:
+
+   ```bash
+   (
+     set +x
+     set -e
+     umask 077
+     cd "$HOME/llm_projects/holyhub"
+     read -r -s -p 'R2 account ID: ' R2_ACCOUNT_ID; printf '\n'
+     read -r -s -p 'R2 bucket name: ' R2_BUCKET; printf '\n'
+     read -r -s -p 'R2 access key ID: ' R2_ACCESS_KEY_ID; printf '\n'
+     read -r -s -p 'R2 secret access key: ' R2_SECRET_ACCESS_KEY; printf '\n'
+     export R2_ACCOUNT_ID R2_BUCKET R2_ACCESS_KEY_ID R2_SECRET_ACCESS_KEY
+     # Set only after checking the bucket has no public exposure:
+     export R2_PRIVATE_CONFIRMED=true
+     mkdir -p "$HOME/.local/state/churchmap/muse"
+     MUSE_RECEIPT_DIR=$(mktemp -d "$HOME/.local/state/churchmap/muse/input.XXXXXXXX")
+     MUSE_RUN_ID="shadow-input-$(date -u +%Y%m%dT%H%M%SZ)"
+     flock -n muse_handoff/returns/.drive_pull.lock \
+       "$HOME/.local/share/churchmap/muse-tools/bin/python" \
+       -m scripts.muse_state_store save --root "$HOME/llm_projects/holyhub" \
+       --run-id "$MUSE_RUN_ID" --revision "$(git rev-parse HEAD)" \
+       --receipt "$MUSE_RECEIPT_DIR/receipt.json"
+     printf 'Private receipt: %s/receipt.json\n' "$MUSE_RECEIPT_DIR"
+   )
+   ```
+
+   A busy lock exits without uploading: wait for the pull to finish and retry.
+   Independent intake/geocode writers must also be idle. Keep the 0600 receipt
+   in that 0700 directory; restore requires its exact manifest hash. Use a new
+   run ID for a changed snapshot. All three state trees are required, including
+   package definitions/status, received records, recheck history and geocode
+   ledgers. Only `analytics/exports/irs/eo_ca.csv` is excluded: this reproducible
+   public IRS raw download is not read by pull or dbt. Its source URL and reason
+   are recorded in the snapshot manifest; derived IRS leads remain included.
 3. Configure Actions values below. For the first source baseline provide the
    independently checked identity, scope and row count. The owner previously
    reported 134,377 rows; reconfirm the scope/cutoff if using that count later.
@@ -39,6 +90,8 @@ CAS rule. A later archive/count failure does not undo that acceptance.
    independent state writers must also be idle:
 
    ```bash
+   cd "$HOME/llm_projects/holyhub"
+   export PATH="$HOME/.local/share/churchmap/muse-tools/bin:$PATH"
    python -m scripts.muse_shadow_compare download --run-id shadow-RUN-ATTEMPT \
      --destination /private/new-shadow-download
    ANALYTICS_DATABASE_URL=postgresql://analytics@127.0.0.1:5433/churchmap_analytics \
@@ -51,6 +104,8 @@ CAS rule. A later archive/count failure does not undo that acceptance.
      --output /private/new-comparison.json
    ```
 
+   Run these commands with the dedicated environment above on PATH; enter R2
+   credentials again with the same hidden-prompt subshell for download.
    Use the actual local dbt `as_of_date`, not the report creation date. Capture
    records the code revision. Compare exits 1 for unresolved differences. Reports
    contain private identifiers, timestamps and hashes; never paste them into
@@ -108,6 +163,13 @@ Do not interpret missing archive or public failure as a successful comparison.
 There are no public GitHub artifact uploads. Public application output and step
 summary contain only fixed step/status/error code and integer counts. Provider
 errors, names, URLs, excerpts, phones and connection strings stay private.
+Before pipeline startup, missing settings emit `missing_config`, invalid privacy
+confirmation emits `private_store_required`, credential/session setup emits
+`drive_auth_failed`, and R2 client initialization emits `r2_unavailable`.
+Other temp/setup failures emit `setup_failed`; failures after entering the
+pipeline emit `shadow_failed`. These codes identify the stage, not a proven
+remote outage. Setup logs are not retained when initialization cannot establish
+a private store; exception text is never exposed as a substitute.
 
 The digest records WP states/times and available counts. Crawler fetch/extract/tag
 are **not observed**, publishing is **not run**, and a full rolling 24-hour reject
@@ -157,3 +219,22 @@ Local verification on 2026-11-04, based on main `418806c`:
 - **Not run:** real Actions, Drive, R2, production read or local/cloud parity.
   Full private historical corpus dbt and frontend/browser checks were not run;
   the dbt result above is bounded synthetic regression evidence.
+
+Review fixes (2026-11-04):
+
+- The original PR-head CI run `41931022278` **failed**: 3 failed, 677 passed,
+  5 skipped. Recreating its root-requirements-only environment reproduced
+  `No module named dbt` in the synthetic build log; Drive auth imports were also
+  missing. `tests.yml` now installs both existing analytics dependency files;
+  no shadow or DB tests are skipped to resolve the failure.
+- Updated local full suite: **686 passed, 5 skipped, 10 subtests passed** on the
+  same isolated PostgreSQL/pgvector test database and Python 3.11.15. The five
+  skips remain the three SF-data parity cases and two superseded legacy modules.
+- The real owner's state was inventoried read-only under `.drive_pull.lock`:
+  **741 included files, 93,615,207 bytes, one exact-path IRS exclusion**. No
+  snapshot upload, state mutation or credentials were needed for this check.
+- Runbook shell blocks passed `bash -n`; `git diff --check` passed. These checks
+  do not establish valid local credentials or successful cloud access.
+- Review fixes were made in a separate worktree. The hourly owner's checkout
+  was not switched or updated during this repair. Its eventual main update
+  remains an explicit owner action after merge.

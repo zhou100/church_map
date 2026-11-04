@@ -274,26 +274,41 @@ def main():
     logging.disable(logging.CRITICAL)
     old_umask = os.umask(0o077)
     result = {'step': 'shadow', 'status': 'failed', 'error_code': 'shadow_failed'}
+    error_code = 'missing_config'
     try:
+        required = ('GDRIVE_SA_JSON', 'GDRIVE_FOLDER_ID', 'R2_ACCOUNT_ID',
+                    'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'R2_BUCKET',
+                    'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'MUSE_STATE_RUN_ID',
+                    'MUSE_STATE_MANIFEST_SHA256', 'GITHUB_SHA',
+                    'ANALYTICS_DATABASE_URL', 'PROD_READONLY_DATABASE_URL')
+        if any(not os.environ.get(key) for key in required):
+            raise ValueError('missing configuration')
+        error_code = 'setup_failed'
         with tempfile.TemporaryDirectory(prefix='muse-shadow-', dir=os.environ.get('RUNNER_TEMP')) as tmp:
             # Catch provider/setup output as well as subprocesses. Never relay error strings.
             with open(Path(tmp) / 'setup.log', 'w') as log, redirect_stdout(log), redirect_stderr(log):
+                error_code = 'private_store_required'
                 if os.environ.get('R2_PRIVATE_CONFIRMED') != 'true':
                     raise ValueError('private store required')
+                error_code = 'drive_auth_failed'
                 from google.oauth2 import service_account
                 from google.auth.transport.requests import AuthorizedSession
                 credentials = service_account.Credentials.from_service_account_info(
                     json.loads(os.environ['GDRIVE_SA_JSON']),
                     scopes=['https://www.googleapis.com/auth/drive.readonly'])
+                error_code = 'r2_unavailable'
                 r2 = R2Client()
+                store = Store(r2._ensure(), r2.bucket)
+                error_code = 'drive_auth_failed'
                 with AuthorizedSession(credentials) as session:
+                    error_code = 'shadow_failed'
                     result = pipeline(Path(__file__).resolve().parents[1], Path(tmp),
-                        Store(r2._ensure(), r2.bucket), DriveReader(session), os.environ['GDRIVE_FOLDER_ID'],
+                        store, DriveReader(session), os.environ['GDRIVE_FOLDER_ID'],
                         'shadow-' + os.environ['GITHUB_RUN_ID'] + '-' + os.environ['GITHUB_RUN_ATTEMPT'],
                         os.environ['MUSE_STATE_RUN_ID'], os.environ['MUSE_STATE_MANIFEST_SHA256'],
                         os.environ['GITHUB_SHA'], dict(os.environ))
     except Exception:
-        pass
+        result = {'step': 'shadow', 'status': 'failed', 'error_code': error_code}
     finally:
         os.umask(old_umask)
         logging.disable(previous)

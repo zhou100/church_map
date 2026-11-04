@@ -160,7 +160,9 @@ def test_end_to_end_private_boundary(tmp_path, setup, monkeypatch, capsys, fail)
         return result
     monkeypatch.setattr(s, 'pipeline', operation)
     for key in ('GDRIVE_FOLDER_ID', 'GITHUB_RUN_ID', 'GITHUB_RUN_ATTEMPT', 'MUSE_STATE_RUN_ID',
-                'MUSE_STATE_MANIFEST_SHA256', 'GITHUB_SHA'):
+                'MUSE_STATE_MANIFEST_SHA256', 'GITHUB_SHA', 'R2_ACCOUNT_ID', 'R2_BUCKET',
+                'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'ANALYTICS_DATABASE_URL',
+                'PROD_READONLY_DATABASE_URL'):
         monkeypatch.setenv(key, 'fixture')
     monkeypatch.setenv('GDRIVE_SA_JSON', '{}')
     monkeypatch.setenv('R2_PRIVATE_CONFIRMED', 'true')
@@ -267,3 +269,37 @@ def test_real_disposable_dbt_pipeline(tmp_path, setup, monkeypatch):
             assert any(k.endswith('accepted.json') for k in setup[1].objects)
         finally:
             admin.execute(sql.SQL('DROP DATABASE {} WITH (FORCE)').format(sql.Identifier(name)))
+
+
+@pytest.mark.parametrize('failure,code', [
+    ('missing', 'missing_config'), ('privacy', 'private_store_required'),
+    ('auth', 'drive_auth_failed'), ('r2', 'r2_unavailable'),
+])
+def test_setup_failure_codes_never_leak(tmp_path, monkeypatch, capsys, failure, code):
+    import google.oauth2.service_account
+    from backend.scrapers_v2.r2 import R2Client
+    for key in ('GDRIVE_SA_JSON', 'GDRIVE_FOLDER_ID', 'R2_ACCOUNT_ID', 'R2_BUCKET',
+                'R2_ACCESS_KEY_ID', 'R2_SECRET_ACCESS_KEY', 'GITHUB_RUN_ID',
+                'GITHUB_RUN_ATTEMPT', 'MUSE_STATE_RUN_ID', 'MUSE_STATE_MANIFEST_SHA256',
+                'GITHUB_SHA', 'ANALYTICS_DATABASE_URL', 'PROD_READONLY_DATABASE_URL'):
+        monkeypatch.setenv(key, PRIVATE)
+    monkeypatch.setenv('GDRIVE_SA_JSON', '{}')
+    monkeypatch.setenv('R2_PRIVATE_CONFIRMED', 'true')
+    monkeypatch.setenv('GITHUB_STEP_SUMMARY', str(tmp_path / 'summary'))
+    def fail(*a, **kw):
+        print(PRIVATE)
+        raise RuntimeError(PRIVATE)
+    if failure == 'missing':
+        monkeypatch.delenv('GITHUB_SHA')
+    elif failure == 'privacy':
+        monkeypatch.setenv('R2_PRIVATE_CONFIRMED', 'false')
+    elif failure == 'auth':
+        monkeypatch.setattr(google.oauth2.service_account.Credentials, 'from_service_account_info', fail)
+    else:
+        monkeypatch.setattr(google.oauth2.service_account.Credentials, 'from_service_account_info', lambda *a, **kw: None)
+        monkeypatch.setattr(R2Client, '_ensure', fail)
+    assert s.main() == 1
+    output = capsys.readouterr()
+    assert output.err == ''
+    assert json.loads(output.out) == {'step': 'shadow', 'status': 'failed', 'error_code': code}
+    assert (tmp_path / 'summary').read_text() == output.out

@@ -56,10 +56,10 @@ jobs:
           cache: pip
 
       - name: Install dependencies
-        run: pip install -r requirements.txt
+        run: pip install -r requirements.txt -r analytics/requirements.txt -r analytics/requirements-drive.txt
 
       - name: Apply migrations
         run: python -m backend.db.migrate
 
       - name: Run the suite
-        run: python -m pytest -q
+        run: python -m pytest -q -rs

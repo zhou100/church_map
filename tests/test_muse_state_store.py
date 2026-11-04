@@ -131,3 +131,48 @@ def test_public_success_log_contains_only_status_and_counts(monkeypatch, capsys,
     assert set(result) == {"step", "status", "files", "bytes"}
     assert result["files"] == 4 and result["status"] == "ok"
     assert captured.err == ""
+
+
+def test_only_redownloadable_irs_source_is_excluded(tmp_path):
+    root = source(tmp_path)
+    raw = root / 'analytics/exports/irs/eo_ca.csv'
+    raw.parent.mkdir()
+    with raw.open('wb') as out:
+        out.truncate(m.MAX_FILE + 1)
+    derived = raw.with_name('leads_ca.csv')
+    derived.write_bytes(b'lead_id\nfixture\n')
+    client = MemoryS3()
+    store = m.Store(client, 'private')
+    receipt = m.save(store, root, 'excluding-public-source', 'a' * 40)
+    manifest = json.loads(client.objects[m.manifest_key('excluding-public-source')])
+    names = {e['path'] for e in manifest['files']}
+    assert 'analytics/exports/irs/eo_ca.csv' not in names
+    assert 'analytics/exports/irs/leads_ca.csv' in names
+    assert manifest['exclusion_policy'] == m.EXCLUSIONS
+    target = tmp_path / 'restored'
+    m.restore(store, target, 'excluding-public-source', receipt['manifest_sha256'])
+    assert not (target / raw.relative_to(root)).exists()
+    assert (target / derived.relative_to(root)).read_bytes() == derived.read_bytes()
+    assert raw.stat().st_size == m.MAX_FILE + 1  # never deletes the owner's source
+    # A different IRS file still must obey the original per-file bound.
+    with derived.open('wb') as out:
+        out.truncate(m.MAX_FILE + 1)
+    with pytest.raises(ValueError, match='invalid state file'):
+        m.save(store, root, 'other-large-file', 'a' * 40)
+    derived.unlink()
+    raw.unlink()
+    raw.symlink_to(root / '.env')
+    with pytest.raises(ValueError, match='state symlink'):
+        m.inventory(root)
+
+
+def test_legacy_manifest_without_exclusion_policy_still_restores(tmp_path):
+    root, client = source(tmp_path), MemoryS3()
+    store = m.Store(client, 'private')
+    m.save(store, root, 'legacy', 'a' * 40)
+    key = m.manifest_key('legacy')
+    manifest = json.loads(client.objects[key])
+    manifest.pop('exclusion_policy')
+    data = json.dumps(manifest).encode()
+    client.objects[key] = data
+    m.restore(store, tmp_path / 'restored', 'legacy', m.digest(data))

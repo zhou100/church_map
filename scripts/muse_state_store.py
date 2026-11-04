@@ -23,6 +23,15 @@ from backend.scrapers_v2.r2 import R2Client
 
 PREFIX = "analytics_private/v1"
 ROOTS = ("muse_handoff/returns", "muse_handoff/outbox", "analytics/exports")
+# Exact-path exclusions only: this public, re-downloadable source is not an
+# intake/dbt input. Never exclude the IRS derived leads, package state or ledgers.
+# Provenance matches analytics/scripts/irs_leads.py; no download occurs here.
+EXCLUSIONS = {
+    "analytics/exports/irs/eo_ca.csv": {
+        "source_url": "https://www.irs.gov/pub/irs-soi/eo_ca.csv",
+        "reason": "public re-downloadable IRS source; not consumed by pull or dbt",
+    },
+}
 MAX_FILE = 32 * 1024 * 1024
 MAX_TOTAL = 256 * 1024 * 1024
 MAX_MANIFEST = 4 * 1024 * 1024
@@ -93,10 +102,14 @@ def inventory(root):
                 raise ValueError("state symlink")
             if path.is_dir():
                 continue
-            if not path.is_file() or path.stat().st_size > MAX_FILE:
-                raise ValueError("invalid state file")
             name = path.relative_to(root).as_posix()
             safe_path(name)
+            if not path.is_file():
+                raise ValueError("invalid state file")
+            if name in EXCLUSIONS:
+                continue
+            if path.stat().st_size > MAX_FILE:
+                raise ValueError("invalid state file")
             before = path.stat()
             data = path.read_bytes()
             after = path.stat()
@@ -118,7 +131,8 @@ def save(store, root, run_id, revision):
     files = inventory(root)  # Capture before uploads; caller must exclude concurrent writers.
     entries = [{"path": name, "size": len(data), "sha256": digest(data)} for name, data in files]
     manifest = json.dumps({"version": 1, "run_id": run_id, "revision": revision,
-                           "roots": list(ROOTS), "files": entries}, sort_keys=True,
+                           "roots": list(ROOTS), "files": entries,
+                           "exclusion_policy": EXCLUSIONS}, sort_keys=True,
                           separators=(",", ":")).encode()
     if len(manifest) > MAX_MANIFEST:
         raise ValueError("manifest too large")
