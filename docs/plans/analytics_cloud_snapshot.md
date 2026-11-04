@@ -72,8 +72,22 @@ python -m analytics.scripts.cloud_dbt --run \
   --private-dir /private/new-run
 ```
 
-Supply the existing R2_* variables and R2_PRIVATE_CONFIRMED=true. --baseline is only
+Supply the existing R2_* variables and R2_PRIVATE_CONFIRMED=true.
+Actions reuses R2_ACCOUNT_ID, R2_ACCESS_KEY_ID, R2_SECRET_ACCESS_KEY and R2_BUCKET;
+no new storage secret is required. After separate approval, the remaining production
+setup is enabling the existing source reader's LOGIN and configuring its connection
+as PROD_READONLY_DATABASE_URL. ANALYTICS_DATABASE_URL is generated for the ephemeral
+service by the job, not an owner-provided hosted database secret. --baseline is only
 needed when accepted.json does not exist. The job performs, serially:
+
+Before source/database work, inventory every `analytics/dbt/seeds/*.csv` by basename
+and SHA-256. All five private seeds (muse_results, muse_candidates, quality_reviews,
+source_checks, geocodes) are required. Missing files fail with public fixed error
+code `seed_missing`; invalid/symlink files use `seed_invalid`. Hashes are rechecked
+after dbt, and changes fail with `seed_changed` before accepting the run. Run in an
+exclusive checkout: this check detects persistent changes, not a malicious writer
+changing and restoring files during dbt. Hashes establish input identity, not that
+the selected R2 inputs are current or independently verified.
 
 1. Read private R2 accepted metadata and its ETag; only NoSuchKey means absent.
 2. Capture the source and validate against that metadata or the first baseline.
@@ -95,6 +109,13 @@ marts available for a separately authorized downstream step until service teardo
 Private prefix: analytics_private/v1/snapshot_gate/.
 - runs/<run-id>.json is an immutable successful-build receipt.
 - accepted.json is the authoritative cross-run count/source/time/hash baseline.
+
+Both runs/<run-id>.json and accepted.json include `seed_sha256`, mapping every seed
+filename to its SHA-256 without its content. Previously created metadata without
+this field may still serve as a source-count baseline, but cannot attest seed
+provenance; all new accepted runs include it. The owner confirmed in round 2 that
+acceptance follows dbt success, without waiting for publish dry run: this is only
+the source snapshot baseline, and publication keeps its independent gate.
 
 First creation uses If-None-Match: *; replacement uses If-Match with the exact ETag
 read before capture. R2 evaluates these conditions atomically ([R2 consistency
@@ -134,31 +155,84 @@ archiving is still a separate step. Publishing still requires its schema handlin
 exact diff gate and authorization. An accepted source snapshot is not authorization
 to publish. No hosted persistent analytics database is required by this path.
 
-## Verification
+## Verification — second review, 2026-11-04 PT
 
-The revision replaces permanent-database-specific capacity/lock/migration tests
-with disposable-target refusal, rollback and R2 CAS tests; it does not relax the
-snapshot count/identity/time gates. Repeatable-read and private-output regressions
-remain. Checks on 2026-11-04 PT:
-
-- Confirmed fresh loopback test DB churchmap_pr77_review_test, PostgreSQL 17.6,
+Passed:
+- Confirmed fresh loopback test DB churchmap_pr77_round2_test, PostgreSQL 17.6,
   port 55473, pgvector 0.8.1. `python -m backend.db.migrate`: 0001–0006 applied.
-- `python -m pytest -q -rs`: **625 passed, 5 skipped, 10 subtests passed**;
-  all 32 snapshot/job tests ran, including real SQL and SDK conditional parameters.
-  Two superseded modules and three missing SF/CA parity inputs account for skips.
-  Existing Starlette/httpx deprecation warning remains.
-- Real `run_build` in fresh local churchmap_run_77abcdef, loaded with private
-  sidecar snapshot/seeds: dbt 1.8.8, target job, threads=1, full-refresh,
-  as_of_date=2026-11-04: **28 success, 90 pass, no errors/skips**. The subprocess
-  itself ran, not a substitute; logs and artifacts stayed private. Capture/read
-  concurrency was tested separately with synthetic data and a real reader role.
-- Required local-path compatibility command:
-  `DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build --project-dir analytics/dbt --full-refresh`
-  with explicit loopback test connection variables: **28 success, 90 pass**.
-  This separate check uses the unchanged local target/default date, not the job date.
+- `python -m pytest -q -rs`: **633 passed, 5 skipped, 10 subtests passed**;
+  all 40 snapshot/job tests ran. New cases cover every required private seed
+  missing before dbt, all-CSV hashing, changed inputs blocking acceptance, identical
+  seed hashes in immutable/current receipts, and a public fixed error code.
+- Three fresh local job databases, same raw rows/timestamp and the same nine seeds:
+  local target at 2026-10-19; job target at 2026-10-19; job target at 2026-11-04.
+  Each full build: **28 success, 90 pass, no errors/skips**. dbt models/tests unchanged.
 - `git diff --check`: passed.
-- R2 state read/CAS/failure tests use an offline S3 substitute; botocore Stubber
-  confirms both conditional parameters are supported by the installed SDK.
-  No live R2 operations, hosted reader/pooler check or production SQL executed.
-- No frontend changes; frontend/browser checks not run. No timer/login enabled.
-  Local results do not establish an activated cloud workflow or publication safety.
+
+The local invocation used the required command with explicit isolated connection
+variables and date override:
+
+```
+DBT_PROFILES_DIR=analytics/dbt analytics/.venv/bin/dbt build \
+  --project-dir analytics/dbt --full-refresh --vars '{"as_of_date":"2026-10-19"}'
+```
+
+The job invocations used run_build's real subprocess, target job, threads=1,
+--full-refresh and explicit date. All build logs/target paths remained private.
+The local target retains threads=4. Seed hashes were compared before and after
+every build; no inputs changed. Input identity:
+
+- Canonical raw rows SHA-256:
+  `9564031e42e572f180bda77ff30ce0d6a68db409286e7f75ba293f3db4be6491`.
+- SHA-256 of sorted compact JSON filename→seed-hash manifest:
+  `3e91dd2bf36e27459e4134795a2b76e7e04b7586698d26707e6f2308f23754b0`.
+- Reproduction script: private `/tmp/churchmap-pg17-build/compare-pr77-round2.py`;
+  complete row comparisons/input hashes: private `round2-comparison/evidence.json`
+  under that directory; per-entity date-cause evidence stays private there too.
+
+### Same-date parity and date-only delta
+
+Implementation clarification: mart_coverage_snapshot has **visit_ready**, not
+map_ready. Its grain is geo_scope × source; mart_new_congregations has map_ready
+and one row per new-congregation candidate. These quantities are not added.
+
+For the same date (2026-10-19), all columns of all **six coverage rows** matched
+exactly, including source observation metadata; candidate counts and readiness
+flags also matched. Queries used `SELECT * FROM analytics.mart_coverage_snapshot
+ORDER BY geo_scope,source NULLS FIRST` and counts filtered by profile_ready/map_ready
+in analytics.mart_new_congregations. Date-only comparisons exclude as_of_date itself.
+
+| Metric / grain | local 10-19 | job 10-19 | job 11-04 | Date delta |
+|---|---:|---:|---:|---:|
+| Directory records, national scope | 133939 | 133939 | 133939 | 0 |
+| Directory visit_ready, national scope | 103 | 103 | 103 | 0 |
+| New-congregation candidates | 2394 | 2394 | 2394 | 0 |
+| Candidate profile_ready | 1168 | 1168 | 1167 | -1 |
+| Candidate map_ready | 1052 | 1052 | 1051 | -1 |
+
+All 14 coverage count fields across all six groups remain unchanged with the date
+advance. National counts aggregate only national rows across sources, never the
+additional overlapping Muse scopes. Candidate denominator is the 2,394 rows of
+mart_new_congregations in this fixed input, not production or all raw churches.
+
+Cause verified by entity comparison: no directory research row crosses the date
+boundary; two candidates' fb_last_post_date are in [2025-10-19, 2025-11-04).
+Their fb_page_fresh flags expire under the model's exact as_of_date - 365 rule.
+One previously map-ready candidate relies on fb_page status evidence and loses
+verified_active, profile_ready and map_ready. There is one loss and zero gains;
+this explains the entire -1, rather than a target/thread regression. No model or
+freshness rule was changed to make the builds agree.
+
+Limits / not run:
+- This private legacy sidecar snapshot contains 133,939 rows, above capture()'s
+  100,000-row limit. The matrix loaded the already available snapshot into isolated
+  databases; it is **not** end-to-end production capture acceptance. Real source
+  size is unverified; a source exceeding the existing limit will fail closed.
+  The limit was not increased. Bounded capture is separately tested with synthetic
+  data and a real local reader role.
+- Five pytest skips: two superseded modules and three missing SF/CA parity inputs.
+  Existing Starlette/httpx deprecation warning remains.
+- R2 tests are offline CAS simulation plus SDK parameter validation, not live R2.
+  Production reader login/TLS, Actions lifecycle and automatic private-log archival
+  remain unverified. No frontend/browser checks (no UI changes), production SQL,
+  login activation, timers, publishing or paid calls were run.

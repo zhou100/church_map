@@ -6,6 +6,7 @@ creating and destroying the ephemeral service; existing databases are rejected.
 from contextlib import redirect_stderr, redirect_stdout
 from datetime import datetime
 import json
+import hashlib
 import logging
 import os
 from pathlib import Path
@@ -22,6 +23,28 @@ from analytics.scripts.snapshot_state import AcceptanceStore, previous_record
 from backend.scrapers_v2.r2 import R2Client
 
 PROJECT = Path(__file__).resolve().parents[1] / 'dbt'
+PRIVATE_SEEDS = frozenset({'muse_results.csv', 'muse_candidates.csv',
+                           'quality_reviews.csv', 'source_checks.csv', 'geocodes.csv'})
+
+
+def seed_hashes():
+    paths = sorted((PROJECT / 'seeds').glob('*.csv'))
+    if not PRIVATE_SEEDS <= {p.name for p in paths}:
+        raise snapshot.GateError('seed_missing')
+    result = {}
+    for path in paths:
+        if path.is_symlink() or not path.is_file():
+            raise snapshot.GateError('seed_invalid')
+        before = path.stat()
+        hasher = hashlib.sha256()
+        with path.open('rb') as source:
+            for chunk in iter(lambda: source.read(1024 * 1024), b''):
+                hasher.update(chunk)
+        after = path.stat()
+        if (before.st_ino, before.st_size, before.st_mtime_ns) != (after.st_ino, after.st_size, after.st_mtime_ns):
+            raise snapshot.GateError('seed_changed')
+        result[path.name] = hasher.hexdigest()
+    return result
 
 
 def job_connection(url):
@@ -98,15 +121,18 @@ def run_job(url, source_url, store, directory, baseline, revision):
     job_connection(url)  # reject remote targets before any source/network work
     if not re.fullmatch(r'[0-9a-f]{40}', revision):
         raise snapshot.GateError('invalid_revision')
+    seeds = seed_hashes()  # fail before dbt or database/source work
     previous, etag = store.read()
     captured = snapshot.capture(source_url)
     snapshot.validate_count(captured, previous_record(previous), baseline)
     install(url, captured)
     today = datetime.now(ZoneInfo('America/Los_Angeles')).date().isoformat()
     run_build(url, directory, today)
+    if seed_hashes() != seeds:
+        raise snapshot.GateError('seed_changed')
     # CAS prevents parallel jobs that read the same baseline overwriting each
     # other. Only this success may proceed downstream; this code never publishes.
-    receipt = store.accept(captured, etag, uuid.uuid4().hex, revision, today)
+    receipt = store.accept(captured, etag, uuid.uuid4().hex, revision, today, seeds)
     snapshot.write_report(directory / 'accepted.json', receipt)
     return len(captured.rows)
 
@@ -132,8 +158,11 @@ def main(argv=None):
                             args.private_dir, snapshot.load_json(args.baseline), args.revision)
         print(json.dumps({'step': 'cloud_dbt', 'status': 'ok', 'rows': count}))
         return 0
-    except Exception:
-        print('{"step":"cloud_dbt","status":"failed"}')
+    except Exception as error:
+        # Only fixed codes may reach public logs; never exception text/filenames.
+        code = str(error) if isinstance(error, snapshot.GateError) else ''
+        code = code if code in {'seed_missing', 'seed_invalid', 'seed_changed'} else 'job_failed'
+        print(json.dumps({'step': 'cloud_dbt', 'status': 'failed', 'error_code': code}))
         return 1
     finally:
         logging.disable(previous_logging)

@@ -48,12 +48,18 @@ class AcceptanceStore(Store):
         previous_record(record)
         return record, response['ETag']
 
-    def accept(self, snapshot, etag, run_id, revision, as_of_date):
+    def accept(self, snapshot, etag, run_id, revision, as_of_date, seed_sha256):
         if not re.fullmatch(r'[0-9a-f]{32}', run_id) or not re.fullmatch(r'[0-9a-f]{40}', revision):
             raise GateError('invalid_run_identity')
         record = {**metadata(snapshot), 'run_id': run_id, 'revision': revision,
-                  'as_of_date': as_of_date, 'dbt_status': 'success'}
+                  'as_of_date': as_of_date, 'dbt_status': 'success', 'seed_sha256': seed_sha256}
+        if not seed_sha256 or any(not re.fullmatch(r'[A-Za-z0-9_-]+\.csv', name) or
+                                  not re.fullmatch(r'[0-9a-f]{64}', digest)
+                                  for name, digest in seed_sha256.items()):
+            raise GateError('invalid_seed_hashes')
         data = encoded(record)
+        if len(data) > LIMIT:
+            raise GateError('oversized_receipt')
         # Immutable build receipt first; it is not itself the accepted pointer.
         self.put_once(f'{PREFIX}/runs/{run_id}.json', data)
         condition = {'IfMatch': etag} if etag is not None else {'IfNoneMatch': '*'}

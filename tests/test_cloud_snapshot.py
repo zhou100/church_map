@@ -233,7 +233,7 @@ class FakeS3:
 
 
 def accepted(store, x, etag=None):
-    return store.accept(x, etag, uuid.uuid4().hex, 'a'*40, '2026-11-04')
+    return store.accept(x, etag, uuid.uuid4().hex, 'a'*40, '2026-11-04', {'fixture.csv':'b'*64})
 
 
 def test_r2_first_baseline_and_concurrent_cas():
@@ -272,6 +272,7 @@ def test_r2_invalid_metadata_and_oversize():
 
 @pytest.mark.parametrize('failure', ['install', 'build', 'conflict', None])
 def test_job_only_accepts_after_build(monkeypatch, tmp_path, failure):
+    monkeypatch.setattr(d,'seed_hashes',lambda:{'fixture.csv':'b'*64})
     client=FakeS3();store=state.AcceptanceStore(client,'private')
     x=snap();accepted(store,replace(x,taken_at=x.taken_at-timedelta(seconds=1)))
     before=client.objects[state.KEY]
@@ -299,6 +300,7 @@ def test_job_only_accepts_after_build(monkeypatch, tmp_path, failure):
 
 @pytest.mark.parametrize('count', [0,7])
 def test_bad_snapshot_never_installs_or_accepts(monkeypatch,tmp_path,count):
+    monkeypatch.setattr(d,'seed_hashes',lambda:{'fixture.csv':'b'*64})
     store=state.AcceptanceStore(FakeS3(),'private');x=snap();accepted(store,x)
     before=store.read()[0]
     monkeypatch.setattr(s,'capture',lambda _:replace(snap(count),taken_at=x.taken_at+timedelta(seconds=1)))
@@ -373,10 +375,64 @@ def test_r2_sdk_supports_both_conditional_writes():
             stub.add_response('put_object',{}, {'Bucket':'private','Key':state.KEY,
                 'Body':ANY,'ContentType':'application/json',
                 **({'IfMatch':etag} if etag else {'IfNoneMatch':'*'})})
-            store.accept(snap(),etag,run,'a'*40,'2026-11-04')
+            store.accept(snap(),etag,run,'a'*40,'2026-11-04', {'fixture.csv':'b'*64})
         stub.assert_no_pending_responses()
 
 
 def test_null_remote_state_cannot_reinitialize():
     client=FakeS3();client.objects[state.KEY]=b'null'
     with pytest.raises(s.GateError):state.AcceptanceStore(client,'private').read()
+
+
+@pytest.fixture
+def seeds(tmp_path,monkeypatch):
+    directory=tmp_path/'seeds';directory.mkdir()
+    for name in d.PRIVATE_SEEDS | {'tracked.csv'}:
+        (directory/name).write_bytes(b'column\nprivate row\n')
+    monkeypatch.setattr(d,'PROJECT',tmp_path)
+    return directory
+
+
+def test_seed_inventory_hashes_every_csv(seeds):
+    expected=hashlib.sha256(b'column\nprivate row\n').hexdigest()
+    assert d.seed_hashes()=={p.name:expected for p in seeds.glob('*.csv')}
+    (seeds/'tracked.csv').write_bytes(b'changed\n')
+    assert d.seed_hashes()['tracked.csv']!=expected
+
+
+@pytest.mark.parametrize('name', sorted(d.PRIVATE_SEEDS))
+def test_missing_private_seed_fails_before_source_or_dbt(seeds,monkeypatch,name,capsys,tmp_path):
+    (seeds/name).unlink()
+    monkeypatch.setattr(s,'capture',lambda _:pytest.fail('source must not run'))
+    monkeypatch.setattr(d,'run_build',lambda *args:pytest.fail('dbt must not run'))
+    class R2:
+        bucket='private'
+        def _ensure(self):return FakeS3()
+    monkeypatch.setattr(d,'R2Client',R2)
+    monkeypatch.setenv('R2_PRIVATE_CONFIRMED','true')
+    monkeypatch.setenv('ANALYTICS_DATABASE_URL','postgresql://job@localhost/churchmap_run_abcdef12')
+    monkeypatch.setenv('PROD_READONLY_DATABASE_URL','PRIVATE URL')
+    assert d.main(['--run','--private-dir',str(tmp_path/'logs'),'--revision','a'*40])==1
+    out=capsys.readouterr()
+    assert json.loads(out.out)=={'step':'cloud_dbt','status':'failed','error_code':'seed_missing'}
+    assert out.err=='' and name not in out.out
+
+
+def test_seed_change_during_build_blocks_acceptance(seeds,monkeypatch,tmp_path):
+    store=state.AcceptanceStore(FakeS3(),'private');x=snap()
+    monkeypatch.setattr(s,'capture',lambda _:x)
+    monkeypatch.setattr(d,'install',lambda *args:None)
+    monkeypatch.setattr(d,'run_build',lambda *args:(seeds/'tracked.csv').write_text('changed'))
+    with pytest.raises(s.GateError,match='seed_changed'):
+        d.run_job('postgresql://job@localhost/churchmap_run_abcdef12','private',store,tmp_path,baseline(x),'a'*40)
+    assert store.read()==(None,None)
+
+
+def test_receipts_bind_exact_seed_hashes():
+    store=state.AcceptanceStore(FakeS3(),'private')
+    hashes={'tracked.csv':'a'*64, 'private.csv':'b'*64}
+    run=uuid.uuid4().hex
+    store.accept(snap(),None,run,'a'*40,'2026-11-04',hashes)
+    immutable=json.loads(store.client.objects[f'{state.PREFIX}/runs/{run}.json'])
+    assert immutable==store.read()[0]
+    assert immutable['seed_sha256']==hashes
