@@ -1,4 +1,4 @@
-# Supabase isolation proposal — NOT EXECUTED
+# Supabase isolation proposal — NOT APPLIED TO PRODUCTION
 
 ## Dependency finding and limits
 
@@ -40,7 +40,7 @@ Editor on 2026-11-04 PT. The owner also inspected the Render Environment databas
 role; the operational identity is retained in the private handoff, not published
 here. This confirms configured identity, not a live backend session observation.
 Revised SQL targets PG16+; validation must now use PG17 with Supabase-style roles
-and a non-superuser provisioning account. No matching-version test has run.
+and a non-superuser provisioning account. Synthetic PG17.6 tests subsequently passed; see the validation record below.
 PG15 needs a separate reviewed membership variant, not blind syntax substitution.
 
 ## Proposed sequence (requires approval, no changes made)
@@ -167,10 +167,10 @@ authorization; containment and empty removal are separate files and separate aut
 
 Passed: repository dependency searches, producer/consumer review, documentation
 link existence and git diff --check. No dependency added or application changed.
-NOT RUN: all SQL drafts, local migrations/tests, production changes, browser
-QA, Data API request-log audit, actual-role privilege tests, dbt load test.
-The owner explicitly requested preparation without execution; these SQL files
-are review drafts, not tested or approved deployment artifacts.
+NOT RUN: production SQL/configuration changes, hosted Supabase actual-role tests,
+browser QA, Data API request-log audit and dbt full-refresh/load tests. The owner
+subsequently authorized continuing isolated validation. Local tests below do not
+authorize or prove safe production deployment; tracked drafts still ROLLBACK.
 
 Sources: [Supabase secure data](https://supabase.com/docs/guides/database/secure-data),
 [connection methods](https://supabase.com/docs/guides/database/connecting-to-postgres),
@@ -199,3 +199,45 @@ Third review confirmed the second-round items. The optional AGENTS wording nit
 is addressed with a general dependency-inspection rule, including an owner-run
 read-only fallback when the agent cannot inspect the target database. SQL is
 unchanged; no runtime validation or execution is implied by review acceptance.
+
+## PG17.6 isolated validation — 2026-11-04 PT
+
+Owner authorized continuing with local validation and private remediation planning;
+no production SQL was executed. Built official PostgreSQL 17.6 in /tmp (Docker
+unavailable; installed system PG14 cannot test PG17 membership options). Temporary
+build tools and pgvector 0.8.1 were used; no project dependency or system installation
+changed. PostgreSQL listened only on 127.0.0.1:55473, not a cloud address.
+
+`validate_local.py` hardcodes `churchmap_isolation_test` on that address and checks
+server_version_num=170006. A separate bootstrap superuser creates a **non-superuser**
+postgres role with CREATEROLE/CREATEDB/BYPASSRLS, plus synthetic API roles; the
+postgres role owns the fixture database and source tables. These are synthetic
+ACL/default-grant fixtures, not a full local Supabase service stack.
+
+- Initial test FAILED with permission denied for schema raw: SET capability
+  allowed schema creation but did not confer inherited ownership for REVOKE.
+  Fixed prepare.sql to SET LOCAL ROLE churchmap_analytics around schema ACL and
+  default-ACL changes, then RESET ROLE before administrator operations.
+- Re-run: **27 checks passed**. Includes default rollback, local commit, real
+  analytics/reader logins and defaults, boolean-only projection, denied base-table
+  reads/writes, column-grant and non-public SECURITY DEFINER counterexamples,
+  sequence mutation, all-grantor membership refusal, populated-schema cleanup
+  refusal, view-dependent column migration refusal, normal RLS compatibility,
+  capacity boundaries, containment and empty cleanup as non-superuser.
+- Separate `churchmap_pg17_backend_test` identity confirmed at 127.0.0.1:55473.
+  `python -m backend.db.migrate`: real migrations 0001–0006 passed with pgvector.
+  `python -m pytest -q`: **593 passed, 5 skipped, 10 subtests passed**; one existing
+  Starlette/httpx deprecation warning. Skips: three parity cases need SF data;
+  two legacy cases are superseded. No tests removed or relaxed.
+- No frontend changes: frontend/browser checks not run. No cloud credentials
+  or source records used by fixture tests. dbt peak resource behavior, profile
+  adaptation and production reader/count gate remain outstanding.
+
+Reproduce on a fresh, disposable local PG17.6 cluster at port 55473 only:
+bootstrap as test_bootstrap, create postgres LOGIN CREATEROLE CREATEDB BYPASSRLS
+NOSUPERUSER; create anon LOGIN, authenticated NOLOGIN, service_role NOLOGIN
+BYPASSRLS; create churchmap_isolation_test owned by postgres. Local trust auth is
+for this loopback-only fixture. Run `python docs/plans/supabase_isolation/validate_local.py`
+with psycopg installed. The fixture must be fresh; existing objects cause failure,
+not deletion. Only the synthetic anon role is LOGIN to test denial via a real
+connection. It does not change the real Supabase role configuration.

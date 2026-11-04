@@ -1,4 +1,4 @@
--- NOT EXECUTED. Read-only abort gate, before BOTH snapshot load and dbt build.
+-- Tested on local synthetic PG17.6 only; not applied to production. Read-only abort gate, before BOTH snapshot load and dbt build.
 -- Runner must stop on any error (psql -v ON_ERROR_STOP=1); never just log it.
 -- Conservative proposed limits in bytes, not a provider quota guarantee.
 BEGIN READ ONLY;

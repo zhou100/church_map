@@ -10,7 +10,7 @@
 
 | PR | 内容 | 状态 |
 |---|---|---|
-| [PR 1 Supabase 隔离方案 #76](https://github.com/zhou100/church_map/pull/76) | Data API 依赖核对、角色/schema SQL 草案及保留数据的回退 | 仅准备，未执行；见 [隔离方案](supabase_isolation/README.md) |
+| [PR 1 Supabase 隔离方案 #76](https://github.com/zhou100/church_map/pull/76) | Data API 依赖核对、角色/schema SQL 草案及保留数据的回退 | PG17.6 合成隔离测试通过；未在生产执行；见 [隔离方案](supabase_isolation/README.md) |
 | [PR 1 存储子步骤 #73](https://github.com/zhou100/church_map/pull/73) | Drive CSV 下载验证、R2 不可覆盖快照、main 手动往返工作流 | 代码及离线测试完成；实际 R2/Actions 访问待配置，完整上云仍未完成 |
 | [#67](https://github.com/zhou100/church_map/pull/67) | 宽松解析 run log 里的目录扫描记录。格式不对不再退回；只有 Muse 自己写明还有 U 条没研究、且没到上限时，**整个包**退回，不是按行退回【改】 | 已合并 `2697b52` |
 | [#68](https://github.com/zhou100/church_map/pull/68) | trafilatura 和 R2 调用移出事件循环 | 已合并 `4d86c9c` |
@@ -293,7 +293,7 @@ status/status_digest.md，有问题才报告。
 
 ## 6. 顺序和完成标准
 
-**Supabase 隔离准备（2026-11-03 PT）：** 仓库定义的前端→Render→psycopg 链路未发现 Data API 依赖；生产环境和外部消费者未验证。[SQL 和回退草案](supabase_isolation/README.md) 已准备，默认 ROLLBACK，未执行。审阅后补充容量硬门禁、脱敏快照视图、PG16+ 临时 SET 授权和分离回退文件；第二轮补充视图迁移依赖与恢复规则、快照行数门禁要求、public 全表 SELECT 拒绝检查和跨 grantor 成员权限断言；第三轮将 AGENTS 迁移依赖规则改为通用规则，并明确无权限时由业主提供只读结果；2026-11-04 PT 业主提供 SQL Editor 结果确认 PG17.6，并完成 Render 配置角色核对（身份细节保留于私有交接）；PG17 实测与实际运行会话验证仍未完成。现有 Supabase 共用方案仍待批准，不能直接用 postgres 运行 analytics；仍需核实 Data API 消费者和实际运行会话，再验证隔离配置。
+**Supabase 隔离准备（2026-11-03 PT）：** 仓库定义的前端→Render→psycopg 链路未发现 Data API 依赖；生产环境和外部消费者未验证。[SQL 和回退草案](supabase_isolation/README.md) 已准备，默认 ROLLBACK，未执行。审阅后补充容量硬门禁、脱敏快照视图、PG16+ 临时 SET 授权和分离回退文件；第二轮补充视图迁移依赖与恢复规则、快照行数门禁要求、public 全表 SELECT 拒绝检查和跨 grantor 成员权限断言；第三轮将 AGENTS 迁移依赖规则改为通用规则，并明确无权限时由业主提供只读结果；2026-11-04 PT 业主提供 SQL Editor 结果确认 PG17.6，并完成 Render 配置角色核对（身份细节保留于私有交接）；2026-11-04 PT 隔离 PG17.6 实测发现并修复 schema ACL 的角色切换缺陷，27 项门禁/回退检查通过；实际生产会话验证仍未完成。现有 Supabase 共用方案仍待批准，不能直接用 postgres 运行 analytics；仍需核实 Data API 消费者和实际运行会话，再验证隔离配置。
 
 | 顺序 | 内容 | 依赖 | 完成标准 |
 |---|---|---|---|

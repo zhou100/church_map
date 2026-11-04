@@ -1,4 +1,4 @@
--- REVIEW DRAFT. NOT EXECUTED. Emergency containment keeps all imported data.
+-- REVIEW DRAFT. Tested on local synthetic PG17.6 only; not applied to production. Emergency containment keeps all imported data.
 BEGIN;
 ALTER ROLE churchmap_analytics NOLOGIN;
 ALTER ROLE churchmap_snapshot_reader NOLOGIN;

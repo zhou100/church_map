@@ -1,4 +1,5 @@
--- REVIEW DRAFT. NOT EXECUTED. Default ROLLBACK; not a runtime migration.
+-- REVIEW DRAFT. Tested only on synthetic local PG17.6; NOT APPLIED TO PRODUCTION.
+-- Default ROLLBACK; not a runtime migration.
 -- Before authorized application: save current ACLs; confirm runtime identity,
 -- Data API exposure, no schema/role collisions, and database CREATE privilege.
 -- Run as an authorized provisioning administrator, never the runtime app.
@@ -40,6 +41,8 @@ GRANT churchmap_analytics TO CURRENT_USER WITH INHERIT FALSE, SET TRUE;
 CREATE SCHEMA raw AUTHORIZATION churchmap_analytics;
 CREATE SCHEMA analytics AUTHORIZATION churchmap_analytics;
 CREATE SCHEMA analytics_seeds AUTHORIZATION churchmap_analytics;
+-- SET permission is not inherited ownership: run owner ACL changes explicitly.
+SET LOCAL ROLE churchmap_analytics;
 REVOKE ALL ON SCHEMA raw, analytics, analytics_seeds
   FROM PUBLIC, anon, authenticated, service_role;
 
@@ -53,6 +56,7 @@ ALTER DEFAULT PRIVILEGES FOR ROLE churchmap_analytics
   REVOKE EXECUTE ON FUNCTIONS FROM PUBLIC, anon, authenticated, service_role;
 ALTER DEFAULT PRIVILEGES FOR ROLE churchmap_analytics
   REVOKE USAGE ON TYPES FROM PUBLIC, anon, authenticated, service_role;
+RESET ROLE;
 ALTER ROLE churchmap_analytics SET search_path = pg_catalog, analytics;
 ALTER ROLE churchmap_analytics SET statement_timeout = '120s';
 ALTER ROLE churchmap_analytics SET lock_timeout = '3s';
