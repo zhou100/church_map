@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { getStats } from '../api/client'
+import { directoryCounts } from '../directoryCounts'
 
 export default function Status() {
   const [stats, setStats] = useState(null)
@@ -10,6 +11,8 @@ export default function Status() {
   useEffect(() => {
     getStats().then(setStats).catch(err => setError(err.message))
   }, [])
+
+  const directory = stats && directoryCounts(stats.churches)
 
   return (
     <div className="content-page">
@@ -32,16 +35,16 @@ export default function Status() {
           <div className="status-grid">
             <article>
               <span>Churches known</span>
-              <strong>{stats.churches.total.toLocaleString()}</strong>
+              <strong>{directory.total.toLocaleString()}</strong>
             </article>
             <article>
               <span>Websites recorded</span>
-              <strong>{stats.churches.with_website.toLocaleString()}</strong>
-              <small>{stats.churches.with_website_pct}% of the directory</small>
+              <strong>{directory.withWebsite.toLocaleString()}</strong>
+              <small>{directory.withWebsitePct}% of the directory</small>
             </article>
             <article>
               <span>Website summaries</span>
-              <strong>{stats.churches.with_summary.toLocaleString()}</strong>
+              <strong>{directory.withSummary.toLocaleString()}</strong>
             </article>
             <article className={stats.crawl.pipeline_ok ? 'status-good' : 'status-warning'}>
               <span>Reading pipeline</span>

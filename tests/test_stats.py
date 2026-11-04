@@ -19,6 +19,9 @@ COUNTS = {
     "extracted": 1_200,
     "with_summary": 1_100,
     "enriched": 5_400,
+    "visible_total": 133_000,
+    "visible_with_website": 51_900,
+    "visible_with_summary": 1_095,
 }
 CURRENT_V = "2026-07-24.v3.1"
 CURRENT_M = "google/gemini-2.5-flash-lite"
@@ -89,6 +92,20 @@ def test_extraction_pct_uses_website_havers_as_denominator():
     out = _build()
     assert out["churches"]["extracted_pct_of_website"] == pytest.approx(2.3, abs=0.05)
     assert out["churches"]["with_website_pct"] == pytest.approx(38.8, abs=0.05)
+
+
+def test_visible_directory_counts_are_reported_apart_from_the_whole_table():
+    """Visitor pages quote the rows a search can return; the crawl metrics
+    keep the whole-table denominator they reconcile against."""
+    churches = _build()["churches"]
+    assert churches["visible"] == {
+        "total": 133_000,
+        "with_website": 51_900,
+        "with_website_pct": pytest.approx(39.0, abs=0.05),
+        "with_summary": 1_095,
+    }
+    assert churches["total"] == 134_000
+    assert churches["with_summary"] == 1_100
 
 
 # --- prompt-version split (this is what sizes a backfill) ------------------

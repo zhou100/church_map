@@ -1037,8 +1037,13 @@ class StatsRepository:
         self.con = con
 
     async def church_counts(self) -> dict:
-        """One pass over churches for every headline count."""
-        sql = """
+        """One pass over churches for every headline count.
+
+        The unprefixed counts cover the whole table, the denominator the crawl
+        metrics share. `visible_*` counts only rows public reads can return
+        (`VISIBLE`), so a visitor-facing total never includes hidden places.
+        """
+        sql = f"""
             SELECT
                 COUNT(*)                                            AS total,
                 COUNT(*) FILTER (
@@ -1048,8 +1053,16 @@ class StatsRepository:
                 COUNT(*) FILTER (
                     WHERE website_summary IS NOT NULL AND website_summary <> ''
                 )                                                   AS with_summary,
-                COUNT(*) FILTER (WHERE google_enriched_at IS NOT NULL) AS enriched
-              FROM churches
+                COUNT(*) FILTER (WHERE google_enriched_at IS NOT NULL) AS enriched,
+                COUNT(*) FILTER (WHERE {VISIBLE})                   AS visible_total,
+                COUNT(*) FILTER (
+                    WHERE {VISIBLE} AND c.website IS NOT NULL AND c.website <> ''
+                )                                                   AS visible_with_website,
+                COUNT(*) FILTER (
+                    WHERE {VISIBLE}
+                      AND c.website_summary IS NOT NULL AND c.website_summary <> ''
+                )                                                   AS visible_with_summary
+              FROM churches c
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
             await cur.execute(sql)
