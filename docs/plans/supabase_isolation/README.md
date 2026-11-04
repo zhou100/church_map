@@ -35,9 +35,12 @@ confirming the actual runtime role; do not wait for the full analytics audit.
 The public document does not serve as an incident report. Earlier Git revisions
 and review comments may retain removed text; this edit is not history erasure.
 
-Project PostgreSQL major version: **unknown**, not included in the supplied CSV.
-Owner asked for `SELECT current_setting('server_version');`. Revised SQL targets
-PG16+ explicitly and must not be applied until the version is recorded and tested.
+Project PostgreSQL version: **17.6 (major 17)**, supplied by the owner from SQL
+Editor on 2026-11-04 PT. The owner also inspected the Render Environment database
+role; the operational identity is retained in the private handoff, not published
+here. This confirms configured identity, not a live backend session observation.
+Revised SQL targets PG16+; validation must now use PG17 with Supabase-style roles
+and a non-superuser provisioning account. No matching-version test has run.
 PG15 needs a separate reviewed membership variant, not blind syntax substitution.
 
 ## Proposed sequence (requires approval, no changes made)
@@ -181,7 +184,9 @@ PG16 SET membership added with ADMIN-only lifecycle authority retained; capacity
 abort gate added; boolean-only admin view; accessible-schema function and sequence
 guards; split containment/removal; matching-version Supabase fixture requirements;
 cloud-profile/timeout activation gates; PR link and pg_catalog-first search path.
-Version, actual-role tests and runtime identity remain pending. No SQL was run.
+Version and Render configured-role identity were subsequently supplied by the owner
+(see above). Actual-role tests and live runtime verification remain pending. No
+SQL was run by the agent.
 
 Second review: documented optional-view migration dependencies and recovery;
 required a future fail-closed snapshot-count gate; extended both new roles'
