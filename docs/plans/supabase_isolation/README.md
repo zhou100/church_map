@@ -189,3 +189,8 @@ SELECT guard to all public application relations; replaced ineffective membershi
 normalization with an all-grantor SET/INHERIT assertion. Removed the unnecessary
 security_barrier option on the projection-only view. No SQL executed. The gate
 and membership cases need the matching-major fixture tests before activation.
+
+Third review confirmed the second-round items. The optional AGENTS wording nit
+is addressed with a general dependency-inspection rule, including an owner-run
+read-only fallback when the agent cannot inspect the target database. SQL is
+unchanged; no runtime validation or execution is implied by review acceptance.
