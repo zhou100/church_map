@@ -2,7 +2,10 @@
 
 This is the storage portion of execution-plan PR 1, not the hourly pipeline.
 No production database, extraction, requeue, source recheck, publishing, or Drive
-write is included. Do not disable `ChurchMapMusePull` yet.
+write is included. **Owner-directed update (2026-11-03 PT):** the owner explicitly
+requested removal of `ChurchMapMusePull` before the 24-hour cloud gate. The task
+was exported then removed and its absence verified at 2026-11-04T00:00:41Z.
+Automatic Muse intake is now paused; the cloud workflow remains manual-only.
 
 ## Owner configuration (one time)
 
@@ -165,7 +168,9 @@ namespace, changes its content hash, or deletes remote objects.
   were consumed by the runner, never read back. No schedule was enabled.
 - Full historical migration, cloud analytics/dbt parity, auto-publish gate,
   hourly orchestration and 24-hour observation: **not implemented/verified by
-  this storage step**. Keep the Windows task until those gates pass.
+  this storage step**. The owner subsequently chose to remove the Windows task
+  before those gates passed (see the update at the top); do not imply cloud
+  automation has taken over.
 
 - Full backend check: Python 3.11.15, new local `churchmap_storage_test` at
   `127.0.0.1:55472`, pgvector 0.8.1; actual migrations 0001–0006 passed.

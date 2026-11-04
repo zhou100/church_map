@@ -396,3 +396,12 @@ status/status_digest.md，有问题才报告。
 - 私有快照 run ID：`drive-check-41742471216-1`；固定前缀 `analytics_private/v1/`。未删远端对象；显式 run/hash 恢复路径见运行手册。公开应用输出仅步骤/状态/计数。
 - **范围限制：** 仅验证 WP-0048 的两个文件。没有执行完整历史状态迁移、dbt、生产发布或 24 小时观察；没有改 Drive 内容或旧 Windows 任务。新 workflow 仍只有 `workflow_dispatch`，没有 `schedule`；既有 crawl 定时任务未改。
 - 此记录不声称此次 main 合并在 Render/Vercel 的部署已核验；Actions 验证以自己的精确 SHA 为准。
+
+
+### 业主明确要求移除旧 Windows 任务（2026-11-04 00:00 UTC / 11-03 PT）
+
+- 业主明确指示“去掉本地旧windows任务”，覆盖此前等待新流水线连续 24 小时后再关闭的操作顺序；这不表示 24 小时验收已通过。
+- 删除前只读确认 `\ChurchMapMusePull` 为 Ready（未运行），action 是仓库的 `muse_handoff/drive_pull_hourly.sh`，经 `conhost.exe` 调用 WSL。
+- 先导出任务 XML 到本机 Windows 临时目录（`ChurchMapMusePull-20261104T000029Z.xml`），再调用 `Unregister-ScheduledTask` 删除。
+- 2026-11-04T00:00:41.4278522Z 枚举全部计划任务，目标匹配数为 **0**。首次按根目录查询因该目录已无任务返回 ObjectNotFound，随后全任务枚举确认删除成功；未终止运行中的任务。
+- **当前自动拉取暂停：** 旧 Windows 任务已删除，新 Muse 云流水线仍没有定时触发。Drive、R2 数据和仓库注册脚本保留；原 crawl 定时任务未改。需要恢复时可使用导出的 XML 或仓库 `muse_handoff/register_pull_task.ps1`，但恢复也须符合当时的业主授权。
