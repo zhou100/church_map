@@ -2,7 +2,10 @@
 
 This is the storage portion of execution-plan PR 1, not the hourly pipeline.
 No production database, extraction, requeue, source recheck, publishing, or Drive
-write is included. Do not disable `ChurchMapMusePull` yet.
+write is included. **Owner-directed update (2026-11-03 PT):** the owner explicitly
+requested removal of `ChurchMapMusePull` before the 24-hour cloud gate. The task
+was exported then removed and its absence verified at 2026-11-04T00:00:41Z.
+Automatic Muse intake is now paused; the cloud workflow remains manual-only.
 
 ## Owner configuration (one time)
 
@@ -156,11 +159,18 @@ namespace, changes its content hash, or deletes remote objects.
   interrupted writes, corrupt/missing objects, path traversal, symlinks,
   duplicate Drive names, pagination/cycles, changed DONE, CSV embedded newlines,
   and public success/failure output. They do not prove live R2 access or privacy.
-- Actual R2 save/restore and Actions service-account access: **not run**, local
-  R2 and Drive credentials unavailable. Repository secrets cannot be read back.
+- Actual R2 save/restore and Actions service-account access: **passed once** on
+  2026-11-03 at 23:52 UTC, [run 41742471216](https://github.com/zhou100/church_map/actions/runs/41742471216),
+  revision `43130d264942fd29341bc7188c7b886dd3ab3f86`. Two files, 86 CSV
+  records, 165,790 CSV bytes. Snapshot run: `drive-check-41742471216-1`.
+  The owner confirmed private bucket settings; this is not an independent
+  Cloudflare access audit. Local credentials remain unavailable; GitHub secrets
+  were consumed by the runner, never read back. No schedule was enabled.
 - Full historical migration, cloud analytics/dbt parity, auto-publish gate,
   hourly orchestration and 24-hour observation: **not implemented/verified by
-  this storage step**. Keep the Windows task until those gates pass.
+  this storage step**. The owner subsequently chose to remove the Windows task
+  before those gates passed (see the update at the top); do not imply cloud
+  automation has taken over.
 
 - Full backend check: Python 3.11.15, new local `churchmap_storage_test` at
   `127.0.0.1:55472`, pgvector 0.8.1; actual migrations 0001–0006 passed.
