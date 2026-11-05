@@ -31,7 +31,7 @@ class DriveReader:
         results, token, tokens = [], None, set()
         while True:
             params = {"q": f"'{folder_id}' in parents and trashed = false",
-                      "fields": "nextPageToken,files(id,name,mimeType,size)",
+                      "fields": "nextPageToken,files(id,name,mimeType,size,modifiedTime)",
                       "pageSize": 1000, "supportsAllDrives": "true",
                       "includeItemsFromAllDrives": "true"}
             if token:

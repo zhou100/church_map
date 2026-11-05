@@ -82,6 +82,21 @@ Only these local, gitignored trees are captured by `scripts.muse_state_store`:
 - `muse_handoff/outbox/` (including status.csv and package definitions)
 - `analytics/exports/` (including geocoding ledgers, history, reconciliation and reports)
 
+The exact source file `analytics/exports/irs/eo_ca.csv` is excluded at capture.
+It is a public IRS download, reproducible from
+[the IRS source](https://www.irs.gov/pub/irs-soi/eo_ca.csv) using the command in
+`analytics/scripts/irs_leads.py`; neither pull nor dbt consumes it. Derived leads,
+package inputs, recheck history and geocode ledgers are **not** excluded. The
+manifest records this exact-path policy, source URL and reason. The local file
+is untouched; all other per-file/total limits and symlink checks remain in force.
+Older manifests without this metadata still restore their exact recorded files.
+Use a new run ID after this policy change; never replace an earlier manifest.
+
+For a complete Python 3.11 uploader setup, hidden credential prompts, bucket-scoped
+local token and private receipt directory, follow
+[shadow runbook step 2](muse_shadow_runbook.md#owner-sequence). GitHub secrets do
+not automatically supply local credentials.
+
 Missing trees are allowed for bounded checks; file counts are not proof of a
 complete migration. `holyhub.db`, analytics Postgres, repository files and env
 files outside these trees are not captured. The complete initial migration
