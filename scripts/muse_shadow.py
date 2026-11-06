@@ -164,7 +164,28 @@ def database_counts(root, url, disposable=True):
         counts['directory_rows'] = con.execute('SELECT count(*) AS n FROM raw.churches').fetchone()['n']
         eligible = con.execute(geo.INPUT_SQL).fetchall()
         counts['pending_geocode_addresses'] = sum(geo.key(r) not in known for r in eligible)
+        # A local sidecar not yet rebuilt with this model reports unknown, not zero.
+        if con.execute("SELECT to_regclass('analytics.mart_published_candidates') AS r").fetchone()['r']:
+            row = con.execute("SELECT count(*) AS n, count(*) FILTER (WHERE publication_status <> 'current') AS off "
+                              "FROM analytics.mart_published_candidates").fetchone()
+            counts['published_candidates'], counts['published_not_current'] = row['n'], row['off']
+        else:
+            counts['published_candidates'] = counts['published_not_current'] = None
     return counts
+
+
+def published_candidates(url):
+    """Rows of mart_published_candidates, for the private archive only.
+
+    The job's database is destroyed with the runner; without this export nobody
+    could see which published congregations need an owner decision.
+    """
+    import psycopg
+    from psycopg.rows import dict_row
+    with psycopg.connect(url, prepare_threshold=None, row_factory=dict_row) as con:
+        con.execute('SET TRANSACTION READ ONLY')
+        con.execute("SET LOCAL statement_timeout='60s'")
+        return con.execute('SELECT * FROM analytics.mart_published_candidates ORDER BY church_id').fetchall()
 
 
 def child(root, private, step, args, env):
@@ -195,7 +216,8 @@ def archive(store, directory, run_id):
 
 
 def pipeline(source, work, store, reader, folder, run_id, initial_id, initial_hash,
-             revision, env, run_child=child, count_db=database_counts):
+             revision, env, run_child=child, count_db=database_counts,
+             export_db=published_candidates):
     manifest_key(run_id)
     manifest_key(run_id + '-state')
     if run_id == initial_id or run_id + '-state' == initial_id:
@@ -237,6 +259,7 @@ def pipeline(source, work, store, reader, folder, run_id, initial_id, initial_ha
         run_child(root, private, step, args, dbt_env)
         step = 'counts'
         counts = count_db(root, env['ANALYTICS_DATABASE_URL'])
+        write_json(bundle / 'published_candidates.json', export_db(env['ANALYTICS_DATABASE_URL']))
         status = 'ok'
     except Exception:
         write_json(private / 'failure.json', {'step': step, 'traceback': traceback.format_exc()})

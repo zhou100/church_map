@@ -2,9 +2,21 @@ version: 2
 
 models:
   - name: stg_churches
-    description: One directory record per church_id, lightly cleaned.
+    description: >
+      One directory record per church_id, lightly cleaned. Excludes congregations
+      already published from Muse (source = 'muse'); see stg_published_candidates.
     columns:
       - name: church_id
+        tests: [unique, not_null]
+
+  - name: stg_published_candidates
+    description: >
+      One congregation scripts/publish_verified.py inserted from Muse, keyed by its
+      candidate (external_id = candidate_id).
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+      - name: candidate_id
         tests: [unique, not_null]
 
   - name: stg_muse_results
@@ -167,6 +179,20 @@ models:
         tests: [not_null]
       - name: address
         tests: [not_null]
+
+  - name: mart_published_candidates
+    description: >
+      Every congregation already published from Muse and its candidate's current
+      standing (current / no_longer_map_ready / no_longer_new / unknown_candidate).
+      Reported, not enforced: rows other than current need an owner decision.
+    columns:
+      - name: church_id
+        tests: [unique, not_null]
+      - name: publication_status
+        tests:
+          - not_null
+          - accepted_values:
+              values: [current, no_longer_map_ready, no_longer_new, unknown_candidate]
 
   - name: mart_language_supply
     description: Stated service language x city x origin; congregations, active, shown facts, ready.
