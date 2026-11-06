@@ -126,6 +126,6 @@ test('fitScore counts the same evidence as the server For you ranking', () => {
       service_languages: (c.service_languages || '').split(';').map(s => s.trim()).filter(Boolean),
       tags: reviews.length >= 3 && reviews.reduce((a, b) => a + b, 0) / reviews.length > 4 ? ['Kids programs'] : [],
     }
-    assert.equal(fitScore(row, parityPrefs), c.score, c.name)
+    assert.equal(fitScore(row, c.prefs ?? parityPrefs), c.score, c.name)
   }
 })

@@ -32,6 +32,8 @@ def test_bad_scope_requests_fail_before_database_access():
         ("city=A&state=ZZ&sort=closest", 400),
         ("city=A&state=ZZ&sort=for_you&prefer_worship=loud", 400),
         ("city=A&state=ZZ&sort=for_you&prefer_language=" + "x" * 41, 400),
+        ("city=A&state=ZZ&sort=for_you&prefer_kids_band=teens", 400),
+        ("city=A&state=ZZ&sort=for_you&prefer_kids_band=young_adult", 400),
     ]:
         assert client.get("/churches?" + query).status_code == status, query
 
@@ -60,6 +62,15 @@ async def insert(con, name, city="Scopeville", lat=None, lon=-140.0, **cols):
             f"INSERT INTO churches ({', '.join(cols)}) VALUES ({', '.join(['%s'] * len(cols))})"
             " RETURNING church_id", list(cols.values()))
         return (await cur.fetchone())[0]
+
+
+async def insert_program(con, church, program_type, age_bands, name="Program"):
+    """A church_programs row (migration 0007) with placeholder evidence."""
+    await con.execute(
+        "INSERT INTO church_programs (church_id, program_type, age_bands, name_stated, excerpt,"
+        " excerpt_start, excerpt_end, source_url, raw_sha256, text_sha256, page_fetched_at,"
+        " extractor_version) VALUES (%s, %s, %s, %s, 'excerpt', 0, 7, 'https://x.test/kids',"
+        " 'r', 't', NOW(), 'test')", (church, program_type, list(age_bands), name))
 
 
 async def all_pages(repo, size, **kwargs):
@@ -136,6 +147,35 @@ def test_for_you_ranks_the_whole_scope_before_paging():
 
 
 @pg
+def test_for_you_finds_an_age_band_match_beyond_page_one_and_without_coordinates():
+    async def body(con, repo):
+        for i in range(24):
+            await insert(con, f"kb filler {i:02}", lat=0.001 * (i + 1))
+        vague = await insert(con, "kb vague kids", lat=0.0005, kids_program="Kids ministry")
+        youth = await insert(con, "kb youth only", lat=0.0006)
+        await insert_program(con, youth, "other", ["youth"])
+        college = await insert(con, "kb college", lat=0.0007)
+        await insert_program(con, college, "other", ["young_adult"])
+        far = await insert(con, "kb far preschool", lat=0.4)
+        await insert_program(con, far, "during_service", ["preschool"])
+        unmapped = await insert(con, "kb unmapped daycare")
+        await insert_program(con, unmapped, "weekday_care", ["preschool"])
+        nearest = await repo.list_scoped(city="Scopeville", state="ZZ", origin=(0.0, -140.0),
+                                         sort="nearest", limit=20, offset=0)
+        assert far not in {r["id"] for r in nearest} and unmapped not in {r["id"] for r in nearest}
+        kwargs = dict(city="Scopeville", state="ZZ", origin=(0.0, -140.0), sort="for_you",
+                      prefs={"kids": {"bands": ["preschool"], "weekday_care": True}})
+        first = await repo.list_scoped(limit=20, offset=0, **kwargs)
+        # Daycare for the stated band (2) > stated band (1) > ages unknown (0.5) > other ages (0).
+        assert [r["name"] for r in first[:3]] == ["kb unmapped daycare", "kb far preschool", "kb vague kids"]
+        assert first[0]["distance_miles"] is None
+        scores = {r["name"]: r["fit_score"] for r in await all_pages(repo, 20, **kwargs)}
+        assert scores["kb youth only"] == 0 and scores["kb college"] == 0
+        assert len(scores) == 29  # ranking, never filtering
+    run(body)
+
+
+@pg
 def test_name_scope_for_you_keeps_the_name_match():
     async def body(con, repo):
         await insert(con, "Zq Grace Chapel", lat=0.01)
@@ -157,7 +197,9 @@ def test_server_fit_counts_what_fitScore_counts(case):
         for score in case.get("reviews", []):
             await con.execute("INSERT INTO reviews (church_id, rating, childrens_programs) VALUES (%s, 5, %s)",
                               (church, score))
+        for p in case.get("kids_programs", []):
+            await insert_program(con, church, p["program_type"], p["age_bands"])
         rows = await repo.list_scoped(city="Parityville", state="ZZ", sort="for_you",
-                                      prefs=PARITY["prefs"], limit=5, offset=0)
+                                      prefs=case.get("prefs", PARITY["prefs"]), limit=5, offset=0)
         assert rows[0]["fit_score"] == case["score"]
     run(body)

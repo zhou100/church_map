@@ -6,6 +6,7 @@ import DimensionBars from '../components/DimensionBars'
 import ReviewForm from '../components/ReviewForm'
 import ChurchCard from '../components/ChurchCard'
 import AboutSection from '../components/AboutSection'
+import ProgramsSection from '../components/ProgramsSection'
 import Icon from '../components/Icon'
 import Seo from '../components/Seo'
 import { churchMarkerIcon } from '../components/mapMarker'
@@ -223,6 +224,8 @@ export default function ChurchDetail() {
                 </div>
               )}
             </div>
+
+            <ProgramsSection church={church} />
 
             {enrichData?.photos?.length > 0 && (
               <div className="detail-photos">

@@ -20,7 +20,32 @@ export const WORSHIP_STYLES = [
 const WORSHIP_VALUES = new Set(WORSHIP_STYLES.map(style => style.value))
 const MAX_LANGUAGES = 10
 
-export const EMPTY_PREFERENCES = Object.freeze({ languages: [], worship: [], kids: false })
+// The age bands a family can ask about, as church_programs stores them
+// (migration 0007; backend/db/repository.py KID_BANDS). Young adults are a
+// band there too, but never an answer to "we're bringing kids".
+export const KID_BANDS = [
+  { value: 'preschool', label: 'Under 5', phrase: 'children under 5', heading: 'Babies & preschool (0–5)' },
+  { value: 'children', label: 'K–5th grade', phrase: 'kids in K–5th grade', heading: 'Children (K–5th grade)' },
+  { value: 'youth', label: '6th–12th grade', phrase: 'students in 6th–12th grade', heading: 'Youth (6th–12th grade)' },
+]
+const BAND_VALUES = KID_BANDS.map(band => band.value)
+
+export const NO_KIDS = Object.freeze({ bands: Object.freeze([]), weekday_care: false })
+export const EMPTY_PREFERENCES = Object.freeze({ languages: [], worship: [], kids: NO_KIDS })
+
+// { bands, weekday_care } from any kids value. A build before age bands
+// saved `kids: true`; that meant any age, and still does.
+export function kidsNeed(kids) {
+  if (kids === true) return { bands: [...BAND_VALUES], weekday_care: false }
+  if (!kids || typeof kids !== 'object') return { bands: [], weekday_care: false }
+  const bands = Array.isArray(kids.bands) ? BAND_VALUES.filter(band => kids.bands.includes(band)) : []
+  return { bands, weekday_care: kids.weekday_care === true }
+}
+
+function asksAboutKids(kids) {
+  const need = kidsNeed(kids)
+  return need.bands.length > 0 || need.weekday_care
+}
 
 function uniqueBy(values, key) {
   const seen = new Set()
@@ -48,11 +73,11 @@ export function normalizePreferences(raw) {
   const worship = Array.isArray(raw.worship)
     ? [...new Set(raw.worship.filter(style => WORSHIP_VALUES.has(style)))]
     : []
-  return { languages, worship, kids: raw.kids === true }
+  return { languages, worship, kids: kidsNeed(raw.kids) }
 }
 
 export function hasPreferences(prefs) {
-  return Boolean(prefs && (prefs.languages.length || prefs.worship.length || prefs.kids))
+  return Boolean(prefs && (prefs.languages.length || prefs.worship.length || asksAboutKids(prefs.kids)))
 }
 
 // Storage can throw (private windows, blocked site data), and so can reading
@@ -89,12 +114,19 @@ function worshipPhrase(value) {
   return WORSHIP_STYLES.find(style => style.value === value)?.phrase ?? value
 }
 
-// "Spanish · Contemporary · Kids" for the summary row.
+function bandLabel(value) {
+  return KID_BANDS.find(band => band.value === value)?.label ?? value
+}
+
+// "Spanish · Contemporary · Under 5 · Weekday childcare" for the summary row.
 export function preferenceSummary(prefs) {
+  const need = kidsNeed(prefs.kids)
+  const anyAge = need.bands.length === BAND_VALUES.length
   return [
     ...prefs.languages,
     ...prefs.worship.map(worshipLabel),
-    ...(prefs.kids ? ['Kids'] : []),
+    ...(anyAge ? ['Kids'] : need.bands.map(bandLabel)),
+    ...(need.weekday_care ? ['Weekday childcare'] : []),
   ].join(' · ')
 }
 
@@ -111,6 +143,12 @@ export function preferencePhrase(prefs, joiner = 'or') {
   if (prefs.worship.length) {
     parts.push(`${joinWith(prefs.worship.map(worshipPhrase), joiner)} worship`)
   }
-  if (prefs.kids) parts.push('a kids program')
+  const need = kidsNeed(prefs.kids)
+  if (need.bands.length === BAND_VALUES.length) parts.push('a kids program')
+  else if (need.bands.length) {
+    const phrases = need.bands.map(value => KID_BANDS.find(band => band.value === value).phrase)
+    parts.push(`programs for ${joinWith(phrases, joiner)}`)
+  }
+  if (need.weekday_care) parts.push('weekday childcare')
   return joinWith(parts, joiner)
 }

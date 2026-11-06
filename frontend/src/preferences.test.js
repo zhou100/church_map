@@ -62,7 +62,7 @@ test('a throwing localStorage getter never throws, on read or on write', () => {
 
 test('save then load round-trips, and clearing removes the key', () => {
   const storage = memoryStorage()
-  const prefs = { languages: ['Spanish'], worship: ['contemporary'], kids: true }
+  const prefs = { languages: ['Spanish'], worship: ['contemporary'], kids: { bands: ['children'], weekday_care: true } }
   savePreferences(prefs, storage)
   assert.deepEqual(loadPreferences(storage), prefs)
   assert.ok(JSON.parse(storage.data[PREFERENCES_KEY]).updated_at)
@@ -77,9 +77,17 @@ test('normalize drops unknown keys, unknown worship values and bad languages', (
     worship: ['contemporary', 'rave', 'contemporary'],
     kids: 'yes',
     stance: 'progressive',
-  }), { languages: ['Spanish', 'Korean'], worship: ['contemporary'], kids: false })
+  }), { languages: ['Spanish', 'Korean'], worship: ['contemporary'], kids: { bands: [], weekday_care: false } })
+  assert.deepEqual(normalizePreferences({ kids: { bands: ['youth', 'young_adult', 'teens', 'preschool', 'youth'], weekday_care: 'yes' } }).kids,
+    { bands: ['preschool', 'youth'], weekday_care: false })
   assert.deepEqual(normalizePreferences(null), EMPTY_PREFERENCES)
   assert.deepEqual(normalizePreferences('Spanish'), EMPTY_PREFERENCES)
+})
+
+test('a kids: true saved before age bands means any age', () => {
+  const storage = memoryStorage()
+  storage.setItem(PREFERENCES_KEY, JSON.stringify({ languages: [], worship: [], kids: true }))
+  assert.deepEqual(loadPreferences(storage).kids, { bands: ['preschool', 'children', 'youth'], weekday_care: false })
 })
 
 test('normalize caps the language list', () => {
@@ -91,6 +99,9 @@ test('hasPreferences is false only when every group is empty', () => {
   assert.equal(hasPreferences(EMPTY_PREFERENCES), false)
   assert.equal(hasPreferences({ languages: [], worship: [], kids: true }), true)
   assert.equal(hasPreferences({ languages: ['Tagalog'], worship: [], kids: false }), true)
+  assert.equal(hasPreferences({ languages: [], worship: [], kids: { bands: [], weekday_care: false } }), false)
+  assert.equal(hasPreferences({ languages: [], worship: [], kids: { bands: [], weekday_care: true } }), true)
+  assert.equal(hasPreferences({ languages: [], worship: [], kids: { bands: ['youth'], weekday_care: false } }), true)
   assert.equal(hasPreferences(null), false)
 })
 
@@ -100,4 +111,8 @@ test('summary and phrases read like a person wrote them', () => {
   assert.equal(preferencePhrase(prefs, 'or'), 'Korean or Mandarin services, hymn-led worship or a kids program')
   assert.equal(preferencePhrase({ languages: ['Spanish'], worship: [], kids: true }, 'and'), 'Spanish services and a kids program')
   assert.equal(preferencePhrase({ languages: [], worship: [], kids: true }), 'a kids program')
+  const family = { languages: [], worship: [], kids: { bands: ['preschool', 'youth'], weekday_care: true } }
+  assert.equal(preferenceSummary(family), 'Under 5 · 6th–12th grade · Weekday childcare')
+  assert.equal(preferencePhrase(family, 'or'),
+    'programs for children under 5 or students in 6th–12th grade or weekday childcare')
 })

@@ -95,6 +95,10 @@ _DIM_SELECT = """
         c.service_languages,
         c.display_tradition,
         c.verified_at,
+        (SELECT jsonb_agg(jsonb_build_object(
+                    'program_type', p.program_type, 'age_bands', to_jsonb(p.age_bands),
+                    'name_stated', LEFT(p.name_stated, 60)) ORDER BY p.id)
+           FROM church_programs p WHERE p.church_id = c.church_id) AS kids_programs,
         ROUND(AVG(r.rating)::numeric, 1)::float8   AS avg_rating,
         COUNT(r.review_id)                         AS review_count,
         AVG(r.worship_energy)                      AS avg_worship_energy,
@@ -206,13 +210,30 @@ def _city_center(axis: str) -> str:
 # frontend/src/churchProfile.js KIDS_PROGRAM; \y is Postgres's \b.
 _KIDS_PROGRAM = r"\y(kids?|child|children'?s?|youth|nursery|sunday school|vbs|vacation bible school)\y"
 
+# The age bands a family can ask for (frontend/src/preferences.js KID_BANDS).
+# young_adult is a church_programs band too, but never answers a kids question.
+KID_BANDS = ("preschool", "children", "youth")
+
+
+def kids_preference(kids: Any) -> tuple[list[str], bool]:
+    """(bands, weekday_care) from `prefs["kids"]`. The pre-band `True` (an old
+    saved preference or `prefer_kids=true`) means any age band."""
+    if kids is True:
+        return list(KID_BANDS), False
+    if not isinstance(kids, dict):
+        return [], False
+    bands = [b for b in KID_BANDS if b in (kids.get("bands") or [])]
+    return bands, kids.get("weekday_care") is True
+
 
 def fit_sql(prefs: dict) -> tuple[str, list]:
-    """How many of the three preference questions a church has evidence for,
-    0..3, the same count as `fitScore` in churchProfile.js: languages from
-    verified facts or website extraction (never name guesses), the extracted
-    worship style, and a kids program that is verified, extracted, or rated
-    above 4 by three or more reviewers (backend/utils.py compute_tags).
+    """How much preference evidence a church has, the same number as `fitScore`
+    in churchProfile.js: one point each for a language from verified facts or
+    website extraction (never name guesses), the extracted worship style, the
+    asked-for age band, and weekday care. A kids program whose page states an
+    asked-for band is one point; one that states no ages, or a verified,
+    extracted or highly rated kids program (backend/utils.py compute_tags), is
+    half a point. A program for other ages is not evidence either way.
     Needs the `_DIM_SELECT` review join and GROUP BY."""
     parts, params = [], []
     languages = [l.strip().lower() for l in prefs.get("languages") or [] if l.strip()]
@@ -229,17 +250,31 @@ def fit_sql(prefs: dict) -> tuple[str, list]:
     if prefs.get("worship"):
         parts.append("CASE WHEN c.extracted_tags->>'worship_style' = ANY(%s) THEN 1 ELSE 0 END")
         params.append(list(prefs["worship"]))
-    if prefs.get("kids"):
+    bands, weekday_care = kids_preference(prefs.get("kids"))
+    if bands:
         parts.append(
-            "CASE WHEN BTRIM(COALESCE(c.kids_program, '')) <> ''"
+            "CASE WHEN EXISTS (SELECT 1 FROM church_programs p"
+            "  WHERE p.church_id = c.church_id AND p.age_bands && %s::text[]) THEN 1"
+            " WHEN EXISTS (SELECT 1 FROM church_programs p"
+            "  WHERE p.church_id = c.church_id AND cardinality(p.age_bands) = 0)"
+            " OR BTRIM(COALESCE(c.kids_program, '')) <> ''"
             " OR (jsonb_typeof(c.extracted_tags->'programs') = 'array' AND EXISTS ("
             "  SELECT 1 FROM jsonb_array_elements(c.extracted_tags->'programs') program"
             "   WHERE jsonb_typeof(program) = 'string' AND program #>> '{}' ~* %s))"
             " OR (COUNT(r.review_id) >= 3 AND AVG(r.childrens_programs) > 4.0)"
-            " THEN 1 ELSE 0 END"
+            " THEN 0.5 ELSE 0 END"
         )
-        params.append(_KIDS_PROGRAM)
-    return ("(" + " + ".join(parts) + ")" if parts else "0"), params
+        params += [bands, _KIDS_PROGRAM]
+    if weekday_care:
+        # Care for the asked-for ages, or for ages the page doesn't state.
+        parts.append(
+            "CASE WHEN EXISTS (SELECT 1 FROM church_programs p"
+            "  WHERE p.church_id = c.church_id AND p.program_type = 'weekday_care'"
+            "   AND (cardinality(%s::text[]) = 0 OR cardinality(p.age_bands) = 0"
+            "        OR p.age_bands && %s::text[])) THEN 1 ELSE 0 END"
+        )
+        params += [bands, bands]
+    return ("(" + " + ".join(parts) + ")::float8" if parts else "0::float8"), params
 
 
 class ChurchRepository:
@@ -472,6 +507,26 @@ class ChurchRepository:
               FROM church_fact_sources
              WHERE church_id = %s
              ORDER BY field
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, (church_id,))
+            return await cur.fetchall()
+
+    async def programs(self, church_id: int) -> list[dict]:
+        """Kids, youth and childcare programs stated on the church's archived
+        pages (migration 0007), youngest band first, with their evidence."""
+        sql = """
+            SELECT program_type, age_bands, name_stated, ages_stated, schedule_stated,
+                   campus_stated, excerpt, source_url, page_fetched_at, evidence_class
+              FROM church_programs
+             WHERE church_id = %s
+             ORDER BY CASE
+                        WHEN 'preschool' = ANY(age_bands) THEN 0
+                        WHEN 'children' = ANY(age_bands) THEN 1
+                        WHEN 'youth' = ANY(age_bands) THEN 2
+                        WHEN cardinality(age_bands) = 0 THEN 3
+                        ELSE 4
+                      END, id
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
             await cur.execute(sql, (church_id,))
@@ -1021,6 +1076,149 @@ class CrawlRepository:
         """
         async with self.con.cursor() as cur:
             await cur.execute(sql, (status, church_id))
+
+
+# Pages the programs stage reads, in the order the model sees them: the kids,
+# youth and childcare pages first, then the website_v3 pages that often hold
+# the same links (a top-of-nav /kids link can be taken as "ministries").
+PROGRAM_KINDS = ["kids", "youth", "childcare", "ministries", "homepage", "services", "contact"]
+
+
+class ProgramRepository:
+    """SQL for backend/scrapers_v2/programs.py. Reads raw_crawl_artifacts but
+    never writes it: the website_v3 queue (extract_status) is not this stage's."""
+
+    def __init__(self, con: AsyncConnection):
+        self.con = con
+
+    async def due_for_program_extraction(self, limit: int) -> list[dict]:
+        """Visible churches whose current archived page set differs from the set
+        the last program extraction read (or that were never extracted).
+
+        The current set comes from the church's latest successful homepage crawl:
+        every PROGRAM_KINDS URL attempted within a day of it, each at its latest
+        archived (HTTP 200, R2 key) version. A page whose re-fetch failed keeps
+        its last archived version; a page no longer linked drops out. An
+        unchanged re-fetch only refreshes fetched_at on the same artifact id, so
+        it does not change the set.
+        """
+        sql = f"""
+            WITH anchor AS (
+                SELECT church_id, MAX(fetched_at) AS at
+                  FROM raw_crawl_artifacts
+                 WHERE kind = 'homepage' AND http_status = 200 AND r2_key IS NOT NULL
+                 GROUP BY church_id
+            ),
+            current_urls AS (
+                SELECT DISTINCT a.church_id, a.url
+                  FROM raw_crawl_artifacts a
+                  JOIN anchor n ON n.church_id = a.church_id
+                 WHERE a.kind = ANY(%(kinds)s) AND a.fetched_at >= n.at - INTERVAL '1 day'
+            ),
+            inputs AS (
+                SELECT DISTINCT ON (a.church_id, a.url)
+                       a.church_id, a.id, a.kind, a.url, a.r2_key, a.content_hash, a.fetched_at
+                  FROM raw_crawl_artifacts a
+                  JOIN current_urls u ON u.church_id = a.church_id AND u.url = a.url
+                 WHERE a.http_status = 200 AND a.r2_key IS NOT NULL AND a.kind = ANY(%(kinds)s)
+                 ORDER BY a.church_id, a.url, a.fetched_at DESC, a.id DESC
+            ),
+            grouped AS (
+                SELECT church_id,
+                       ARRAY_AGG(id ORDER BY id) AS input_ids,
+                       ARRAY_AGG(id ORDER BY array_position(%(kinds)s::text[], kind), id) AS artifact_ids,
+                       ARRAY_AGG(kind ORDER BY array_position(%(kinds)s::text[], kind), id) AS kinds,
+                       ARRAY_AGG(url ORDER BY array_position(%(kinds)s::text[], kind), id) AS urls,
+                       ARRAY_AGG(r2_key ORDER BY array_position(%(kinds)s::text[], kind), id) AS r2_keys,
+                       ARRAY_AGG(content_hash ORDER BY array_position(%(kinds)s::text[], kind), id)
+                           AS content_hashes,
+                       ARRAY_AGG(fetched_at ORDER BY array_position(%(kinds)s::text[], kind), id)
+                           AS fetched_ats
+                  FROM inputs
+                 GROUP BY church_id
+            )
+            SELECT g.church_id, g.artifact_ids, g.kinds, g.urls, g.r2_keys, g.content_hashes,
+                   g.fetched_ats, c.name, c.city, c.address
+              FROM grouped g
+              JOIN churches c ON c.church_id = g.church_id
+              LEFT JOIN church_program_extractions e ON e.church_id = g.church_id
+             WHERE {VISIBLE}
+               AND (e.church_id IS NULL OR e.input_artifact_ids IS DISTINCT FROM g.input_ids)
+             ORDER BY e.extracted_at ASC NULLS FIRST, g.church_id
+             LIMIT %(limit)s
+        """
+        async with self.con.cursor(row_factory=dict_row) as cur:
+            await cur.execute(sql, {"kinds": PROGRAM_KINDS, "limit": limit})
+            return await cur.fetchall()
+
+    async def record_program_extraction(
+        self,
+        church_id: int,
+        input_artifact_ids: list[int],
+        *,
+        status: str,
+        programs: list[dict] | None,
+        pages_read: int,
+        dropped: dict,
+        extractor_version: str,
+        model: str | None,
+        error_detail: str | None = None,
+    ) -> None:
+        """Replace the church's programs with `programs`, or keep them when it is
+        None (a failed answer is not evidence that they are gone), and record
+        which pages were read so the church is not due again until they change."""
+        async with self.con.cursor() as cur:
+            if programs is not None:
+                await cur.execute("DELETE FROM church_programs WHERE church_id = %s", (church_id,))
+                for p in programs:
+                    await cur.execute(
+                        """
+                        INSERT INTO church_programs (
+                            church_id, program_type, age_bands, name_stated, ages_stated,
+                            schedule_stated, campus_stated, excerpt, excerpt_start, excerpt_end,
+                            source_url, artifact_id, r2_key, content_hash, raw_sha256,
+                            text_sha256, page_fetched_at, extractor_version, model
+                        )
+                        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                                %s, %s, %s, %s)
+                        RETURNING id
+                        """,
+                        (church_id, p["program_type"], p["age_bands"], p["name_stated"],
+                         p["ages_stated"], p["schedule_stated"], p["campus_stated"], p["excerpt"],
+                         p["excerpt_start"], p["excerpt_end"], p["source_url"], p["artifact_id"],
+                         p["r2_key"], p["content_hash"], p["raw_sha256"], p["text_sha256"],
+                         p["page_fetched_at"], extractor_version, model),
+                    )
+            await cur.execute(
+                """
+                INSERT INTO church_program_extractions (
+                    church_id, input_artifact_ids, status, error_detail, pages_read,
+                    programs_kept, programs_dropped, extractor_version, model, extracted_at
+                )
+                VALUES (%s, %s, %s, %s, %s,
+                        (SELECT COUNT(*) FROM church_programs WHERE church_id = %s),
+                        %s::jsonb, %s, %s, NOW())
+                ON CONFLICT (church_id) DO UPDATE SET
+                    input_artifact_ids = EXCLUDED.input_artifact_ids,
+                    status             = EXCLUDED.status,
+                    error_detail       = EXCLUDED.error_detail,
+                    pages_read         = EXCLUDED.pages_read,
+                    programs_kept      = EXCLUDED.programs_kept,
+                    programs_dropped   = EXCLUDED.programs_dropped,
+                    extractor_version  = EXCLUDED.extractor_version,
+                    model              = EXCLUDED.model,
+                    extracted_at       = EXCLUDED.extracted_at
+                RETURNING church_id
+                """,
+                (church_id, sorted(input_artifact_ids), status, error_detail, pages_read, church_id,
+                 json.dumps(dropped), extractor_version, model),
+            )
+
+    async def count_programs(self, church_ids: list[int]) -> int:
+        async with self.con.cursor() as cur:
+            await cur.execute("SELECT COUNT(*) FROM church_programs WHERE church_id = ANY(%s)",
+                              (church_ids,))
+            return (await cur.fetchone())[0]
 
 
 class StatsRepository:

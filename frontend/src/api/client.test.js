@@ -4,7 +4,7 @@ import { listChurches } from './client.js'
 import { zeroMatchSentence } from '../churchProfile.js'
 import { apiRequest, queryFromParams } from '../searchScope.js'
 
-const prefs = { languages: ['Vietnamese'], worship: [], kids: true }
+const prefs = { languages: ['Vietnamese'], worship: [], kids: { bands: ['youth', 'preschool'], weekday_care: true } }
 
 function capture(t, page = []) {
   const urls = []
@@ -28,6 +28,15 @@ test('a city search asks for one page of the city, never every page', async t =>
   for (const key of ['radius_miles', 'lat', 'lon', 'prefer_language']) assert.equal(urls[0].has(key), false)
 })
 
+test('an old saved kids: true asks for every age band', async t => {
+  const urls = capture(t)
+  const query = { ...queryFromParams(new URLSearchParams('city=Fresno&state=CA')), sort: 'forYou' }
+  const { search, options } = apiRequest(query, { languages: [], worship: [], kids: true })
+  await listChurches(search, { ...options, limit: 20 })
+  assert.deepEqual(urls[0].getAll('prefer_kids_band'), ['preschool', 'children', 'youth'])
+  assert.equal(urls[0].has('prefer_weekday_care'), false)
+})
+
 test('For you sends preferences so the server ranks the whole city before page one', async t => {
   const urls = capture(t)
   const query = { ...queryFromParams(new URLSearchParams('city=San Francisco&state=CA&lat=37.7&lon=-122.4')), sort: 'forYou' }
@@ -35,7 +44,9 @@ test('For you sends preferences so the server ranks the whole city before page o
   await listChurches(search, { ...options, limit: 20, offset: 40 })
   assert.equal(urls[0].get('sort'), 'for_you')
   assert.deepEqual(urls[0].getAll('prefer_language'), ['Vietnamese'])
-  assert.equal(urls[0].get('prefer_kids'), 'true')
+  assert.deepEqual(urls[0].getAll('prefer_kids_band'), ['preschool', 'youth'])
+  assert.equal(urls[0].get('prefer_weekday_care'), 'true')
+  assert.equal(urls[0].has('prefer_kids'), false)
   assert.equal(urls[0].get('offset'), '40')
   // A known visitor location stays out of a city request: the city is the
   // scope and its center the origin, so every visitor shares one cached URL.

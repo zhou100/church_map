@@ -1,4 +1,4 @@
-import { hasPreferences } from './preferences.js'
+import { hasPreferences, kidsNeed } from './preferences.js'
 import { SEARCH_PAGE, listChurches, prefetchSearch } from './api/client.js'
 
 // What Search is showing and how it pages. One query is a scope (a city, a
@@ -103,7 +103,7 @@ function prefsKey(prefs) {
   return JSON.stringify([
     [...prefs.languages].map(language => language.toLowerCase()).sort(),
     [...prefs.worship].sort(),
-    prefs.kids,
+    kidsNeed(prefs.kids),
   ])
 }
 
