@@ -73,3 +73,58 @@ def test_schema_same_name_view_cannot_mask_missing_column():
         with pytest.raises(SystemExit, match='kids_program'):
             check_schema(con)
         con.rollback()
+
+
+def test_rls_that_hides_rows_stops_the_plan():
+    """Production enables RLS on churches and publish_log. A role without a matching
+    SELECT policy reads zero rows silently, so build_plan would re-insert every
+    published congregation, and a hidden revert would let the gate pass a run it
+    must hold. Review of #84: a hidden log cannot be caught by counting the log."""
+    import os
+    import pytest
+    import psycopg
+    from scripts.publish_verified import check_visibility
+    if not os.environ.get('DATABASE_URL'):
+        pytest.skip('isolated Postgres DATABASE_URL required')
+    with psycopg.connect(os.environ['DATABASE_URL']) as con:
+        # One transaction, rolled back: role, RLS flags, policies and rows all vanish.
+        con.execute("INSERT INTO churches (name, source) VALUES ('Directory fixture', 'osm')")
+        muse = con.execute("INSERT INTO churches (name, source, external_id) VALUES ('Muse fixture', 'muse', "
+                           "'rls-fixture') RETURNING church_id").fetchone()[0]
+        con.execute("INSERT INTO publish_log (run_id, church_id, field, action) VALUES "
+                    "('rls-fixture', %s, '*', 'insert')", (muse,))
+        con.execute('CREATE ROLE rls_fixture_reader NOLOGIN')
+        con.execute('GRANT SELECT ON churches, publish_log TO rls_fixture_reader')
+        con.execute('ALTER TABLE churches ENABLE ROW LEVEL SECURITY')
+        con.execute('ALTER TABLE publish_log ENABLE ROW LEVEL SECURITY')
+
+        def check_as_reader():
+            con.execute('SET LOCAL ROLE rls_fixture_reader')
+            try:
+                check_visibility(con)
+            finally:
+                con.execute('RESET ROLE')
+
+        def policy(sql):
+            con.execute(sql.replace('ROLE', 'rls_fixture_reader'))
+
+        # No policy at all: every read is empty.
+        with pytest.raises(SystemExit, match='churches'):
+            check_as_reader()
+        # Directory visible, published rows hidden.
+        policy("CREATE POLICY dir ON churches FOR SELECT TO ROLE USING (source IS DISTINCT FROM 'muse')")
+        policy('CREATE POLICY log ON publish_log FOR SELECT TO ROLE USING (true)')
+        with pytest.raises(SystemExit, match='churches'):
+            check_as_reader()
+        # Churches complete, but the log (with its inserts and reverts) hidden.
+        policy('CREATE POLICY everything ON churches FOR SELECT TO ROLE USING (true)')
+        con.execute('DROP POLICY log ON publish_log')
+        with pytest.raises(SystemExit, match='publish_log'):
+            check_as_reader()
+        policy('CREATE POLICY log ON publish_log FOR SELECT TO ROLE USING (true)')
+        check_as_reader()
+        # A restrictive policy can hide rows a permissive USING (true) admits.
+        policy("CREATE POLICY narrow ON publish_log AS RESTRICTIVE FOR SELECT TO ROLE USING (action <> 'revert')")
+        with pytest.raises(SystemExit, match='publish_log'):
+            check_as_reader()
+        con.rollback()

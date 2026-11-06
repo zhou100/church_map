@@ -130,8 +130,55 @@ def check_schema(prod) -> None:
         raise SystemExit(f"production is missing {sorted(missing)}: deploy migration 0006 first")
 
 
+# Read completely or not at all: a row RLS hides would be planned as missing.
+FULLY_READ = ("churches", "publish_log")
+
+
+def check_visibility(prod) -> None:
+    """Stop if row-level security hides production rows from this connection.
+
+    Under RLS a role without a matching policy reads zero rows and gets no error:
+    build_plan would then skip every directory update and plan every congregation
+    already published as a new insert, and a hidden revert would let publish_gate
+    pass a run it must hold. Row counts cannot prove completeness when the log
+    itself may be hidden, so where RLS applies to this connection, a permissive
+    SELECT policy USING (true) must apply to it and no restrictive one may.
+    """
+    with prod.cursor() as cur:
+        for table in FULLY_READ:
+            active, full, restricted = cur.execute(
+                """
+                select row_security_active(%(t)s::regclass),
+                       exists (select 1 from pg_policies p
+                               where p.schemaname = 'public' and p.tablename = %(name)s
+                                 and p.permissive = 'PERMISSIVE' and p.cmd in ('SELECT', 'ALL')
+                                 and p.qual = 'true'
+                                 and exists (select 1 from unnest(p.roles) r
+                                             where r = 'public' or pg_has_role(current_user, r, 'USAGE'))),
+                       exists (select 1 from pg_policies p
+                               where p.schemaname = 'public' and p.tablename = %(name)s
+                                 and p.permissive = 'RESTRICTIVE' and p.cmd in ('SELECT', 'ALL')
+                                 and exists (select 1 from unnest(p.roles) r
+                                             where r = 'public' or pg_has_role(current_user, r, 'USAGE')))
+                """, {"t": f"public.{table}", "name": table}).fetchone()
+            if active and (not full or restricted):
+                raise SystemExit(f"row-level security may hide rows of {table} from this role: it needs a "
+                                 "SELECT policy USING (true) and no restrictive policy before planning")
+        if not cur.execute("select exists (select 1 from churches)").fetchone()[0]:
+            raise SystemExit("no churches visible: check this role's row-level security policies")
+        hidden = cur.execute(
+            "select count(*) from (select distinct church_id from publish_log where action = 'insert' "
+            "and run_id not in (select run_id from publish_log where action = 'revert')) l "
+            "where not exists (select 1 from churches c where c.church_id = l.church_id and c.source = 'muse')"
+        ).fetchone()[0]
+        if hidden:
+            raise SystemExit(f"{hidden} published congregations are not visible: check row-level "
+                             "security policies before planning (they would be inserted again)")
+
+
 def build_plan(prod, churches: list[dict], new: list[dict]) -> list[dict]:
     """One entry per church to write: kind ('update' / 'insert'), ids, field changes, sources."""
+    check_visibility(prod)
     ids = [c["church_id"] for c in churches]
     cols = ", ".join(["church_id"] + [f for f in COLUMNS if f not in ("verified_at", "verified_by")])
     with prod.cursor(row_factory=dict_row) as cur:

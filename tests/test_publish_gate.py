@@ -118,6 +118,9 @@ def test_real_readonly_dry_run_private_evidence(tmp_path, monkeypatch, capsys):
     with psycopg.connect(url, autocommit=True) as con:
         # All fixtures are isolated; refuse to reuse any real analytics schema.
         con.execute('CREATE SCHEMA analytics')
+        # check_visibility refuses an empty directory, which production never is.
+        directory_id = con.execute("INSERT INTO churches (name, source) VALUES ('Gate directory fixture', 'osm') "
+                                   "RETURNING church_id").fetchone()[0]
         try:
             con.execute('CREATE TABLE analytics.mart_publish_churches (church_id bigint)')
             con.execute('CREATE TABLE analytics.mart_publish_new (external_id text, name text, address text)')
@@ -143,6 +146,7 @@ def test_real_readonly_dry_run_private_evidence(tmp_path, monkeypatch, capsys):
             assert capsys.readouterr().out == ''
         finally:
             con.execute('DROP SCHEMA analytics CASCADE')
+            con.execute('DELETE FROM churches WHERE church_id = %s', (directory_id,))
 
 
 @pytest.mark.parametrize('field', ['scope_status', 'display_tradition'])
