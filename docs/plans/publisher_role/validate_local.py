@@ -43,6 +43,12 @@ def main():
         admin.execute('CREATE SCHEMA churchmap_snapshot')
         admin.execute('CREATE VIEW churchmap_snapshot.churches AS SELECT church_id,name,address FROM public.churches')
         admin.execute('GRANT USAGE ON SCHEMA public TO postgres WITH GRANT OPTION')
+        # As in production (owner query 2026-11-06): postgres owns the tables, RLS is
+        # enabled on all three, and no policy exists until prepare.sql adds the publisher's.
+        for table in ('churches', 'church_fact_sources', 'publish_log'):
+            admin.execute(f'ALTER TABLE public.{table} OWNER TO postgres')
+            admin.execute(f'ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY')
+        admin.execute("INSERT INTO churches (name, source) VALUES ('Directory fixture', 'osm')")
     with connect('postgres') as admin:
         admin.execute(sql, prepare=False)  # default rollback creates no role
         assert not admin.execute("SELECT 1 FROM pg_roles WHERE rolname='churchmap_publisher'").fetchone()
@@ -67,11 +73,18 @@ def main():
                           'CREATE SCHEMA forbidden', 'ALTER TABLE churches ADD COLUMN forbidden int',
                           'SET ROLE service_role']:
             denied(con, statement)
+        # RLS narrows the grants: directory rows can be read and updated but never
+        # inserted or deleted by the publisher.
+        directory = con.execute("SELECT church_id FROM churches WHERE source='osm'").fetchone()[0]
+        denied(con, "INSERT INTO churches (name, source) VALUES ('Forbidden', 'osm')")
+        assert con.execute('DELETE FROM churches WHERE church_id=%s', (directory,)).rowcount == 0
+        assert con.execute('SELECT 1 FROM churches WHERE church_id=%s', (directory,)).fetchone()
         assert publisher.revert(con, 'fixture-insert') == {'deleted': 1}
         assert not con.execute('SELECT 1 FROM churches WHERE church_id=%s', (church_id,)).fetchone()
         assert not con.execute('SELECT 1 FROM church_fact_sources WHERE church_id=%s', (church_id,)).fetchone()
     print('passed: real login, dry run, apply, idempotency, update revert, denied privileges')
     print('passed: inserted-church revert and fact-source deletion')
+    print('passed: RLS enabled; publisher cannot insert or delete directory churches')
 
 
 if __name__ == '__main__':

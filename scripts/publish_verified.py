@@ -130,8 +130,30 @@ def check_schema(prod) -> None:
         raise SystemExit(f"production is missing {sorted(missing)}: deploy migration 0006 first")
 
 
+def check_visibility(prod) -> None:
+    """Stop if row-level security hides production rows from this connection.
+
+    Under RLS a role without a matching policy reads zero rows and gets no error:
+    build_plan would then skip every directory update and plan every congregation
+    already published as a new insert. Every congregation a run inserted and no
+    revert removed must be visible as source = 'muse'.
+    """
+    with prod.cursor() as cur:
+        if not cur.execute("select exists (select 1 from churches)").fetchone()[0]:
+            raise SystemExit("no churches visible: check this role's row-level security policies")
+        hidden = cur.execute(
+            "select count(*) from (select distinct church_id from publish_log where action = 'insert' "
+            "and run_id not in (select run_id from publish_log where action = 'revert')) l "
+            "where not exists (select 1 from churches c where c.church_id = l.church_id and c.source = 'muse')"
+        ).fetchone()[0]
+        if hidden:
+            raise SystemExit(f"{hidden} published congregations are not visible: check row-level "
+                             "security policies before planning (they would be inserted again)")
+
+
 def build_plan(prod, churches: list[dict], new: list[dict]) -> list[dict]:
     """One entry per church to write: kind ('update' / 'insert'), ids, field changes, sources."""
+    check_visibility(prod)
     ids = [c["church_id"] for c in churches]
     cols = ", ".join(["church_id"] + [f for f in COLUMNS if f not in ("verified_at", "verified_by")])
     with prod.cursor(row_factory=dict_row) as cur:

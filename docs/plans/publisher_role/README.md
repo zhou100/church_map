@@ -25,7 +25,22 @@ WHERE n.nspname='public'
   AND c.relname IN ('churches','church_fact_sources','publish_log');
 ```
 
-If any RLS flag is true, stop and report it. Do not add BYPASSRLS or disable RLS.
+Owner result 2026-11-06: `relrowsecurity` is true and `relforcerowsecurity` false on
+all three, and `pg_policies` returned no rows for them. Never add BYPASSRLS or
+disable RLS. prepare.sql instead adds seven policies scoped `TO churchmap_publisher`
+only, which leave anon/authenticated/other roles unchanged and narrow the grants:
+read all churches, update the granted columns, insert and delete only
+`source = 'muse'` rows; full access to church_fact_sources; read and append
+publish_log. It stops if a PUBLIC policy already exists on these tables or if the
+provisioning account does not own them (CREATE POLICY requires ownership). Before
+running it, re-run the RLS query above and
+`SELECT tablename, policyname, roles FROM pg_policies WHERE schemaname='public' AND tablename IN ('churches','church_fact_sources','publish_log');`
+to confirm nothing changed.
+
+Without a SELECT policy RLS returns zero rows rather than an error, so the publisher
+would plan every published congregation as a new insert. `check_visibility` in
+`scripts/publish_verified.py` stops any plan when no church is visible or when a
+congregation that `publish_log` records as inserted (and not reverted) is hidden.
 Save current role/table/schema ACLs and confirm the provisioning account. Review
 [prepare.sql](prepare.sql), run its default rollback first, then apply only the
 approved version with an explicit COMMIT. It grants no service_role membership,

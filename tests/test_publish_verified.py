@@ -73,3 +73,46 @@ def test_schema_same_name_view_cannot_mask_missing_column():
         with pytest.raises(SystemExit, match='kids_program'):
             check_schema(con)
         con.rollback()
+
+
+def test_rls_that_hides_rows_stops_the_plan():
+    """Production enables RLS on churches and publish_log. A role without a matching
+    SELECT policy reads zero rows silently, so build_plan would re-insert every
+    published congregation; check_visibility must stop it instead."""
+    import os
+    import pytest
+    import psycopg
+    from scripts.publish_verified import check_visibility
+    if not os.environ.get('DATABASE_URL'):
+        pytest.skip('isolated Postgres DATABASE_URL required')
+    with psycopg.connect(os.environ['DATABASE_URL']) as con:
+        # One transaction, rolled back: role, RLS flags, policies and rows all vanish.
+        church = con.execute("INSERT INTO churches (name, source) VALUES ('Directory fixture', 'osm') "
+                             "RETURNING church_id").fetchone()[0]
+        muse = con.execute("INSERT INTO churches (name, source, external_id) VALUES ('Muse fixture', 'muse', "
+                           "'rls-fixture') RETURNING church_id").fetchone()[0]
+        con.execute("INSERT INTO publish_log (run_id, church_id, field, action) VALUES "
+                    "('rls-fixture', %s, '*', 'insert')", (muse,))
+        con.execute('CREATE ROLE rls_fixture_reader NOLOGIN')
+        con.execute('GRANT SELECT ON churches, publish_log TO rls_fixture_reader')
+        con.execute('ALTER TABLE churches ENABLE ROW LEVEL SECURITY')
+        con.execute('ALTER TABLE publish_log ENABLE ROW LEVEL SECURITY')
+        con.execute('CREATE POLICY rls_fixture_log ON publish_log FOR SELECT TO rls_fixture_reader USING (true)')
+
+        def visible_as_reader():
+            con.execute('SET LOCAL ROLE rls_fixture_reader')
+            try:
+                check_visibility(con)
+            finally:
+                con.execute('RESET ROLE')
+
+        with pytest.raises(SystemExit, match='no churches visible'):
+            visible_as_reader()
+        con.execute("CREATE POLICY rls_fixture_dir ON churches FOR SELECT TO rls_fixture_reader "
+                    "USING (source IS DISTINCT FROM 'muse')")
+        with pytest.raises(SystemExit, match='published congregations are not visible'):
+            visible_as_reader()
+        con.execute('CREATE POLICY rls_fixture_all ON churches FOR SELECT TO rls_fixture_reader USING (true)')
+        visible_as_reader()
+        assert church
+        con.rollback()
