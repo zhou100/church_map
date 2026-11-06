@@ -162,6 +162,15 @@ CANDIDATE_DUPLICATES = {"CN-025": "78022", "C-030": "76688", "C-064": "77437",
                         "WP0026-004": "76313", "WP0026-026": "76294",
                         "WP0028-015": "76396", "WP0028-017": "78028", "WP0028-018": "77612"}
 CANDIDATE_DUPLICATES_BY_NAME = {("B", "Bridge City Church"): "76692"}
+# A candidate found again after its first candidate was published (source = 'muse'
+# in production, so not a directory church_id): the later one points at the first.
+# Found by mart_new_congregation_directory_matches once published rows joined the
+# check (#80); each pair has the same name, street and city, plus:
+CANDIDATE_DUPLICATES_OF_CANDIDATE = {
+    "WP0028-031": "D-082",  # Calvary Chapel Fremont, 42986 Osgood Rd: same ZIP and website
+    "WP0028-007": "F-022",  # First Presbyterian Church of Berkeley, 2407 Dana St: same ZIP, website, phone
+    "WP0028-027": "F-069",  # Walnut Creek Presbyterian Church, 1801 Lacassie Ave: same denomination
+}
 
 # Facts cited only from a source older than 12 months (brief v3.5, N6: leave blank). Muse kept
 # these and flagged them for us (WP-0037 run log). Keyed on the cited URL, so a later pass that
@@ -473,7 +482,7 @@ def build_candidates(overlays: tuple[dict, dict] = ({}, {}), used: dict | None =
             r["host_venue_name"] = "" if host.isdigit() else host
             pm = r.get("possible_match_id", "")
             r["possible_match_church_id"] = pm if pm.isdigit() else ""
-            r["possible_match_candidate_id"] = "" if pm.isdigit() else pm
+            r["possible_match_candidate_id"] = CANDIDATE_DUPLICATES_OF_CANDIDATE.get(cid) or ("" if pm.isdigit() else pm)
             r["duplicate_of_church_id"] = (CANDIDATE_DUPLICATES.get(cid)
                                            or CANDIDATE_DUPLICATES_BY_NAME.get((task, r["candidate_name"]), ""))
             r["last_pass"] = task

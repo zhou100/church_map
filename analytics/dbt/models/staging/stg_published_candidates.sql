@@ -5,6 +5,8 @@ select
     church_id,
     external_id                                              as candidate_id,
     nullif(btrim(name), '')                                  as published_name,
+    nullif(btrim(address), '')                               as published_street,
+    nullif(btrim(city), '')                                  as city,
     latitude,
     longitude
 from {{ source('raw', 'churches') }}

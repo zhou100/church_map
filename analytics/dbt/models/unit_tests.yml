@@ -129,12 +129,44 @@ unit_tests:
       - input: ref('stg_churches')
         rows:
           - {church_id: 1, street_text: 100 Main St, city: Sacramento}
+      - input: ref('stg_published_candidates')
+        format: sql
+        rows: "select null::bigint as church_id, null::text as candidate_id, null::text as published_name, null::text as published_street, null::text as city where false"
       - input: ref('int_geocodes')
         format: sql
         rows: "select null::text as subject_type, null::text as subject_id, null::boolean as pin_usable, null::text as matched_address where false"
     expect:
       rows:
         - {candidate_id: X-1, church_id: 1, matched_on: directory_address}
+
+  - name: candidate_matching_another_published_row_is_duplicate
+    description: >
+      Review of #80: congregations published from Muse are kept out of stg_churches,
+      but a later candidate can still find one of them again. C-NEW has the name and
+      address of the row published for C-OLD, a duplicate the publisher would insert
+      a second time (it only looks rows up by external_id). C-OLD matching its own
+      published row is not a duplicate.
+    model: mart_new_congregation_directory_matches
+    given:
+      - input: ref('mart_new_congregations')
+        rows:
+          - {candidate_id: C-OLD, candidate_name: Grace Church, display_street_address: 100 Main St, city: San Jose}
+          - {candidate_id: C-NEW, candidate_name: Grace Church, display_street_address: 100 Main St, city: San Jose}
+      - input: ref('dim_church')
+        rows:
+          - {church_id: 1, display_name: Other Church, osm_name: Other Church, display_street_address: null, city: San Jose}
+      - input: ref('stg_churches')
+        rows:
+          - {church_id: 1, street_text: 5 Oak St, city: San Jose}
+      - input: ref('stg_published_candidates')
+        format: sql
+        rows: "select 10::bigint as church_id, 'C-OLD'::text as candidate_id, 'Grace Church'::text as published_name, '100 Main St'::text as published_street, 'San Jose'::text as city"
+      - input: ref('int_geocodes')
+        format: sql
+        rows: "select null::text as subject_type, null::text as subject_id, null::boolean as pin_usable, null::text as matched_address where false"
+    expect:
+      rows:
+        - {candidate_id: C-NEW, church_id: 10, matched_on: published_congregation}
 
   - name: a_congregation_verdict_settles_only_pending_labels
     description: >

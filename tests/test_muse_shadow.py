@@ -132,7 +132,8 @@ def run_pipeline(tmp_path, setup, fail=False, real_dbt=False, url=None):
     result = s.pipeline(source, work, store, reader, 'root', 'shadow-test', 'initial',
                         receipt['manifest_sha256'], 'a' * 40, env, run_child=child,
                         count_db=s.database_counts if real_dbt else lambda *_: {'directory_rows': 1, 'mart_publish_churches': 0,
-                                           'mart_publish_new': 0, 'pending_geocode_addresses': 0})
+                                           'mart_publish_new': 0, 'pending_geocode_addresses': 0},
+                        export_db=s.published_candidates if real_dbt else lambda *_: [])
     assert all(client.objects[k] == v for k, v in old.items())
     assert all(p.read_bytes() == value for p, value in owner_bytes.items())
     return result, work
@@ -248,8 +249,11 @@ def test_real_disposable_dbt_pipeline(tmp_path, setup, monkeypatch):
     with psycopg.connect(url, autocommit=True) as admin:
         admin.execute(sql.SQL('CREATE DATABASE {}').format(sql.Identifier(name)))
         disposable = make_conninfo(url, dbname=name)
+        # Row 2 is a congregation published earlier whose candidate is gone: the
+        # build must pass and the private archive must name it (review of #80).
         captured = cloud_snapshot.Snapshot(
-            ((1, 'Synthetic directory congregation', *([None] * 11), False),),
+            ((1, 'Synthetic directory congregation', *([None] * 11), False),
+             (2, PRIVATE, *([None] * 8), 'muse', 'C-GONE', None, False)),
             'synthetic-source', datetime.now(timezone.utc), 'a' * 64, 100)
         monkeypatch.setattr(cloud_snapshot, 'capture', lambda _: captured)
         def dbt(root, private, step, args, env):
@@ -257,12 +261,17 @@ def test_real_disposable_dbt_pipeline(tmp_path, setup, monkeypatch):
             folder = private / 'dbt'
             folder.mkdir()
             cloud_dbt.run_job(disposable, 'offline-source', snapshot_state.AcceptanceStore(setup[1], 'private'),
-                folder, {'identity': captured.identity, 'scope': captured.scope, 'expected_rows': 1}, 'a' * 40)
+                folder, {'identity': captured.identity, 'scope': captured.scope, 'expected_rows': 2}, 'a' * 40)
         try:
             result, work = run_pipeline(tmp_path, setup, real_dbt=dbt, url=disposable)
             assert result['status'] == 'ok', (work / 'private/failure.json').read_text() if (work / 'private/failure.json').exists() else result
-            assert result['directory_rows'] == 1
+            assert result['directory_rows'] == 2
             assert result['mart_publish_new'] == 0
+            assert (result['published_candidates'], result['published_not_current']) == (1, 1)
+            exported = json.loads((work / 'archive/published_candidates.json').read_text())
+            assert [(r['church_id'], r['candidate_id'], r['publication_status']) for r in exported] == [
+                (2, 'C-GONE', 'unknown_candidate')]
+            assert PRIVATE not in json.dumps(result)
             assert result['pending_geocode_addresses'] == 0
             run_results = json.loads((work / 'archive/private/dbt/target/run_results.json').read_text())
             assert run_results['results'] and all(r['status'] in {'success', 'pass'} for r in run_results['results'])

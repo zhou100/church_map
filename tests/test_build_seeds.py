@@ -454,6 +454,29 @@ def test_a_recheck_row_replaces_the_candidate_but_keeps_its_region(tmp_path, mon
         ("active", "100 Main St", "WP0006", "WP0014", "new_candidates_WP0014.csv")
 
 
+def test_a_candidate_found_again_points_at_its_published_first_candidate(tmp_path, monkeypatch):
+    """#80: once published, the first candidate is no directory church_id, so the later
+    one is marked against the candidate; without a Muse match id it would publish twice."""
+    ret, seeds = tmp_path / "returns", tmp_path / "seeds"
+    ret.mkdir()
+    seeds.mkdir()
+    for name, val in (("RET", ret), ("SEEDS", seeds), ("CANDIDATE_FILES", [])):
+        monkeypatch.setattr(bs, name, val)
+    monkeypatch.setattr(bs, "CANDIDATE_DUPLICATES_OF_CANDIDATE", {"WP0099-001": "F-001"})
+    cols = ["candidate_ref", "task", "candidate_name", "city", "status", "found_via", "match_confidence",
+            "checked_at", "notes", "possible_match_id"]
+    base = dict(task="WP0099", city="Berkeley", status="active", found_via="web_search", match_confidence="low",
+                checked_at="2026-10-22T01:00:00Z", notes="", possible_match_id="")
+    _write(ret / "new_candidates_WP0099.csv", cols, [
+        {**base, "candidate_ref": "WP0099-001", "candidate_name": "Found Again"},
+        {**base, "candidate_ref": "WP0099-002", "candidate_name": "Muse Match", "possible_match_id": "F-002"},
+        {**base, "candidate_ref": "WP0099-003", "candidate_name": "Really New"}])
+    bs.build_candidates()
+    rows = {r["candidate_id"]: r for r in csv.DictReader((seeds / "muse_candidates.csv").open(encoding="utf-8"))}
+    assert {k: r["possible_match_candidate_id"] for k, r in rows.items()} == {
+        "WP0099-001": "F-001", "WP0099-002": "F-002", "WP0099-003": ""}
+
+
 # --- Brief v3.5 currency rule: facts from sources older than 12 months stay blank ---------
 
 def test_stale_facts_are_blanked_only_while_they_cite_the_old_source(monkeypatch):

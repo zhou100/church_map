@@ -4,6 +4,9 @@
 -- The directory side counts both its verified address and its raw directory address:
 -- most directory churches have no Muse result, so a verified address alone misses them.
 -- Different names at one address are guests sharing a building and are fine.
+-- Congregations already published from Muse (stg_published_candidates) are on the
+-- directory side too: a later candidate can find one of them again. Only a
+-- candidate's own published row (external_id = candidate_id) is not a duplicate.
 -- Keys are computed per side first so the join is an equi-join on the name key.
 -- Must be empty (tests/assert_new_congregations_are_not_in_the_directory.sql).
 with n as (
@@ -37,12 +40,36 @@ d as (
     left join {{ ref('int_geocodes') }} g
         on g.subject_type = 'church' and g.subject_id = c.church_id::text and g.pin_usable
     where dn.name_key in (select name_key from n)
+),
+published as (
+    -- The published street is the candidate's display address; its pin is the
+    -- candidate's Census match, so both keys compare like a verified address.
+    select p.church_id,
+           p.candidate_id                                                          as published_candidate_id,
+           lower(regexp_replace(p.published_name, '[^[:alnum:]]', '', 'g'))        as name_key,
+           case when p.published_street is not null
+                then {{ address_key('p.published_street', 'p.city', 'null') }} end as addr_key,
+           null::text                                                              as raw_addr_key,
+           g.matched_address
+    from {{ ref('stg_published_candidates') }} p
+    left join {{ ref('int_geocodes') }} g
+        on g.subject_type = 'candidate' and g.subject_id = p.candidate_id and g.pin_usable
+),
+d_all as (
+    select church_id, null::text as published_candidate_id, name_key, addr_key, raw_addr_key, matched_address
+    from d
+    union all
+    select church_id, published_candidate_id, name_key, addr_key, raw_addr_key, matched_address
+    from published
+    where name_key in (select name_key from n)
 )
 select n.candidate_id,
        d.church_id,
-       case when n.addr_key = d.addr_key then 'verified_address'
+       case when d.published_candidate_id is not null then 'published_congregation'
+            when n.addr_key = d.addr_key then 'verified_address'
             when n.addr_key = d.raw_addr_key then 'directory_address'
             else 'census_match' end                                             as matched_on
 from n
-join d using (name_key)
-where n.addr_key = d.addr_key or n.addr_key = d.raw_addr_key or n.matched_address = d.matched_address
+join d_all d using (name_key)
+where (n.addr_key = d.addr_key or n.addr_key = d.raw_addr_key or n.matched_address = d.matched_address)
+  and d.published_candidate_id is distinct from n.candidate_id
