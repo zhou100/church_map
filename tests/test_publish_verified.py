@@ -43,3 +43,33 @@ def test_formatting_only_differences_are_not_rewritten():
     assert plan_fields(current, desired, ["phone", "website", "facebook_url"]) == []
     changed = plan_fields({"phone": "(510) 451-9608"}, {"phone": "(415) 346-6466"}, ["phone"])
     assert [(f, a) for f, a, _, _ in changed] == [("phone", "replace")]
+
+
+def test_private_diff_directory(tmp_path, monkeypatch):
+    from scripts import publish_verified as publisher
+    monkeypatch.setattr(publisher, 'EXPORTS', tmp_path / 'state')
+    plan = [{'kind': 'update', 'subject': '1', 'church_id': 1,
+             'changes': [('phone', 'fill', None, 'PRIVATE')]}]
+    path = publisher.write_diff(plan, 'fixture', tmp_path / 'private')
+    assert 'PRIVATE' in path.read_text()
+    assert path.stat().st_mode & 0o777 == 0o600
+    assert not publisher.EXPORTS.exists()
+
+
+def test_schema_same_name_view_cannot_mask_missing_column():
+    import os
+    import pytest
+    import psycopg
+    from scripts.publish_verified import check_schema
+    if not os.environ.get('DATABASE_URL'):
+        pytest.skip('isolated Postgres DATABASE_URL required')
+    with psycopg.connect(os.environ['DATABASE_URL']) as con:
+        # Transactional fixture; no destructive migration or existing view changes.
+        con.execute('CREATE SCHEMA publisher_schema_fixture')
+        con.execute('CREATE VIEW publisher_schema_fixture.churches AS SELECT kids_program FROM public.churches')
+        con.execute('ALTER TABLE public.churches RENAME COLUMN kids_program TO fixture_missing_kids')
+        # View output retains kids_program, precisely reproducing the old false pass.
+        assert con.execute("SELECT column_name FROM information_schema.columns WHERE table_name='churches' AND column_name='kids_program'").fetchone()
+        with pytest.raises(SystemExit, match='kids_program'):
+            check_schema(con)
+        con.rollback()
