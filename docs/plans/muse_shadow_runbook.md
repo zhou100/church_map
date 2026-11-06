@@ -186,9 +186,12 @@ local geocode results and a different dbt date may create differences; inspect
 and explain them rather than accepting them automatically.
 
 The known directory baseline difference (local May SQLite 133,939; cloud observed
-134,377) is separated from unresolved differences. It does **not** automatically
-excuse all mart differences: trace affected rows before attributing a change to
-those 438 directory records. New deliveries during either run invalidate a claim
+134,377) is separated from unresolved differences. The 438 extra rows are the
+congregations the 10/23 publish inserted from Muse (`source = 'muse'`); dbt keeps
+them out of `stg_churches` and lists them in `mart_published_candidates`, so they
+alone should not change directory marts. Production edits to existing rows since
+May (for example the 10/23 field fills) still can: trace affected rows before
+attributing a mart difference to either. New deliveries during either run invalidate a claim
 of equal inputs; inspect archived input hashes and the local delivery files first.
 The comparator checks local delivery hashes, mtimes and inventory against the archived
 Drive inputs. It cannot prevent a writer changing files after capture; keep the

@@ -207,3 +207,46 @@ unit_tests:
         - {candidate_id: A-4, verified_active: false}
         - {candidate_id: A-5, verified_active: false}
 
+
+  - name: published_muse_rows_are_not_directory_records
+    description: >
+      A live production snapshot holds the congregations scripts/publish_verified.py
+      inserted from Muse. They are the candidates themselves, not directory records;
+      in stg_churches each matched itself as a duplicate (shadow run 42268816603).
+    model: stg_churches
+    given:
+      - input: source('raw', 'churches')
+        rows:
+          - {church_id: 1, name: Grace Church, source: osm, external_id: null}
+          - {church_id: 2, name: Hand Added, source: manual, external_id: null}
+          - {church_id: 3, name: Iglesia Nueva Vida, source: muse, external_id: C-001}
+          - {church_id: 4, name: No Source, source: null, external_id: null}
+    expect:
+      rows:
+        - {church_id: 1, source: osm}
+        - {church_id: 2, source: manual}
+        - {church_id: 4, source: unknown}
+
+  - name: published_candidates_report_their_current_standing
+    description: >
+      The publisher never removes a row whose candidate left mart_publish_new, so
+      every published row is listed with where its candidate stands now.
+    model: mart_published_candidates
+    given:
+      - input: ref('stg_published_candidates')
+        rows:
+          - {church_id: 10, candidate_id: C-1, published_name: A}
+          - {church_id: 11, candidate_id: C-2, published_name: B}
+          - {church_id: 12, candidate_id: C-3, published_name: C}
+          - {church_id: 13, candidate_id: C-9, published_name: D}
+      - input: ref('int_candidate_readiness')
+        rows:
+          - {candidate_id: C-1, is_new_congregation: true,  map_ready: true}
+          - {candidate_id: C-2, is_new_congregation: true,  map_ready: false}
+          - {candidate_id: C-3, is_new_congregation: false, map_ready: false}
+    expect:
+      rows:
+        - {church_id: 10, publication_status: current}
+        - {church_id: 11, publication_status: no_longer_map_ready}
+        - {church_id: 12, publication_status: no_longer_new}
+        - {church_id: 13, publication_status: unknown_candidate}

@@ -1,4 +1,8 @@
 -- Grain: one directory record (church_id). Light cleanup only.
+-- The directory is every record except congregations scripts/publish_verified.py
+-- inserted from Muse (source = 'muse'): those are the candidates themselves,
+-- published, and appear in stg_published_candidates. A live production snapshot
+-- contains them; counted here, each would match itself as a duplicate.
 select
     church_id,
     nullif(btrim(name), '')                                  as osm_name,
@@ -21,3 +25,4 @@ select
     external_id,
     nullif(btrim(denomination), '')                          as denomination
 from {{ source('raw', 'churches') }}
+where source is distinct from 'muse'
