@@ -33,6 +33,7 @@ import collections
 import csv
 import datetime as dt
 import math
+import json
 import os
 import re
 import sys
@@ -121,9 +122,9 @@ def load_marts(con) -> tuple[list[dict], list[dict]]:
 
 def check_schema(prod) -> None:
     have = {r[0] for r in prod.execute(
-        "select column_name from information_schema.columns where table_name = 'churches'").fetchall()}
+        "select column_name from information_schema.columns where table_schema = 'public' and table_name = 'churches'").fetchall()}
     tables = {r[0] for r in prod.execute(
-        "select table_name from information_schema.tables where table_name in ('church_fact_sources', 'publish_log')").fetchall()}
+        "select table_name from information_schema.tables where table_schema = 'public' and table_name in ('church_fact_sources', 'publish_log')").fetchall()}
     missing = (set(COLUMNS) - have) | ({"church_fact_sources", "publish_log"} - tables)
     if missing:
         raise SystemExit(f"production is missing {sorted(missing)}: deploy migration 0006 first")
@@ -145,22 +146,24 @@ def build_plan(prod, churches: list[dict], new: list[dict]) -> list[dict]:
         changes = plan_fields(current[c["church_id"]], c, CHURCH_FIELDS)
         if changes:
             plan.append({"kind": "update", "church_id": c["church_id"], "subject": str(c["church_id"]),
-                         "changes": changes, "row": c})
+                         "changes": changes, "row": c, "current": current[c["church_id"]]})
     for n in new:
         existing = muse.get(n["external_id"])
         changes = plan_fields(existing, n, NEW_FIELDS)
         if existing is None:
-            plan.append({"kind": "insert", "church_id": None, "subject": n["external_id"], "changes": changes, "row": n})
+            plan.append({"kind": "insert", "church_id": None, "subject": n["external_id"], "changes": changes, "row": n, "current": existing or {}})
         elif changes:
             plan.append({"kind": "update", "church_id": existing["church_id"], "subject": n["external_id"],
-                         "changes": changes, "row": n})
+                         "changes": changes, "row": n, "current": existing or {}})
     return plan
 
 
-def write_diff(plan: list[dict], run_id: str) -> Path:
-    EXPORTS.mkdir(parents=True, exist_ok=True)
-    path = EXPORTS / f"publish_diff_{run_id}.csv"
+def write_diff(plan: list[dict], run_id: str, diff_dir: Path | None = None) -> Path:
+    directory = diff_dir if diff_dir is not None else EXPORTS
+    directory.mkdir(parents=True, exist_ok=True, mode=0o700)
+    path = directory / f"publish_diff_{run_id}.csv"
     with path.open("w", newline="", encoding="utf-8") as f:
+        os.chmod(path, 0o600)
         w = csv.writer(f, lineterminator="\n")
         w.writerow(["run_id", "kind", "subject", "church_id", "field", "action", "old_value", "new_value"])
         for p in plan:
@@ -263,8 +266,10 @@ def main(argv: list[str] | None = None) -> int:
     mode = ap.add_mutually_exclusive_group()
     mode.add_argument("--apply", action="store_true", help="write to production (default: dry run)")
     mode.add_argument("--revert", metavar="RUN_ID", help="undo a run")
+    ap.add_argument("--diff-dir", type=Path, help="private diff directory")
+    ap.add_argument("--json-summary", action="store_true", help="emit only integer counts")
     args = ap.parse_args(argv)
-    url = os.environ.get("DATABASE_URL")
+    url = os.environ.get("PUBLISH_DATABASE_URL") or os.environ.get("DATABASE_URL")
     if not url:
         raise SystemExit("DATABASE_URL (production) is not set")
     # autocommit: each prod.transaction() block below is its own transaction (one per
@@ -273,17 +278,27 @@ def main(argv: list[str] | None = None) -> int:
     with psycopg.connect(url, autocommit=True, prepare_threshold=None) as prod:
         check_schema(prod)
         if args.revert:
-            print(f"reverted {args.revert}: {revert(prod, args.revert)}")
+            result = revert(prod, args.revert)
+            print(json.dumps(result) if args.json_summary else f"reverted {args.revert}: {result}")
             return 0
         with psycopg.connect(ANALYTICS_URL) as ana:
             churches, new = load_marts(ana)
         run_id = "pub-" + dt.datetime.now(dt.timezone.utc).strftime("%Y%m%dT%H%M%SZ")
         plan = build_plan(prod, churches, new)
-        diff = write_diff(plan, run_id)
-        print(f"{'APPLY' if args.apply else 'DRY RUN'} {run_id}: marts {len(churches)} churches, {len(new)} new\n"
-              f"{summarize(plan)}\ndiff: {diff}")
+        diff = write_diff(plan, run_id, args.diff_dir)
+        counts = {"mart_churches": len(churches), "mart_new": len(new),
+                  "update_rows": sum(p["kind"] == "update" for p in plan),
+                  "insert_rows": sum(p["kind"] == "insert" for p in plan)}
+        if not args.json_summary:
+            print(f"{'APPLY' if args.apply else 'DRY RUN'} {run_id}: marts {len(churches)} churches, {len(new)} new\n"
+                  f"{summarize(plan)}\ndiff: {diff}")
         if args.apply:
-            print(f"applied {run_id}: {apply(prod, plan, run_id)} (undo: --revert {run_id})")
+            result = apply(prod, plan, run_id)
+            counts.update(result)
+            if not args.json_summary:
+                print(f"applied {run_id}: {result} (undo: --revert {run_id})")
+        if args.json_summary:
+            print(json.dumps(counts, sort_keys=True))
     return 0
 
 

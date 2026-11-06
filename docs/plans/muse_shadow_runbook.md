@@ -241,3 +241,16 @@ Review fixes (2026-11-04):
 - Review fixes were made in a separate worktree. The hourly owner's checkout
   was not switched or updated during this repair. Its eventual main update
   remains an explicit owner action after merge.
+
+## PR B: publisher dry run
+
+The optional `PUBLISH_DATABASE_URL` and existing `BACKEND_URL` secrets are now
+passed only to the dedicated publish subprocess after dbt/counts. No apply is
+called. Missing publisher configuration reports `publish: not_configured` and
+keeps shadow successful. With configuration, full diffs and adjudications are
+archived privately outside state exports; public output contains counts and a
+fixed gate status. See [publisher role and owner decisions](publisher_role/README.md)
+for approved policy/permissions, provisioning, RLS check, and the
+procedure to investigate the historical net 173-row directory discrepancy.
+This supersedes the earlier PR A statements that no publisher credential is
+supplied and publishing is always `not_run`; crawler observations remain unchanged.

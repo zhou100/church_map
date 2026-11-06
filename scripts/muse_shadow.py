@@ -227,6 +227,7 @@ def pipeline(source, work, store, reader, folder, run_id, initial_id, initial_ha
     root, bundle = work / 'checkout', work / 'archive'
     bundle.mkdir(mode=0o700)
     step, status, counts = 'restore', 'failed', {}
+    publish = 'not_run'
     try:
         restore(store, work / 'initial', initial_id, initial_hash)
         copy_code(source, root)
@@ -260,6 +261,27 @@ def pipeline(source, work, store, reader, folder, run_id, initial_id, initial_ha
         step = 'counts'
         counts = count_db(root, env['ANALYTICS_DATABASE_URL'])
         write_json(bundle / 'published_candidates.json', export_db(env['ANALYTICS_DATABASE_URL']))
+        step = 'publish'
+        if not env.get('PUBLISH_DATABASE_URL'):
+            publish = 'not_configured'
+            counts.update(publish_auto_rows=0, publish_pending_rows=0, publish_gate=publish)
+        else:
+            publish = 'failed'
+            publish_env = {k: env[k] for k in ('PATH', 'LANG', 'LC_ALL', 'TMPDIR',
+                           'PUBLISH_DATABASE_URL', 'ANALYTICS_DATABASE_URL', 'BACKEND_URL') if k in env}
+            run_child(root, private, step, ['-m', 'scripts.publish_gate',
+                      '--private-dir', str(private / 'publish'),
+                      '--receipt', str(private / 'dbt/accepted.json'),
+                      '--run-results', str(private / 'dbt/target/run_results.json')], publish_env)
+            report = json.loads((private / 'publish/run.json').read_text())['summary']
+            from scripts.publish_gate import REASONS
+            allowed = {'publish_auto_rows', 'publish_pending_rows'} | {'publish_reason_' + r for r in REASONS}
+            if (set(report) != allowed | {'publish_gate'} or
+                    report['publish_gate'] not in {'auto_eligible', 'pending'} or
+                    any(type(report[k]) is not int or report[k] < 0 for k in allowed)):
+                raise ValueError('invalid publish summary')
+            counts.update(report)
+            publish = report['publish_gate']
         status = 'ok'
     except Exception:
         write_json(private / 'failure.json', {'step': step, 'traceback': traceback.format_exc()})
@@ -284,7 +306,7 @@ def pipeline(source, work, store, reader, folder, run_id, initial_id, initial_ha
         write_json(bundle / 'status_digest.json', {'step': step, 'status': status,
                    'packages': digest_rows, 'counts': counts,
                    'fetch': 'not_observed', 'extract': 'not_observed', 'tag': 'not_observed',
-                   'publish': 'not_run', 'window_24h': 'not_measured'})
+                   'publish': publish, 'window_24h': 'not_measured'})
         archived = archive(store, bundle, run_id)
     return {'step': 'shadow', 'status': status, 'files': archived, **counts,
             **({'error_code': 'shadow_failed'} if status != 'ok' else {})}

@@ -147,6 +147,11 @@ freshness budgets come from code/config; do not copy them into evergreen prose.
   inspect the changed fields; anything outside the approved subset remains
   pending explicit review. This authorizes the future checked path, not a
   direct `--apply` before the gate exists. Retain run IDs and publish logs.
+- Owner clarification (2026-11-06, PR B): personal-phone withholding does not
+  veto the publication gate; upstream D-2 withholding stays unchanged. Any actual
+  `scope_status` or `display_tradition` write is a D-1 hit and makes the run pending.
+  The publisher role may DELETE `churches` to preserve existing inserted-row
+  revert behavior. Shadow remains dry-run-only; this does not activate apply.
 - The owner selected public-repository GitHub Actions for the Muse pipeline
   (D-H, same plan §1). Public logs must contain counts and step status only;
   keep returns, excerpts, notes, phone numbers, detailed diffs, and credentials

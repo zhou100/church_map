@@ -98,7 +98,7 @@ def setup(tmp_path):
     return initial, client, store, receipt, Reader(packages)
 
 
-def run_pipeline(tmp_path, setup, fail=False, real_dbt=False, url=None):
+def run_pipeline(tmp_path, setup, fail=False, real_dbt=False, url=None, publish_child=None):
     initial, client, store, receipt, reader = setup
     work = tmp_path / 'work'
     work.mkdir()
@@ -112,11 +112,17 @@ def run_pipeline(tmp_path, setup, fail=False, real_dbt=False, url=None):
     subprocess.run(['git', 'init', '-q', str(source)], check=True)
     subprocess.run(['git', '-C', str(source), 'add', '.'], check=True)
     env = dict(os.environ, ANALYTICS_DATABASE_URL=url or 'postgresql://fixture@127.0.0.1/churchmap_run_abcdef12')
+    if publish_child:
+        env.update(PUBLISH_DATABASE_URL='publisher-private', BACKEND_URL='https://health-private')
+    else:
+        env.pop('PUBLISH_DATABASE_URL', None)
     old = dict(client.objects)
     owner_bytes = {p: p.read_bytes() for p in initial.rglob('*') if p.is_file()}
 
     def child(root, private, step, args, child_env):
         assert 'GDRIVE_SA_JSON' not in child_env and 'DATABASE_URL' not in child_env
+        if step == 'publish' and publish_child:
+            return publish_child(root, private, step, args, child_env)
         if step != 'dbt':
             return s.child(root, private, step, args, child_env)
         if fail:
@@ -173,7 +179,8 @@ def test_end_to_end_private_boundary(tmp_path, setup, monkeypatch, capsys, fail)
     assert output.err == ''
     public = json.loads(output.out)
     assert set(public) <= {'step', 'status', 'files', 'error_code', 'directory_rows',
-                          'mart_publish_churches', 'mart_publish_new', 'pending_geocode_addresses'}
+                          'mart_publish_churches', 'mart_publish_new', 'pending_geocode_addresses',
+                          'publish_auto_rows', 'publish_pending_rows', 'publish_gate'}
     assert (tmp_path / 'summary').read_text() == output.out
     for secret in PRIVATE.split():
         assert secret not in output.out
@@ -312,3 +319,42 @@ def test_setup_failure_codes_never_leak(tmp_path, monkeypatch, capsys, failure, 
     assert output.err == ''
     assert json.loads(output.out) == {'step': 'shadow', 'status': 'failed', 'error_code': code}
     assert (tmp_path / 'summary').read_text() == output.out
+
+
+def test_publish_private_archive_and_isolated_environment(tmp_path, setup, capsys):
+    from scripts.publish_gate import evaluate
+    from scripts.publish_verified import write_diff
+    def publish_child(root, private, step, args, env):
+        assert set(env) <= {'PATH', 'LANG', 'LC_ALL', 'TMPDIR', 'PUBLISH_DATABASE_URL',
+                            'ANALYTICS_DATABASE_URL', 'BACKEND_URL'}
+        assert env['PUBLISH_DATABASE_URL'] == 'publisher-private'
+        assert '--apply' not in args
+        directory = private / 'publish'
+        directory.mkdir()
+        p = {'kind': 'update', 'subject': '1', 'church_id': 1,
+             'changes': [('address', 'fill', None, PRIVATE)], 'row': {}}
+        result = evaluate([p], {'results': [{'status': 'pass'}]}, '2026-11-04', [], {'read_only': False})
+        write_diff([p], 'fixture', directory)
+        s.write_json(directory / 'rows.json', result['rows'])
+        s.write_json(directory / 'run.json', {'summary': result['summary']})
+    result, work = run_pipeline(tmp_path, setup, publish_child=publish_child)
+    assert result['status'] == 'ok' and result['publish_gate'] == 'pending'
+    assert result['publish_pending_rows'] == 1
+    public = json.dumps(result)
+    assert all(secret not in public for secret in PRIVATE.split())
+    archived = setup[1].objects
+    prefix = s.PREFIX + '/shadow-test/private/publish/'
+    assert PRIVATE.encode() in archived[prefix + 'publish_diff_fixture.csv']
+    assert PRIVATE.encode() in archived[prefix + 'rows.json']
+    assert prefix + 'run.json' in archived
+    assert not list((work / 'checkout/analytics/exports').glob('publish_diff*'))
+    assert json.loads((work / 'archive/status_digest.json').read_text())['publish'] == 'pending'
+
+
+def test_publish_not_configured_success(tmp_path, setup):
+    result, work = run_pipeline(tmp_path, setup)
+    assert result['status'] == 'ok'
+    assert result['publish_gate'] == 'not_configured'
+    assert result['publish_auto_rows'] == result['publish_pending_rows'] == 0
+    assert all(secret not in json.dumps(result) for secret in PRIVATE.split())
+    assert json.loads((work / 'archive/status_digest.json').read_text())['publish'] == 'not_configured'
