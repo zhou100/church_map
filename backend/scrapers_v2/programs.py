@@ -276,17 +276,35 @@ def supports_type(program_type: str, text: str) -> bool:
 
 
 _YEAR = re.compile(r"\b(20\d\d)\b")
-_CAMPUS_STOP = {"campus", "church", "location", "site", "the", "our", "and", "saint", "north",
-                "south", "east", "west", "main", "street", "avenue", "road"}
+# Words that name no particular campus. Directions, "main", "downtown" and
+# street names do tell campuses apart, so they are not in this list.
+_CAMPUS_GENERIC = {"campus", "campuses", "church", "location", "site", "with", "from",
+                   "kids", "children", "youth", "student", "students"}
+# "Grace Church South Campus", "our North Campus": a campus the excerpt itself
+# names, checked even when the model left campus_stated empty.
+_CAMPUS_IN_TEXT = re.compile(r"\b(?:[A-Z][\w'’.-]*\s+){1,4}[Cc]ampus\b")
 
 
 def _tokens(*values: str | None) -> set[str]:
     words: set[str] = set()
     for v in values:
         for w in re.findall(r"[a-z]{4,}", (v or "").lower()):
-            if w not in _CAMPUS_STOP:
+            if w not in _CAMPUS_GENERIC:
                 words.add(w)
     return words
+
+
+def campus_is_this_church(campus: str, church_words: set[str]) -> bool:
+    """A stated campus is this church's only if every word that identifies it
+    is in this church's name, city or address. Sharing the church name is not
+    enough: "Grace Church South Campus" is not "Grace Church North Campus". A
+    campus we cannot confirm is treated as someone else's and the program is
+    not kept."""
+    return _tokens(campus) <= church_words
+
+
+def campuses_named(campus: str | None, excerpt: str) -> list[str]:
+    return [campus] if campus else [m.group(0) for m in _CAMPUS_IN_TEXT.finditer(excerpt)]
 
 
 # ----- the model's answer, checked against the archive -----------------------------
@@ -314,6 +332,13 @@ class Checked:
 
     def drop(self, reason: str) -> None:
         self.dropped[reason] = self.dropped.get(reason, 0) + 1
+
+
+def well_formed(obj: Any) -> bool:
+    """Only an answer of the asked shape may replace a church's programs; an
+    empty list is then a real "none found". Anything else ({}, a string, a
+    programs value that is not a list) is a failed answer."""
+    return isinstance(obj, dict) and isinstance(obj.get("programs"), list)
 
 
 def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
@@ -364,7 +389,7 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if years and max(years) < page.fetched_at.year:
             out.drop("stale")
             continue
-        if campus and not (_tokens(campus) & church_words):
+        if not all(campus_is_this_church(c, church_words) for c in campuses_named(campus, excerpt)):
             out.drop("other_campus")
             continue
 
@@ -460,19 +485,32 @@ async def extract_programs_for_church(
     api_key: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> str:
-    """Returns the outcome: ok, no_program_text, error or transient. Transient
-    outcomes write nothing, so the church stays due for the next run."""
+    """Returns the outcome: ok, no_program_text, error, missing_archive or
+    transient. Only ok and no_program_text replace earlier programs; every
+    other outcome keeps them. Transient writes nothing, so the church stays due
+    for the next run."""
     church_id = target["church_id"]
     input_ids = sorted(target["artifact_ids"])
     got = await asyncio.to_thread(_read_pages, r2, target)
     if got.unreadable:
         return "transient"
+    if got.missing:
+        # An archived page we cannot read is incomplete input, not a page
+        # without programs: keep what was shown and make no call. The empty
+        # input set never equals the due set, so the church stays due and is
+        # retried once the object is back, but after churches never tried, so a
+        # lost object cannot hold the front of every bounded batch.
+        await repo.record_program_extraction(
+            church_id, [], status="error", programs=None,
+            error_detail=f"archived page missing from R2: {got.missing} of {len(input_ids)}",
+            pages_read=0, dropped={}, extractor_version=PROMPT_VERSION, model=None)
+        return "missing_archive"
     if not got.pages:
         # Nothing on these pages is about children or youth: no call, no cost.
         # Earlier programs are cleared: the pages that stated them have changed.
         await repo.record_program_extraction(
             church_id, input_ids, status="no_program_text", programs=[],
-            pages_read=len(input_ids) - got.missing, dropped={},
+            pages_read=len(input_ids), dropped={},
             extractor_version=PROMPT_VERSION, model=None)
         return "no_program_text"
     try:
@@ -482,9 +520,14 @@ async def extract_programs_for_church(
         log.warning("programs transient failure church=%s: %s", church_id, e)
         return "transient"
     except ExtractionError as e:
+        error = str(e)
+    else:
+        error = None if well_formed(raw) else "answer is not {\"programs\": [...]}"
+    if error is not None:
         # Keep whatever was shown before; a bad answer is not evidence of absence.
+        # Same input, same model: not re-called until the pages change.
         await repo.record_program_extraction(
-            church_id, input_ids, status="error", programs=None, error_detail=str(e)[:500],
+            church_id, input_ids, status="error", programs=None, error_detail=error[:500],
             pages_read=len(got.pages), dropped={}, extractor_version=PROMPT_VERSION, model=MODEL)
         return "error"
     checked = check_programs(raw, got.pages, target)
@@ -507,13 +550,16 @@ async def run_program_batch(
     from R2 only. Apply: extract each, one transaction per church. Counts only;
     nothing here prints page text, so the output is safe for a public log."""
     targets = await repo.due_for_program_extraction(limit=limit)
-    counts = {"due": len(targets), "ok": 0, "no_program_text": 0, "error": 0, "transient": 0,
+    counts = {"due": len(targets), "ok": 0, "no_program_text": 0, "error": 0,
+              "missing_archive": 0, "transient": 0,
               "programs_kept": 0, "would_call_model": 0, "input_chars": 0}
     if not apply:
         for t in targets:
             got = await asyncio.to_thread(_read_pages, r2, t)
             if got.unreadable:
                 counts["transient"] += 1
+            elif got.missing:
+                counts["missing_archive"] += 1
             elif got.pages:
                 counts["would_call_model"] += 1
                 counts["input_chars"] += len(model_input(got.pages))

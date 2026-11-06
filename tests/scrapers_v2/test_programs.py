@@ -268,3 +268,76 @@ def test_transient_failures_write_nothing_and_bad_answers_keep_old_programs():
     assert _run(target, _R2(objects, fail={"kids"}), junk) == ("transient", [])
     outcome, records = _run(target, _R2(objects), junk)
     assert outcome == "error" and records[0]["programs"] is None
+
+
+# ----- review of PR 81: campus identity, missing archives, malformed answers --------
+
+SOUTH = "Grace Church South Campus offers kids in grades 1-5 a Sunday program."
+
+
+def _campus_case(church, excerpt, campus=None):
+    html = f"<html><body><p>{excerpt}</p></body></html>".encode()
+    item = {"page": 1, "excerpt": excerpt, "type": "during_service", "age_bands": ["children"]}
+    if campus:
+        item["campus_stated"] = campus
+    checked = check_programs({"programs": [item]}, [_page(1, html)], church)
+    return checked.programs, checked.dropped
+
+
+def test_shared_church_name_does_not_make_another_campus_ours():
+    north = {**CHURCH, "name": "Grace Church North Campus"}
+    south = {**CHURCH, "name": "Grace Church South Campus"}
+    # Model named the campus, and when it left campus_stated empty: both dropped.
+    assert _campus_case(north, SOUTH, "Grace Church South Campus") == ([], {"other_campus": 1})
+    assert _campus_case(north, SOUTH) == ([], {"other_campus": 1})
+    # The campus it is about keeps it.
+    kept, dropped = _campus_case(south, SOUTH, "Grace Church South Campus")
+    assert dropped == {} and kept[0]["campus_stated"] == "Grace Church South Campus"
+    assert _campus_case(south, SOUTH)[1] == {}
+    # A campus we cannot tie to this record is not kept either.
+    assert _campus_case(CHURCH, "Our North Campus has a nursery for infants and toddlers on Sundays.")[1] \
+        == {"other_campus": 1}
+    # Named by this church's city: ours.
+    assert _campus_case(CHURCH, "The Fresno Campus has a nursery for infants and toddlers on Sundays.")[1] == {}
+
+
+def test_a_missing_archived_page_keeps_old_programs_and_costs_no_call():
+    calls = []
+
+    async def call(*a, **k):
+        calls.append(1)
+        return {"programs": []}
+
+    # The only page is gone, and one of two pages is gone: neither is "no programs".
+    for objects, keys in [({}, {"kids": KIDS_HTML}), ({"home": b"<p>Welcome</p>"},
+                                                     {"kids": KIDS_HTML, "home": b"<p>Welcome</p>"})]:
+        outcome, records = _run(_target(**keys), _R2(objects), call)
+        assert outcome == "missing_archive" and calls == []
+        assert records[0]["status"] == "error" and records[0]["programs"] is None
+        assert records[0]["input_ids"] == []  # never the due set, so it is retried
+        assert "missing" in records[0]["error_detail"]
+
+
+def test_an_answer_of_the_wrong_shape_keeps_old_programs():
+    for answer in [{"programs": "none"}, {}, {"result": []}, ["programs"], None]:
+        async def call(*a, answer=answer, **k):
+            return answer
+
+        outcome, records = _run(_target(kids=KIDS_HTML), _R2({"kids": KIDS_HTML}), call)
+        assert outcome == "error" and records[0]["programs"] is None, answer
+        assert records[0]["status"] == "error" and records[0]["input_ids"] == [11]
+
+    async def none_found(*a, **k):
+        return {"programs": []}
+
+    outcome, records = _run(_target(kids=KIDS_HTML), _R2({"kids": KIDS_HTML}), none_found)
+    assert outcome == "ok" and records[0]["programs"] == []  # a well-formed "none" does clear
+
+
+def test_dry_run_counts_missing_archives_apart():
+    class Repo:
+        async def due_for_program_extraction(self, limit):
+            return [{**_target(kids=KIDS_HTML), "church_id": 1}, {**_target(gone=KIDS_HTML), "church_id": 2}]
+
+    counts = asyncio.run(mod.run_program_batch(Repo(), _R2({"kids": KIDS_HTML}), limit=5, apply=False))
+    assert (counts["would_call_model"], counts["missing_archive"], counts["no_program_text"]) == (1, 1, 0)

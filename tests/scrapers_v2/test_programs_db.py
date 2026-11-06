@@ -199,3 +199,57 @@ def test_list_and_detail_carry_programs():
     assert shown["evidence_class"] == "website_claim"
     assert shown["source_url"].endswith("/kids") and shown["excerpt"].startswith("Nursery")
     assert "kids_programs" in _DIM_SELECT
+
+
+def test_end_to_end_missing_archive_and_bad_answer_keep_programs():
+    """PR 81 review: neither a lost R2 object nor a malformed answer may clear
+    a church's programs; the lost object leaves the church due, behind
+    churches never tried."""
+    from backend.scrapers_v2 import programs as mod
+    from backend.scrapers_v2.r2 import R2NotFound
+
+    class R2:
+        def __init__(self, objects):
+            self.objects = objects
+
+        def get_html(self, key):
+            if key not in self.objects:
+                raise R2NotFound(key)
+            return self.objects[key]
+
+    kids_html = b"<p>Our nursery is open during both services for infants through age 3.</p>"
+
+    async def body(con, crawl, programs, churches):
+        cid = await church(con, "prog-e")
+        await page(crawl, cid, "homepage", "home1")
+        kids = await page(crawl, cid, "kids", "kids1")
+        await done(programs, (await due(programs, {cid}))[cid], [program(cid, kids, bands=["preschool"])])
+
+        # Kids page changed, but its archived object is not in R2.
+        await page(crawl, cid, "kids", "kids2")
+        t = (await due(programs, {cid}))[cid]
+
+        async def must_not_call(*a, **k):
+            raise AssertionError("no model call on incomplete input")
+
+        outcome = await mod.extract_programs_for_church(programs, R2({}), t, call=must_not_call)
+        assert outcome == "missing_archive"
+        assert len(await churches.programs(cid)) == 1
+        fresh = await church(con, "prog-never-tried")
+        await page(crawl, fresh, "homepage", "fresh1")
+        order = [r["church_id"] for r in await programs.due_for_program_extraction(limit=10_000)]
+        assert cid in order and order.index(fresh) < order.index(cid)
+
+        # The object is back but the answer is malformed: still kept, now recorded.
+        objects = {key: kids_html for key in t["r2_keys"]}
+
+        async def malformed(*a, **k):
+            return {"programs": "none"}
+
+        assert await mod.extract_programs_for_church(programs, R2(objects), t, call=malformed) == "error"
+        assert len(await churches.programs(cid)) == 1
+        async with con.cursor() as cur:
+            await cur.execute("SELECT status, programs_kept FROM church_program_extractions"
+                              " WHERE church_id = %s", (cid,))
+            assert await cur.fetchone() == ("error", 1)
+    run(body)
