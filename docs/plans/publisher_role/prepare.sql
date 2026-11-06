@@ -14,6 +14,13 @@ BEGIN
   -- Production has RLS enabled on all three tables with no policies (owner query,
   -- 2026-11-06). The publisher gets its own policies below; never BYPASSRLS. A
   -- policy for PUBLIC would also apply to the publisher, so stop if one exists.
+  -- The policies below narrow table-wide INSERT/DELETE grants only while RLS is
+  -- enabled; CREATE POLICY does not enable it. Never enable it here for others.
+  IF EXISTS (SELECT FROM pg_class WHERE oid IN
+      ('public.churches'::regclass, 'public.church_fact_sources'::regclass,
+       'public.publish_log'::regclass) AND NOT relrowsecurity) THEN
+    RAISE EXCEPTION 'RLS must be enabled on every publisher table; the policies would not apply';
+  END IF;
   -- CREATE POLICY needs table ownership (Supabase's postgres is not superuser).
   IF EXISTS (SELECT FROM pg_class WHERE oid IN
       ('public.churches'::regclass, 'public.church_fact_sources'::regclass,

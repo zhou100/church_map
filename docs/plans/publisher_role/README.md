@@ -32,15 +32,20 @@ only, which leave anon/authenticated/other roles unchanged and narrow the grants
 read all churches, update the granted columns, insert and delete only
 `source = 'muse'` rows; full access to church_fact_sources; read and append
 publish_log. It stops if a PUBLIC policy already exists on these tables or if the
-provisioning account does not own them (CREATE POLICY requires ownership). Before
+provisioning account does not own them (CREATE POLICY requires ownership), and it
+stops unless RLS is enabled on all three: a policy does not enable RLS, and without
+it the table-wide INSERT/DELETE grants apply unnarrowed. Before
 running it, re-run the RLS query above and
 `SELECT tablename, policyname, roles FROM pg_policies WHERE schemaname='public' AND tablename IN ('churches','church_fact_sources','publish_log');`
 to confirm nothing changed.
 
 Without a SELECT policy RLS returns zero rows rather than an error, so the publisher
 would plan every published congregation as a new insert. `check_visibility` in
-`scripts/publish_verified.py` stops any plan when no church is visible or when a
-congregation that `publish_log` records as inserted (and not reverted) is hidden.
+`scripts/publish_verified.py` runs before every plan. Where RLS applies to the
+connection on `churches` or `publish_log`, a permissive SELECT policy `USING (true)`
+must apply to it and no restrictive one may; counting log rows cannot prove the log
+itself is complete. It also stops when no church is visible or when a congregation
+that `publish_log` records as inserted (and not reverted) is hidden.
 Save current role/table/schema ACLs and confirm the provisioning account. Review
 [prepare.sql](prepare.sql), run its default rollback first, then apply only the
 approved version with an explicit COMMIT. It grants no service_role membership,

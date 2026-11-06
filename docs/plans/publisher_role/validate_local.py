@@ -50,6 +50,17 @@ def main():
             admin.execute(f'ALTER TABLE public.{table} ENABLE ROW LEVEL SECURITY')
         admin.execute("INSERT INTO churches (name, source) VALUES ('Directory fixture', 'osm')")
     with connect('postgres') as admin:
+        # Review of #84: with RLS off the policies would not apply, so refuse.
+        admin.execute('ALTER TABLE public.publish_log DISABLE ROW LEVEL SECURITY')
+        try:
+            admin.execute(sql.rsplit('ROLLBACK;', 1)[0] + 'COMMIT;', prepare=False)
+        except psycopg.errors.RaiseException as error:
+            assert 'RLS must be enabled' in str(error)
+            admin.execute('ROLLBACK')
+        else:
+            raise AssertionError('provisioning succeeded with RLS disabled')
+        assert not admin.execute("SELECT 1 FROM pg_roles WHERE rolname='churchmap_publisher'").fetchone()
+        admin.execute('ALTER TABLE public.publish_log ENABLE ROW LEVEL SECURITY')
         admin.execute(sql, prepare=False)  # default rollback creates no role
         assert not admin.execute("SELECT 1 FROM pg_roles WHERE rolname='churchmap_publisher'").fetchone()
         admin.execute(sql.rsplit('ROLLBACK;', 1)[0] + 'COMMIT;', prepare=False)
@@ -85,6 +96,7 @@ def main():
     print('passed: real login, dry run, apply, idempotency, update revert, denied privileges')
     print('passed: inserted-church revert and fact-source deletion')
     print('passed: RLS enabled; publisher cannot insert or delete directory churches')
+    print('passed: provisioning refuses a publisher table with RLS disabled')
 
 
 if __name__ == '__main__':
