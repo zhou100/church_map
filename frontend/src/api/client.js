@@ -1,3 +1,5 @@
+import { kidsNeed } from '../preferences.js'
+
 // Same-origin `/api` when VITE_API_URL is unset or blank. Production relies on
 // the Vercel rewrite to the Render API. Set VITE_API_URL to call another host
 // (local dev against uvicorn).
@@ -71,7 +73,9 @@ export function listChurches(search, { limit = 50, offset = 0, sort, prefs, sign
   if (sort === 'for_you' && prefs) {
     for (const language of prefs.languages) params.append('prefer_language', language)
     for (const style of prefs.worship) params.append('prefer_worship', style)
-    if (prefs.kids) params.set('prefer_kids', 'true')
+    const kids = kidsNeed(prefs.kids)
+    for (const band of kids.bands) params.append('prefer_kids_band', band)
+    if (kids.weekday_care) params.set('prefer_weekday_care', 'true')
   }
   return request(`/api/churches?${params}`, { errorMessage: 'Failed to fetch churches', signal })
 }

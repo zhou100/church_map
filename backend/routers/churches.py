@@ -17,7 +17,12 @@ from psycopg.rows import dict_row
 
 from backend import enrichment
 from backend.db import pool
-from backend.db.repository import CITY_ORDERINGS, ChurchRepository, _normalize_extracted_tags
+from backend.db.repository import (
+    CITY_ORDERINGS,
+    KID_BANDS,
+    ChurchRepository,
+    _normalize_extracted_tags,
+)
 from backend.scrapers_v2.prompts.website_v3 import THEOLOGICAL_STANCES, WORSHIP_STYLES
 from backend.utils import compute_tags
 
@@ -65,6 +70,9 @@ def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
         "service_languages": _split_languages(row.get("service_languages")),
         "display_tradition": row.get("display_tradition") or None,
         "verified_at": _iso(row.get("verified_at")),
+        # Programs stated on the church's archived pages (migration 0007). The
+        # list carries type, bands and name; the detail adds the evidence.
+        "kids_programs": row.get("kids_programs") or [],
     }
     if include_dims:
         church["dimensions"] = {
@@ -170,6 +178,23 @@ def _fact_sources(rows: list[dict]) -> dict:
                          "checked_at": _iso(r["checked_at"])} for r in rows}
 
 
+def _program(row: dict) -> dict:
+    """A church_programs row as the detail page shows it: what the page states,
+    the verbatim excerpt, the page and when it was fetched."""
+    return {
+        "program_type": row["program_type"],
+        "age_bands": list(row["age_bands"] or []),
+        "name_stated": row["name_stated"],
+        "ages_stated": row["ages_stated"],
+        "schedule_stated": row["schedule_stated"],
+        "campus_stated": row["campus_stated"],
+        "excerpt": row["excerpt"],
+        "source_url": row["source_url"],
+        "checked_at": _iso(row["page_fetched_at"]),
+        "evidence_class": row["evidence_class"],
+    }
+
+
 def _row_to_prerender_church(row: dict) -> dict:
     """Public fields needed to build a useful static church profile."""
     return {
@@ -204,6 +229,8 @@ async def list_churches(
     prefer_language: Annotated[list[str], Query(max_length=10)] = [],
     prefer_worship: Annotated[list[str], Query(max_length=5)] = [],
     prefer_kids: bool = False,
+    prefer_kids_band: Annotated[list[str], Query(max_length=3)] = [],
+    prefer_weekday_care: bool = False,
     limit: int = Query(50, ge=1, le=200),
     offset: int = Query(0, ge=0),
     response: Response = None,
@@ -226,7 +253,9 @@ async def list_churches(
     so every visitor's request for a city is the same URL (the list cache and
     the landing prefetch depend on that). `lat`/`lon` with `radius_miles` is
     the visitor's chosen circle. `prefer_*` only rank `for_you`; they never
-    filter. ZIP search keeps its default order.
+    filter. `prefer_kids_band` (preschool, children, youth) and
+    `prefer_weekday_care` replace `prefer_kids`, which older pages still send
+    and which means any band. ZIP search keeps its default order.
     """
     if any(v is not None for v in (lat, lon, radius_miles)) and not all(
         v is not None for v in (lat, lon, radius_miles)
@@ -238,6 +267,11 @@ async def list_churches(
         raise HTTPException(
             status_code=400,
             detail=f"unknown prefer_worship; expected one of {sorted(WORSHIP_STYLES)}",
+        )
+    if any(value not in KID_BANDS for value in prefer_kids_band):
+        raise HTTPException(
+            status_code=400,
+            detail=f"unknown prefer_kids_band; expected one of {list(KID_BANDS)}",
         )
     name_query = name.strip()
     if name_query and len(name_query) < 2:
@@ -263,7 +297,9 @@ async def list_churches(
             status_code=400,
             detail=f"unknown sort; expected one of {sorted({*CITY_ORDERINGS, *SCOPED_SORTS})}",
         )
-    prefs = {"languages": prefer_language, "worship": prefer_worship, "kids": prefer_kids}
+    kids = ({"bands": prefer_kids_band, "weekday_care": prefer_weekday_care}
+            if prefer_kids_band or prefer_weekday_care else prefer_kids)
+    prefs = {"languages": prefer_language, "worship": prefer_worship, "kids": kids}
 
     filters = {"language": language, "worship_style": worship_style, "stance": stance}
     async with pool.acquire() as con:
@@ -322,10 +358,12 @@ async def get_church(church_id: int):
         repo = ChurchRepository(con)
         row = await repo.get(church_id)
         sources = await repo.fact_sources(church_id) if row else []
+        programs = await repo.programs(church_id) if row else []
     if not row:
         raise HTTPException(status_code=404, detail="Church not found")
     church = _row_to_church(row, include_dims=True)
     church["fact_sources"] = _fact_sources(sources)
+    church["kids_programs"] = [_program(p) for p in programs]
     return church
 
 

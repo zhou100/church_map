@@ -72,6 +72,7 @@ def test_new_fields_default_to_empty():
     church = router_mod._row_to_church(dict(BASE))
     assert (church["kids_program"], church["facebook_url"], church["service_languages"],
             church["display_tradition"], church["verified_at"]) == (None, None, [], None, None)
+    assert church["kids_programs"] == []
 
 
 def test_new_fields_are_mapped():
@@ -99,6 +100,13 @@ def test_detail_carries_fact_sources(monkeypatch):
             return [{"field": "service_times", "source_url": "https://grace.example.org/visit",
                      "source_type": "own_site", "checked_at": when}]
 
+        async def programs(self, church_id):
+            return [{"program_type": "during_service", "age_bands": ["preschool"],
+                     "name_stated": "Nursery", "ages_stated": "0-3", "schedule_stated": None,
+                     "campus_stated": None, "excerpt": "Nursery (0-3) during both services",
+                     "source_url": "https://grace.example.org/kids", "page_fetched_at": when,
+                     "evidence_class": "website_claim"}]
+
     class Pool:
         def acquire(self):
             class Ctx:
@@ -115,3 +123,8 @@ def test_detail_carries_fact_sources(monkeypatch):
     assert church["fact_sources"] == {"service_times": {"source_url": "https://grace.example.org/visit",
                                                         "source_type": "own_site",
                                                         "checked_at": "2026-10-20T00:00:00+00:00"}}
+    assert church["kids_programs"] == [{
+        "program_type": "during_service", "age_bands": ["preschool"], "name_stated": "Nursery",
+        "ages_stated": "0-3", "schedule_stated": None, "campus_stated": None,
+        "excerpt": "Nursery (0-3) during both services", "source_url": "https://grace.example.org/kids",
+        "checked_at": "2026-10-20T00:00:00+00:00", "evidence_class": "website_claim"}]

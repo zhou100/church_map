@@ -2,13 +2,16 @@ import { useEffect, useId, useRef, useState } from 'react'
 import Icon from './Icon'
 import {
   EMPTY_PREFERENCES,
+  KID_BANDS,
   WORSHIP_STYLES,
   hasPreferences,
+  kidsNeed,
   preferencePhrase,
   preferenceSummary,
 } from '../preferences'
 
-// "Make these fit you": three questions, all optional. `alwaysOpen` (Landing)
+// "Make these fit you": three questions, all optional; kids by age band, plus
+// weekday childcare. `alwaysOpen` (Landing)
 // shows them in place. Otherwise inline under the entry on desktop; a native
 // <dialog> bottom sheet at phone width, which brings focus trapping, Esc and
 // an inert page with it. Controlled: the page
@@ -42,6 +45,7 @@ function ChipGroup({ question, children }) {
 }
 
 function Questions({ prefs, languageChips, onChange }) {
+  const kids = kidsNeed(prefs.kids)
   const languageActive = language => prefs.languages.some(l => l.toLowerCase() === language.toLowerCase())
   return (
     <>
@@ -72,9 +76,21 @@ function Questions({ prefs, languageChips, onChange }) {
           </Chip>
         ))}
       </ChipGroup>
-      <ChipGroup question="Kids">
-        <Chip active={prefs.kids} onClick={() => onChange({ ...prefs, kids: !prefs.kids })}>
-          We&apos;re bringing kids
+      <ChipGroup question="Bringing kids">
+        {KID_BANDS.map(band => (
+          <Chip
+            key={band.value}
+            active={kids.bands.includes(band.value)}
+            onClick={() => onChange({ ...prefs, kids: { ...kids, bands: toggle(kids.bands, band.value) } })}
+          >
+            {band.label}
+          </Chip>
+        ))}
+        <Chip
+          active={kids.weekday_care}
+          onClick={() => onChange({ ...prefs, kids: { ...kids, weekday_care: !kids.weekday_care } })}
+        >
+          Weekday childcare
         </Chip>
       </ChipGroup>
     </>

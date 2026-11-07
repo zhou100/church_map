@@ -8,6 +8,8 @@ import {
   fitScore,
   fitSignals,
   isChurch,
+  programGroups,
+  programHighlights,
   isStartingPoint,
   languageSignals,
   pickStartingPoints,
@@ -126,13 +128,70 @@ test('each preference matches each of its sources', () => {
   assert.equal(fitScore(church({ name: 'c', extracted_tags: { worship_style: 'contemporary' } }), contemporary), 1)
   assert.equal(fitScore(church({ name: 'l', extracted_tags: { worship_style: 'liturgical' } }), contemporary), 0)
 
+  // Sources that don't state ages are half an answer for any band.
   const kids = prefs({ kids: true })
   assert.equal(fitSignals(church({ name: 'k1', kids_program: 'Sunday school at 9' }), kids)[0].source, 'verified')
   for (const program of ['kids church', "Children's ministry", 'youth group', 'Nursery', 'Sunday School', 'VBS']) {
-    assert.equal(fitScore(church({ name: program, extracted_tags: { programs: [program] } }), kids), 1, program)
+    assert.equal(fitScore(church({ name: program, extracted_tags: { programs: [program] } }), kids), 0.5, program)
   }
   assert.equal(fitSignals(church({ name: 'k3', tags: ['Kids programs'] }), kids)[0].source, 'community')
   assert.equal(fitScore(church({ name: 'k4', extracted_tags: { programs: ['food pantry', 'skidmore outreach'] } }), kids), 0)
+})
+
+const NURSERY = { program_type: 'during_service', age_bands: ['preschool'], name_stated: 'Little Lambs Nursery' }
+const KIDS_CHURCH = { program_type: 'during_service', age_bands: ['children'], name_stated: 'Kids Church' }
+const YOUTH = { program_type: 'other', age_bands: ['youth'], name_stated: 'Youth Group' }
+const COLLEGE = { program_type: 'other', age_bands: ['young_adult'], name_stated: 'College & Career' }
+const AWANA = { program_type: 'other', age_bands: ['preschool', 'children', 'youth'], name_stated: 'AWANA' }
+const VAGUE = { program_type: null, age_bands: [], name_stated: 'Kids Ministry' }
+const PRESCHOOL = { program_type: 'weekday_care', age_bands: ['preschool'], name_stated: 'Grace Preschool' }
+
+test('a stated age band answers that band; other bands and young adults do not', () => {
+  const under5 = prefs({ kids: { bands: ['preschool'], weekday_care: false } })
+  const row = church({ name: 'Grace', kids_programs: [YOUTH, NURSERY] })
+  assert.equal(fitScore(row, under5), 1)
+  assert.equal(fitReason(row, under5), 'Little Lambs Nursery (Under 5) (from website)')
+  assert.equal(fitScore(church({ name: 'Y', kids_programs: [YOUTH] }), under5), 0)
+  assert.equal(fitScore(church({ name: 'C', kids_programs: [COLLEGE] }), prefs({ kids: { bands: ['youth'] } })), 0)
+  assert.equal(fitScore(church({ name: 'V', kids_programs: [VAGUE] }), under5), 0.5)
+  assert.equal(fitReason(church({ name: 'V', kids_programs: [VAGUE] }), under5),
+    'Kids program, ages not stated (from website)')
+  // A stated band outranks a verified program of unknown ages.
+  const rows = [church({ name: 'verified', kids_program: 'Sunday school' }), church({ name: 'stated', kids_programs: [AWANA] })]
+  assert.deepEqual(rankForYou(rows, under5).map(c => c.name), ['stated', 'verified'])
+})
+
+test('weekday childcare is its own question', () => {
+  const care = prefs({ kids: { bands: ['preschool'], weekday_care: true } })
+  assert.equal(fitScore(church({ name: 'P', kids_programs: [PRESCHOOL] }), care), 2)
+  assert.equal(fitScore(church({ name: 'N', kids_programs: [NURSERY] }), care), 1)
+  assert.equal(fitScore(church({ name: 'A', kids_programs: [{ ...PRESCHOOL, age_bands: ['youth'] }] }), care), 0)
+  assert.equal(fitScore(church({ name: 'U', kids_programs: [{ ...PRESCHOOL, age_bands: [] }] }), care), 1.5)
+  assert.equal(fitScore(church({ name: 'any', kids_programs: [{ ...PRESCHOOL, age_bands: ['youth'] }] }),
+    prefs({ kids: { bands: [], weekday_care: true } })), 1)
+})
+
+test('cards name one program per family age band; young adults stay on the detail page', () => {
+  assert.deepEqual(programHighlights(church({ name: 'G', kids_programs: [YOUTH, COLLEGE, NURSERY, KIDS_CHURCH] })),
+    ['Under 5: Little Lambs Nursery', 'K–5: Kids Church', '6–12: Youth Group'])
+  assert.deepEqual(programHighlights(church({ name: 'V', kids_programs: [VAGUE, COLLEGE] })), ['Kids program (ages not stated)'])
+  assert.deepEqual(programHighlights(church({ name: 'A', kids_programs: [AWANA, YOUTH] })), ['Under 5: AWANA', '6–12: Youth Group'])
+  assert.deepEqual(programHighlights(church({ name: 'T', kids_programs: [{ program_type: 'weekday_care', age_bands: ['preschool'] }] })),
+    ['Under 5: Weekday childcare or school'])
+  assert.deepEqual(programHighlights(church({ name: 'none' })), [])
+  assert.deepEqual(programHighlights(church({ name: 'junk', kids_programs: 'Nursery' })), [])
+})
+
+test('the detail page groups by youngest band and keeps young adults separate', () => {
+  const groups = programGroups(church({ name: 'G', kids_programs: [COLLEGE, YOUTH, VAGUE, AWANA, KIDS_CHURCH,
+    { ...YOUTH, age_bands: ['youth', 'young_adult'], name_stated: 'Youth & Young Adults' }] }))
+  assert.deepEqual(groups.map(g => [g.key, g.programs.map(p => p.name_stated)]), [
+    ['preschool', ['AWANA']],
+    ['children', ['Kids Church']],
+    ['youth', ['Youth Group', 'Youth & Young Adults']],
+    ['unstated', ['Kids Ministry']],
+    ['young_adult', ['College & Career']],
+  ])
 })
 
 test('the score counts questions answered, not matched values', () => {
@@ -141,8 +200,9 @@ test('the score counts questions answered, not matched values', () => {
     name: 'Bilingual',
     extracted_tags: { service_languages: ['Spanish', 'English'], worship_style: 'blended', programs: ['kids'] },
   })
-  assert.equal(fitScore(row, both), 3)
+  assert.equal(fitScore(row, both), 2.5)
   assert.equal(fitReason(row, both), 'Spanish service (from website) · English service (from website) · Blended worship (from website) · Kids program (from website)')
+  assert.equal(fitScore({ ...row, kids_programs: [{ program_type: 'other', age_bands: ['youth'], name_stated: 'Youth' }] }, both), 3)
 })
 
 test('an unread church yields no signal and never a negative one', () => {

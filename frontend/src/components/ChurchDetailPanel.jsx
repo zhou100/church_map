@@ -4,6 +4,7 @@ import DimensionBars from './DimensionBars'
 import ReviewForm from './ReviewForm'
 import ChurchCard from './ChurchCard'
 import AboutSection from './AboutSection'
+import ProgramsSection from './ProgramsSection'
 import Icon from './Icon'
 import { churchMarkerIcon } from './mapMarker'
 import 'leaflet/dist/leaflet.css'
@@ -184,6 +185,8 @@ export default function ChurchDetailPanel({ churchId, onBack, onSelect }) {
                 </div>
               )}
             </div>
+
+            <ProgramsSection church={church} />
 
             {enrichData?.photos?.length > 0 && (
               <div className="detail-photos" style={{ marginTop: '1rem' }}>

@@ -65,6 +65,9 @@ class _Repo:
     async def fact_sources(self, church_id):
         return []
 
+    async def programs(self, church_id):
+        return []
+
 
 def _client(monkeypatch):
     monkeypatch.setattr(churches, "pool", _Pool())

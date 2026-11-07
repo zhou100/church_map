@@ -1,4 +1,4 @@
-import { hasPreferences, preferencePhrase, worshipLabel } from './preferences.js'
+import { KID_BANDS, hasPreferences, kidsNeed, preferencePhrase, worshipLabel } from './preferences.js'
 
 export function hasWebsiteProfile(church) {
   const extracted = church.extracted_tags || {}
@@ -79,7 +79,8 @@ export function pickStartingPoints(churches, count) {
 // ── Fit to what a visitor asked for ("Make these fit you") ──────────────────
 //
 //   church row ─► languageSignals ─┐
-//                 worship_style ───┼─► fitSignals(church, prefs) ─► fitScore 0..3
+//                 worship_style ───┤
+//                 kids_programs ───┼─► fitSignals(church, prefs) ─► fitScore 0..4
 //                 kids sources ────┘           │
 //                                              └─► reason line "Spanish service · Kids program"
 //   rows ─► rankForYou (stable, by fitScore) ─► pickStartingPoints / Search "For you"
@@ -121,44 +122,149 @@ export function speaksLanguage(church, language) {
 
 const KIDS_PROGRAM = /\b(kids?|child|children'?s?|youth|nursery|sunday school|vbs|vacation bible school)\b/i
 
-function kidsSignal(church) {
-  if (hasValue(church.kids_program)) return 'verified'
+// Programs a church's archived pages state (migration 0007): type, age bands
+// and name on list rows, plus the excerpt, page and fetch date on the detail.
+export function kidsPrograms(church) {
+  return (Array.isArray(church.kids_programs) ? church.kids_programs : [])
+    .filter(program => program && typeof program === 'object' && Array.isArray(program.age_bands))
+}
+
+const youngAdultsOnly = program => program.age_bands.length > 0
+  && program.age_bands.every(band => band === 'young_adult')
+
+// Evidence that a church has something for a child of any age, but no age we
+// can match: a program whose page states no ages, or one of the older
+// sources. Worth half a point; a stated band that matches is worth one.
+function vagueKidsSignal(church) {
+  if (kidsPrograms(church).some(program => program.age_bands.length === 0)) {
+    return { label: 'Kids program, ages not stated', source: 'website' }
+  }
+  if (hasValue(church.kids_program)) return { label: 'Kids program', source: 'verified' }
   const programs = church.extracted_tags?.programs
   if (Array.isArray(programs) && programs.some(program => typeof program === 'string' && KIDS_PROGRAM.test(program))) {
-    return 'website'
+    return { label: 'Kids program', source: 'website' }
   }
   // backend/utils.py compute_tags: three or more reviews, kids average above 4.
-  if (Array.isArray(church.tags) && church.tags.includes('Kids programs')) return 'community'
+  if (Array.isArray(church.tags) && church.tags.includes('Kids programs')) {
+    return { label: 'Kids program', source: 'community' }
+  }
   return null
 }
 
-// What matched, one entry per matched value, each with where it came from.
+function bandLabel(value) {
+  return KID_BANDS.find(band => band.value === value)?.label ?? value
+}
+
+function kidsSignals(church, need) {
+  const signals = []
+  const programs = kidsPrograms(church)
+  if (need.bands.length) {
+    const match = programs.find(program => program.age_bands.some(band => need.bands.includes(band)))
+    if (match) {
+      const bands = match.age_bands.filter(band => need.bands.includes(band)).map(bandLabel).join(', ')
+      signals.push({ pref: 'kids', label: `${match.name_stated || 'Program'} (${bands})`, source: 'website', weight: 1 })
+    } else {
+      const vague = vagueKidsSignal(church)
+      if (vague) signals.push({ pref: 'kids', ...vague, weight: 0.5 })
+    }
+  }
+  if (need.weekday_care) {
+    // Care for the asked-for ages, or for ages the page doesn't state.
+    const care = programs.find(program => program.program_type === 'weekday_care' && (
+      !need.bands.length || !program.age_bands.length || program.age_bands.some(band => need.bands.includes(band))))
+    if (care) {
+      signals.push({ pref: 'weekday', label: 'Weekday childcare', source: 'website', weight: 1 })
+    }
+  }
+  return signals
+}
+
+// What matched, each with where it came from and how much it counts: one
+// entry per matched language, the best entry for each other question.
 export function fitSignals(church, prefs) {
   if (!hasPreferences(prefs)) return []
   const signals = []
   for (const language of prefs.languages) {
     const match = languageSignals(church).find(signal => norm(signal.language) === norm(language))
-    if (match) signals.push({ pref: 'language', label: `${language} service`, source: match.source })
+    if (match) signals.push({ pref: 'language', label: `${language} service`, source: match.source, weight: 1 })
   }
   const style = church.extracted_tags?.worship_style
   if (typeof style === 'string' && prefs.worship.includes(style)) {
-    signals.push({ pref: 'worship', label: `${worshipLabel(style)} worship`, source: 'website' })
+    signals.push({ pref: 'worship', label: `${worshipLabel(style)} worship`, source: 'website', weight: 1 })
   }
-  if (prefs.kids) {
-    const source = kidsSignal(church)
-    if (source) signals.push({ pref: 'kids', label: 'Kids program', source })
-  }
-  return signals
+  return [...signals, ...kidsSignals(church, kidsNeed(prefs.kids))]
 }
 
-// How many of the three questions this church answers yes to.
+// One point per question this church answers yes to (language, worship, the
+// asked-for ages, weekday care); half a point for a kids program of unstated
+// ages. fit_sql in backend/db/repository.py counts the same, case for case
+// (fitParityCases.json).
 export function fitScore(church, prefs) {
-  return new Set(fitSignals(church, prefs).map(signal => signal.pref)).size
+  const best = new Map()
+  for (const signal of fitSignals(church, prefs)) {
+    best.set(signal.pref, Math.max(best.get(signal.pref) ?? 0, signal.weight))
+  }
+  return [...best.values()].reduce((sum, weight) => sum + weight, 0)
 }
 
 export function fitReason(church, prefs) {
   const sources = { verified: 'checked source', website: 'from website', community: 'from reviews' }
   return fitSignals(church, prefs).map(signal => `${signal.label} (${sources[signal.source]})`).join(' · ')
+}
+
+const PROGRAM_TYPE_LABELS = {
+  during_service: 'During services',
+  weekday_care: 'Weekday childcare or school',
+  other: 'Activities and groups',
+}
+
+export function programTypeLabel(type) {
+  return PROGRAM_TYPE_LABELS[type] ?? null
+}
+
+const SHORT_BAND = { preschool: 'Under 5', children: 'K–5', youth: '6–12' }
+
+// "Under 5: Nursery · K–5: Kids Church · 6–12: Youth Group" for a result card:
+// the first stated program for each family age band, youngest first. Young
+// adults stay on the detail page.
+export function programHighlights(church, max = 3) {
+  const programs = kidsPrograms(church)
+  const lines = []
+  const named = new Set()
+  for (const { value } of KID_BANDS) {
+    // AWANA for ages 2-18 is named once, under its youngest band.
+    const program = programs.find(p => p.age_bands.includes(value) && !named.has(p))
+    if (program) {
+      named.add(program)
+      const what = program.name_stated || programTypeLabel(program.program_type) || 'Program'
+      lines.push(`${SHORT_BAND[value]}: ${what}`)
+    }
+  }
+  if (!lines.length && programs.some(p => p.age_bands.length === 0)) lines.push('Kids program (ages not stated)')
+  return lines.slice(0, max)
+}
+
+// The detail page's sections, youngest first. A program for several bands is
+// listed once, under its youngest, with its other bands on it. Young adults
+// are their own section, never folded into youth.
+export function programGroups(church) {
+  const order = [
+    ...KID_BANDS.map(band => ({ key: band.value, heading: band.heading })),
+    { key: 'unstated', heading: 'Ages not stated' },
+    { key: 'young_adult', heading: 'Young adults' },
+  ]
+  const groups = new Map(order.map(group => [group.key, { ...group, programs: [] }]))
+  for (const program of kidsPrograms(church)) {
+    const key = youngAdultsOnly(program)
+      ? 'young_adult'
+      : KID_BANDS.find(band => program.age_bands.includes(band.value))?.value ?? 'unstated'
+    groups.get(key).programs.push(program)
+  }
+  return [...groups.values()].filter(group => group.programs.length)
+}
+
+export function bandLabels(program) {
+  return program.age_bands.map(band => band === 'young_adult' ? 'Young adults' : bandLabel(band))
 }
 
 // Best fit first; equal fits keep the order they came in, so with no
@@ -215,6 +321,7 @@ function hasFitDetails(church) {
   return hasWebsiteProfile(church)
     || languageSignals(church).some(signal => signal.source === 'verified')
     || hasValue(church.kids_program)
+    || kidsPrograms(church).length > 0
 }
 
 const CHIP_BASE = ['English', 'Spanish']

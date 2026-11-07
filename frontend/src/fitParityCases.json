@@ -1,6 +1,6 @@
 {
-  "_about": "Shared by churchProfile.test.js (fitScore) and tests/test_scoped_search.py (fit_sql): server-side For you ranking must count the same evidence the cards explain.",
-  "prefs": { "languages": ["Vietnamese", "Spanish"], "worship": ["liturgical"], "kids": true },
+  "_about": "Shared by churchProfile.test.js (fitScore) and tests/test_scoped_search.py (fit_sql): server-side For you ranking must count the same evidence the cards explain. A case's own `prefs` replaces the default.",
+  "prefs": { "languages": ["Vietnamese", "Spanish"], "worship": ["liturgical"], "kids": { "bands": ["preschool"], "weekday_care": true } },
   "cases": [
     { "name": "verified language", "service_languages": " English ; Vietnamese ", "score": 1 },
     { "name": "website language, case differs", "extracted_tags": { "service_languages": ["spanish"] }, "score": 1 },
@@ -8,13 +8,23 @@
     { "name": "name-derived language is not evidence", "language": "Vietnamese", "cultural_background": "Vietnamese", "score": 0 },
     { "name": "malformed extraction", "extracted_tags": { "service_languages": "Spanish", "programs": "Kids" }, "score": 0 },
     { "name": "worship style", "extracted_tags": { "worship_style": "liturgical" }, "score": 1 },
-    { "name": "verified kids program", "kids_program": "Sunday school for ages 3-10", "score": 1 },
+    { "name": "verified kids program, ages unknown to us", "kids_program": "Sunday school for ages 3-10", "score": 0.5 },
     { "name": "blank kids program", "kids_program": "   ", "score": 0 },
-    { "name": "extracted children's ministry", "extracted_tags": { "programs": ["Children's ministry"] }, "score": 1 },
+    { "name": "extracted children's ministry", "extracted_tags": { "programs": ["Children's ministry"] }, "score": 0.5 },
     { "name": "program word inside another word", "extracted_tags": { "programs": ["Childcare referrals"] }, "score": 0 },
-    { "name": "kids rated by three reviewers", "reviews": [5, 5, 4.5], "score": 1 },
+    { "name": "kids rated by three reviewers", "reviews": [5, 5, 4.5], "score": 0.5 },
     { "name": "kids rated by two reviewers", "reviews": [5, 5], "score": 0 },
-    { "name": "everything", "service_languages": "Spanish", "extracted_tags": { "worship_style": "liturgical", "programs": ["Youth group"] }, "score": 3 },
+    { "name": "page states the asked-for band", "kids_programs": [{ "program_type": "during_service", "age_bands": ["preschool"] }], "score": 1 },
+    { "name": "stated band beats weaker evidence, counted once", "kids_program": "Nursery", "kids_programs": [{ "program_type": null, "age_bands": [] }, { "program_type": "during_service", "age_bands": ["preschool", "children"] }], "score": 1 },
+    { "name": "program for other ages only", "kids_programs": [{ "program_type": "other", "age_bands": ["youth"] }], "score": 0 },
+    { "name": "page states no ages", "kids_programs": [{ "program_type": "other", "age_bands": [] }], "score": 0.5 },
+    { "name": "young adults are not kids", "kids_programs": [{ "program_type": "other", "age_bands": ["young_adult"] }], "score": 0 },
+    { "name": "weekday preschool", "kids_programs": [{ "program_type": "weekday_care", "age_bands": ["preschool"] }], "score": 2 },
+    { "name": "weekday care, ages not stated", "kids_programs": [{ "program_type": "weekday_care", "age_bands": [] }], "score": 1.5 },
+    { "name": "weekday care for other ages", "kids_programs": [{ "program_type": "weekday_care", "age_bands": ["youth"] }], "score": 0 },
+    { "name": "weekday care alone, any ages", "prefs": { "languages": [], "worship": [], "kids": { "bands": [], "weekday_care": true } }, "kids_programs": [{ "program_type": "weekday_care", "age_bands": ["youth"] }], "score": 1 },
+    { "name": "old saved kids: true means any band", "prefs": { "languages": [], "worship": [], "kids": true }, "kids_programs": [{ "program_type": "other", "age_bands": ["youth"] }], "score": 1 },
+    { "name": "everything", "service_languages": "Spanish", "extracted_tags": { "worship_style": "liturgical", "programs": ["Youth group"] }, "kids_programs": [{ "program_type": "weekday_care", "age_bands": ["preschool"] }], "score": 4 },
     { "name": "nothing known", "score": 0 }
   ]
 }

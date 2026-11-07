@@ -316,6 +316,53 @@ button:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
   font-weight: 600;
 }
 
+.card-programs {
+  display: flex;
+  flex-wrap: wrap;
+  align-items: baseline;
+  gap: 0.15rem 0.4rem;
+  margin: 0.4rem 0 0;
+  font-size: 0.75rem;
+  line-height: 1.4;
+  color: var(--text-2);
+  overflow-wrap: anywhere;
+}
+
+/* ── Kids & youth programs (church_programs) ── */
+.programs-section { margin-top: 0.5rem; }
+.programs-section > .section-title { margin-top: 1.25rem; }
+.program-group { margin-top: 0.75rem; }
+.program-group-title {
+  margin: 0 0 0.35rem;
+  font-size: 0.72rem;
+  font-weight: 700;
+  text-transform: uppercase;
+  letter-spacing: 0.08em;
+  color: var(--text-3);
+}
+.program-list { list-style: none; margin: 0; padding: 0; display: grid; gap: 0.5rem; }
+.program-item {
+  padding: 0.6rem 0.8rem;
+  background: var(--surface);
+  border: 1px solid var(--border);
+  border-left: 3px solid var(--sienna);
+  border-radius: 0 6px 6px 0;
+  min-width: 0;
+}
+.program-name { margin: 0; font-weight: 700; font-size: 0.9rem; color: var(--text); overflow-wrap: anywhere; }
+.program-facts { margin: 0.15rem 0 0; font-size: 0.82rem; color: var(--text-2); overflow-wrap: anywhere; }
+.program-source { margin: 0.3rem 0 0; font-size: 0.75rem; color: var(--text-3); }
+.program-source a { color: var(--sienna); }
+.program-evidence { margin-top: 0.3rem; font-size: 0.78rem; color: var(--text-2); }
+.program-evidence summary { cursor: pointer; color: var(--sienna); width: fit-content; }
+.program-evidence summary:focus-visible { outline: 2px solid var(--sienna); outline-offset: 2px; }
+.program-evidence blockquote {
+  margin: 0.3rem 0 0;
+  padding-left: 0.6rem;
+  border-left: 2px solid var(--border);
+  overflow-wrap: anywhere;
+}
+
 /* ── ChurchDetail page ───────────────────── */
 .detail-page { max-width: 720px; margin: 0 auto; padding: 1.5rem; }
 .detail-map {

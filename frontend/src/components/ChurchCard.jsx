@@ -1,7 +1,7 @@
 import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import Icon from './Icon'
-import { languageSignals } from '../churchProfile'
+import { languageSignals, programHighlights } from '../churchProfile'
 
 const DENOM_COLORS = {
   baptist:     '#9A3412',
@@ -55,6 +55,7 @@ function CardBody({ church, showDistance, showLocation, fitReason }) {
   const languageTags = languageSignals(church)
     .filter(signal => signal.source !== 'website' && signal.language.toLowerCase() !== 'english')
     .map(signal => signal.language)
+  const programs = programHighlights(church)
 
   return (
     <div className="card-body">
@@ -103,6 +104,12 @@ function CardBody({ church, showDistance, showLocation, fitReason }) {
             <span key={tag} className="website-card-chip">{tag}</span>
           ))}
         </div>
+      )}
+      {programs.length > 0 && (
+        <p className="card-programs">
+          <span className="website-card-source">Kids · from their website</span>
+          <span>{programs.join(' · ')}</span>
+        </p>
       )}
     </div>
   )
