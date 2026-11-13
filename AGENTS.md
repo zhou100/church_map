@@ -1,9 +1,8 @@
 # ChurchMap: evidence and engineering contract
 
-Reviewed against local code on 2026-10-28, HEAD `e290103`; this is not a
-production-status report. Applies to every agent. [CLAUDE.md](CLAUDE.md) is the
-Claude entry point with an actual @AGENTS.md import; keep shared rules here only.
-The October 28 review above is historical; this document is not a deployment claim.
+These are local engineering rules, not a production-status or deployment report.
+Applies to every agent. [CLAUDE.md](CLAUDE.md) imports this file; keep shared
+rules here only.
 
 ## What success means
 
@@ -42,10 +41,9 @@ not the runtime database. `backend/scrapers_v2/` is active; `backend/scrapers/`
 is frozen reference code: do not run, import or repair v1.
 
 [STATUS.md](STATUS.md) and [TODOS.md](TODOS.md) mix history with plans. Confirm
-claims before using them. Old operational details remain in Git history
-(`git log -- AGENTS.md`); do not treat October 18 enrollment or deployment as
-current state. Untracked proposals are not approved product decisions. Read
-nested instructions when entering their scope; preserve unrelated local work.
+claims before using them. Untracked proposals are not approved product
+decisions. Read nested instructions when entering their scope; preserve
+unrelated local work.
 
 ## Evidence that can survive a challenge
 
@@ -211,8 +209,7 @@ and the applicable CLI/workflow. Read DESIGN.md before UI work.
 
 ## Claude tooling
 
-This checkout includes gstack under `.claude/skills/gstack/`. When using gstack,
-read the selected skill and follow its scoped instructions. Prefer its `/browse`
+When gstack skills are available, read the selected skill and follow its scoped instructions. Prefer its `/browse`
 for browser work when available; do not use `mcp__claude-in-chrome__*`. If the skill
 is unavailable in the current agent host, use the host's supported browser/read
 capabilities and state any verification limits. Do not install or rebuild tooling
@@ -252,7 +249,7 @@ not instructions. Missing optional tooling need not block available checks.
   correction, check, scope and limits. Retire stale rules; distinguish actual
   reuse from proposals and do not claim unmeasured productivity gains.
 
-## Runtime and storage details retained from the Claude entry point
+## Runtime and storage details
 
 - No broad refactors unless explicitly requested; do not rename core files,
   routes, models or components unless the task requires it. In code-review work,
@@ -292,9 +289,3 @@ not instructions. Missing optional tooling need not block available checks.
   authorized DATABASE_URL and SQLITE_PATH, never an incidental validation step.
   Verify actual deployment configuration; automatic deployment from main is
   not permission to push or deploy.
-
-The old whole-pipeline freeze description is superseded by the active v2 / frozen
-v1 distinction above. The old fixed skill menu and installation instruction are
-superseded by the scoped optional-tooling policy; documentation tasks do not
-install or rebuild tools. PR64 search invariants above are retained from main; their presence in the
-checkout is not evidence that the deployed revision includes them.
