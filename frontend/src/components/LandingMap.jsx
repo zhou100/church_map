@@ -4,6 +4,8 @@ import L from 'leaflet'
 import { churchMarkerIcon } from './mapMarker'
 import { keepFitted, overlayPadding } from './mapFit'
 import 'leaflet/dist/leaflet.css'
+import DenominationLabel from './DenominationLabel'
+import { denominationLabel } from '../churchProfile'
 
 // Loaded with a dynamic import from Landing: Leaflet touches `window` at
 // import time, and the landing page is server-rendered by scripts/prerender.mjs.
@@ -63,7 +65,7 @@ export default function LandingMap({ churches, hoveredId, onHover, overlayRef })
           <Popup>
             <div className="map-popup">
               <strong>{c.name}</strong>
-              {c.denomination && <span className="popup-denom">{c.denomination}</span>}
+              {denominationLabel(c) && <span className="popup-denom"><DenominationLabel church={c} /></span>}
               {c.avg_rating != null && (
                 <span className="popup-rating">★ {c.avg_rating.toFixed(1)}</span>
               )}

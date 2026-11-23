@@ -81,6 +81,7 @@ _DIM_SELECT = """
         c.city,
         c.state,
         c.denomination,
+        c.extracted_denomination,
         c.service_times,
         c.website,
         c.phone,
@@ -433,6 +434,7 @@ class ChurchRepository:
                 c.city,
                 c.state,
                 c.denomination,
+                c.extracted_denomination,
                 c.website,
                 c.phone,
                 c.website_summary,
@@ -469,7 +471,7 @@ class ChurchRepository:
             )
             SELECT
                 c.church_id AS id, c.name, c.address, c.city, c.state,
-                c.denomination, c.service_times, c.website, c.phone,
+                c.denomination, c.extracted_denomination, c.service_times, c.website, c.phone,
                 c.language, c.cultural_background,
                 c.latitude, c.longitude,
                 ROUND(AVG(r.rating)::numeric, 1)::float8 AS avg_rating,
@@ -905,7 +907,7 @@ class CrawlRepository:
         *,
         website_summary: str | None,
         extracted_tags: dict,
-        denomination: str | None,
+        extracted_denomination: str | None,
         prompt_version: str,
         model: str,
         confidence: dict,
@@ -921,7 +923,9 @@ class CrawlRepository:
                    extracted_status          = 'ok',
                    extracted_confidence      = %s::jsonb,
                    extracted_source_snippets = %s::jsonb,
-                   denomination              = COALESCE(%s, denomination)
+                   -- The model's latest reading of the website, never the
+                   -- directory's denomination (scope and labels rely on it).
+                   extracted_denomination    = %s
              WHERE church_id = %s
         """
         async with self.con.cursor() as cur:
@@ -934,7 +938,7 @@ class CrawlRepository:
                     model,
                     json.dumps(confidence, ensure_ascii=False),
                     json.dumps(source_snippets, ensure_ascii=False),
-                    denomination,
+                    extracted_denomination,
                     church_id,
                 ),
             )

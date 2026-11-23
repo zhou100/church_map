@@ -128,3 +128,17 @@ def test_detail_carries_fact_sources(monkeypatch):
         "ages_stated": "0-3", "schedule_stated": None, "campus_stated": None,
         "excerpt": "Nursery (0-3) during both services", "source_url": "https://grace.example.org/kids",
         "checked_at": "2026-10-20T00:00:00+00:00", "evidence_class": "website_claim"}]
+
+
+def test_website_denomination_is_its_own_field_on_every_read():
+    """Migration 0009: the extractor's reading travels beside the directory's
+    denomination on list, detail and prerender rows, never in its place."""
+    row = {**BASE, "denomination": "Christian Reformed", "extracted_denomination": "Unitarian Universalist"}
+    for shape in (router_mod._row_to_church, router_mod._row_to_list_church, router_mod._row_to_prerender_church):
+        church = shape(dict(row))
+        assert (church["denomination"], church["extracted_denomination"]) == \
+            ("Christian Reformed", "Unitarian Universalist"), shape.__name__
+    for name, call in {"city": lambda r: r.list_by_city_state("San Mateo", "CA", 5, 0),
+                       "detail": lambda r: r.get(1), "prerender": lambda r: r.list_prerender_profiles(5, 0),
+                       "similar": lambda r: r.similar(1)}.items():
+        assert "c.extracted_denomination" in _sql(call), name

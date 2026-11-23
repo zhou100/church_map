@@ -370,7 +370,7 @@ async def extract_for_church(
         church_id,
         website_summary=fields["community_summary"] or None,
         extracted_tags=tags,
-        denomination=fields["denomination"],
+        extracted_denomination=fields["denomination"],
         prompt_version=PROMPT_VERSION,
         model=MODEL,
         confidence=norm["confidence"],

@@ -1,4 +1,6 @@
 import AboutSection from './AboutSection'
+import DenominationLabel from './DenominationLabel'
+import { denominationLabel } from '../churchProfile'
 
 export default function PrerenderedChurch({ church }) {
   const location = [church.address, church.city, church.state].filter(Boolean).join(', ')
@@ -9,7 +11,7 @@ export default function PrerenderedChurch({ church }) {
       <article>
         <header className="detail-header">
           <h1>{church.name}</h1>
-          {church.denomination && <p className="denom">{church.denomination}</p>}
+          {denominationLabel(church) && <p className="denom"><DenominationLabel church={church} /></p>}
           {location && <p className="address">{location}</p>}
           {church.website && (
             <p><a className="info-link" href={church.website}>Church website</a></p>

@@ -20,6 +20,7 @@ import { EMPTY_PREFERENCES, hasPreferences, loadPreferences, savePreferences } f
 import { prefetchFirstPage } from '../searchScope'
 import { previewKey, previewStatus as previewStatusOf, previewStep } from '../landingPreview'
 import { directoryCounts } from '../directoryCounts'
+import DenominationLabel from '../components/DenominationLabel'
 
 const PREVIEW_LIMIT = 100
 const NO_CHURCHES = []
@@ -315,7 +316,7 @@ export default function Landing({ exampleChurch }) {
                       >
                         <strong>{church.name}</strong>
                         <span>
-                          {church.denomination || 'Church'}
+                          <DenominationLabel church={church} fallback="Church" />
                           {hasWebsiteProfile(church) && <> · <Icon name="check" size={12} /> Website read</>}
                         </span>
                         {fitReason(church, prefs) && (
