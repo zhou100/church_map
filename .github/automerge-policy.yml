@@ -1,0 +1,163 @@
+# Auto-merge policy for zhou100/church_map.
+#
+# Read by .github/scripts/automerge_policy.py (the deterministic gate) and
+# .github/scripts/automerge_gate.py (the workflow driver). The workflow runs
+# from the BASE branch via pull_request_target, so a PR can never loosen the
+# rules it is judged by: editing this file, the workflow or the gate scripts
+# is itself a needs_human hit (see `meta_paths`).
+#
+# A PR is auto-merged (squash, after required CI) only when ALL hold:
+#   1. no rule in `protected` matches any changed file or changed line;
+#   2. no file is deleted or renamed;
+#   3. additions + deletions <= max_changed_lines;
+#   4. every file is docs / tests / frontend style — or, for any other file,
+#      the Claude review classifies the change as a small bug fix or copy edit;
+#   5. the Claude review reports no blocking issue (no review = needs_human);
+#   6. GitHub reports no merge conflict;
+#   7. main has required status checks, so GitHub auto-merge actually waits
+#      for CI instead of merging immediately.
+# Anything else is labelled `needs-review` with the reasons in a comment.
+#
+# Globs: `**` crosses directories, `*` and `?` stay within one path segment.
+# Content patterns are Python regexes matched against changed (+/-) lines
+# only, case-sensitive unless the pattern says (?i). Markdown files are not
+# content-scanned (prose mentioning SQL or tokens is not SQL or tokens), but
+# path rules still apply to them.
+
+version: 1
+
+max_changed_lines: 200        # additions + deletions across the whole PR
+merge_method: squash
+needs_human_label: needs-review
+base_branch: main
+# Authors whose PRs may auto-merge (GitHub author_association).
+trusted_author_associations: [OWNER, MEMBER, COLLABORATOR]
+
+# Changing the gate itself always needs a human.
+meta_paths:
+  - .github/automerge-policy.yml
+  - .github/workflows/automerge.yml
+  - .github/scripts/automerge_*.py
+  - tests/test_automerge_*.py
+  - tests/fixtures/automerge/**
+
+content_scan_exempt:
+  - "**/*.md"
+
+# Any match here → needs_human.
+protected:
+  - id: db_sql
+    reason: 数据库迁移或 SQL
+    paths:
+      - migrations/**
+      - "**/*.sql"
+      - backend/db/**
+      - analytics/dbt/**
+    content:
+      - '\b(SELECT|INSERT\s+INTO|DELETE\s+FROM|TRUNCATE|UPSERT|RETURNING)\b'
+      - '\bUPDATE\s+\w+\s+SET\b'
+      - '\b(CREATE|ALTER|DROP)\s+(OR\s+REPLACE\s+)?(TABLE|INDEX|VIEW|MATERIALIZED|FUNCTION|TRIGGER|SCHEMA|EXTENSION|COLUMN|SEQUENCE|TYPE)\b'
+      - '\bON\s+CONFLICT\b'
+      - '\.execute(many)?\('
+      - '\b(psycopg|sqlite3|sqlalchemy)\b'
+
+  - id: rls_permissions
+    reason: RLS / 数据库权限
+    paths:
+      - "**/*rls*"
+      - "**/*polic*"
+      - "**/*grant*"
+      - "**/*role*.sql"
+    content:
+      - '(?i)row\s+level\s+security'
+      - '\b(GRANT|REVOKE)\b'
+      - '\b(CREATE|ALTER|DROP)\s+(POLICY|ROLE|USER)\b'
+      - '\bSET\s+ROLE\b'
+      - '\bSECURITY\s+DEFINER\b'
+
+  - id: auth_secrets_env
+    reason: 登录 / 密钥 / 环境变量
+    paths:
+      - backend/auth.py
+      - backend/env_loader.py
+      - frontend/src/googleIdentity.js
+      - "**/.env*"
+      - "**/env.local"
+      - "**/*secret*"
+      - "**/*credential*"
+    content:
+      - 'os\.environ'
+      - '\bgetenv\('
+      - 'import\.meta\.env'
+      - 'process\.env'
+      - '\$\{\{\s*(secrets|vars)\.'
+      - '(?i)\b(api[_-]?key|secret|password|passwd|private[_-]?key|access[_-]?key)\b'
+      - '\b(CRAWL_TOKEN|X-Crawl-Token|READ_ONLY|DATABASE_URL|GOOGLE_CLIENT_ID)\b'
+      - '(?i)\b(tokeninfo|get_current_user|authorization|bearer)\b'
+
+  - id: deps_deploy_ci
+    reason: 依赖 / Docker / 部署配置 / CI 配置
+    paths:
+      - "**/requirements*.txt"
+      - "**/package.json"
+      - "**/package-lock.json"
+      - "**/pnpm-lock.yaml"
+      - "**/yarn.lock"
+      - "**/pyproject.toml"
+      - "**/setup.py"
+      - "**/setup.cfg"
+      - "**/Dockerfile*"
+      - "**/.dockerignore"
+      - render.yaml
+      - fly.toml
+      - vercel.json
+      - frontend/vercel.json
+      - frontend/vite.config.*
+      - scripts/docker-entrypoint.sh
+      - Makefile
+      - .github/**
+
+  - id: prod_write_or_spend
+    reason: 会写生产数据或花钱的脚本（publish / crawl / 付费模型调用）
+    paths:
+      - scripts/**
+      - backend/scrapers_v2/**
+      - backend/enrichment.py
+      - evals/**
+      - analytics/scripts/**
+      - muse_handoff/**
+    content:
+      - '--apply\b'
+      - '(?i)\b(anthropic|openai|openrouter|claude-[a-z]|gpt-[0-9])'
+      - '(?i)places\.googleapis|maps\.googleapis|PLACES_API'
+      - '\b(publish_verified|publish_gate|run_fetch_batch|requeue)\b'
+
+# Files that may auto-merge on the deterministic check alone.
+allowed:
+  docs:
+    - "**/*.md"
+    - docs/**
+  tests:
+    - tests/**
+    - "frontend/**/*.test.js"
+    - "frontend/**/*.test.jsx"
+  frontend_style:
+    - "frontend/src/**/*.css"
+
+# Any other non-protected file (e.g. a .jsx copy edit or a small Python fix)
+# auto-merges only if the Claude review classifies the change as one of:
+review_kinds_allowed_for_code: [small_bugfix, copy_style]
+
+review:
+  # Billed through OpenRouter (secret OPENROUTER_API_KEY), OpenRouter model id.
+  model: anthropic/claude-opus-5.5
+  effort: medium
+  # The review can only block, so skip the paid call when the rules or the
+  # PR's GitHub state (draft, fork, conflict, no required checks…) already
+  # force needs_human. Set false to get review comments on every PR.
+  skip_when_needs_human: true
+  # Diffs bigger than this are not sent (they would be needs_human on size
+  # anyway); the comment says the review was skipped instead of truncating.
+  max_diff_chars: 300000
+  # Project rules sent to the reviewer as context (read from the base branch).
+  context_files: [AGENTS.md, DESIGN.md]

@@ -1,0 +1,48 @@
+name: automerge-gate
+
+# Judges each PR against .github/automerge-policy.yml, asks Claude for a
+# review (via OpenRouter), and either arms GitHub auto-merge (squash, after required CI) or
+# labels the PR needs-review with the reasons in a sticky comment.
+#
+# pull_request_target, not pull_request: the workflow and the gate scripts
+# come from the BASE branch, so a PR cannot edit the rules it is judged by
+# (editing them is a needs_human hit anyway). The PR's code is never checked
+# out or run here; only its diff is read through the API and sent to Claude.
+# Do not add a checkout of the PR head to this job.
+
+on:
+  pull_request_target:
+    types: [opened, synchronize, reopened, ready_for_review]
+
+permissions:
+  contents: write        # gh pr merge --auto
+  pull-requests: write   # comment, labels, auto-merge
+  issues: write          # create the needs-review label
+
+concurrency:
+  group: automerge-gate-${{ github.event.pull_request.number }}
+  cancel-in-progress: true
+
+jobs:
+  gate:
+    runs-on: ubuntu-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          ref: ${{ github.event.pull_request.base.sha }}
+          persist-credentials: false
+
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.11'
+
+      - name: Install gate dependencies
+        run: pip install PyYAML==6.0.3
+
+      - name: Judge PR
+        env:
+          GH_TOKEN: ${{ github.token }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
+          PR_NUMBER: ${{ github.event.pull_request.number }}
+        run: python .github/scripts/automerge_gate.py --pr "$PR_NUMBER"
