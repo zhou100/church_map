@@ -75,6 +75,10 @@ _CHAR_MAP = str.maketrans({
     "​": None, "‌": None, "‍": None, "﻿": None, "­": None,
 })
 _SPACES = re.compile(r"[^\S\n]+")
+# Characters XML forbids. lxml parses HTML containing them but refuses to set
+# them as element text, so one such page (a stray form feed or NUL) would stop
+# the whole batch. They carry no words; a space keeps the words apart.
+_NOT_XML = re.compile("[\x00-\x08\x0b\x0c\x0e-\x1f￾￿]")
 
 
 def normalize_text(text: str) -> str:
@@ -90,7 +94,7 @@ def page_text(raw: bytes) -> str:
     (an address or "Nursery available" often sits there), not trafilatura's
     article text. Program offsets refer to this string."""
     try:
-        doc = lxml_html.document_fromstring(raw.decode("utf-8", errors="replace"))
+        doc = lxml_html.document_fromstring(_NOT_XML.sub(" ", raw.decode("utf-8", errors="replace")))
     except Exception:
         return ""
     for el in [e for e in doc.iter(*_DROP_TAGS)]:

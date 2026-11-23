@@ -69,6 +69,14 @@ def test_page_text_keeps_footer_and_nav_but_not_scripts():
     assert "grades 6-12" in text                    # en dash entity normalized
 
 
+def test_page_text_survives_characters_xml_forbids():
+    # Seen in the production archive (2026-11-23 dry run): a form feed or NUL in
+    # a page made lxml raise and stopped the whole batch.
+    raw = b"<html><body><p>Nursery\x0cfor infants\x00 and\x0btoddlers</p><div>Kids\x1fChurch</div></body></html>"
+    text = page_text(raw)
+    assert text == "Nursery for infants and toddlers\nKids Church"
+
+
 def test_locate_is_exact_unique_and_offsets_are_ours():
     text = PAGES[0].text
     quote = "Our nursery is open during both services for infants through age 3."
