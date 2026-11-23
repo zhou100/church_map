@@ -149,7 +149,8 @@ allowed:
 review_kinds_allowed_for_code: [small_bugfix, copy_style]
 
 review:
-  model: claude-opus-5-5
+  # Billed through OpenRouter (secret OPENROUTER_API_KEY), OpenRouter model id.
+  model: anthropic/claude-opus-5.5
   effort: medium
   # The review can only block, so skip the paid call when the rules or the
   # PR's GitHub state (draft, fork, conflict, no required checks…) already

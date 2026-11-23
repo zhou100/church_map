@@ -1,7 +1,7 @@
 name: automerge-gate
 
 # Judges each PR against .github/automerge-policy.yml, asks Claude for a
-# review, and either arms GitHub auto-merge (squash, after required CI) or
+# review (via OpenRouter), and either arms GitHub auto-merge (squash, after required CI) or
 # labels the PR needs-review with the reasons in a sticky comment.
 #
 # pull_request_target, not pull_request: the workflow and the gate scripts
@@ -38,11 +38,11 @@ jobs:
           python-version: '3.11'
 
       - name: Install gate dependencies
-        run: pip install anthropic==2.11.0 PyYAML==6.0.3
+        run: pip install PyYAML==6.0.3
 
       - name: Judge PR
         env:
           GH_TOKEN: ${{ github.token }}
-          ANTHROPIC_API_KEY: ${{ secrets.ANTHROPIC_API_KEY }}
+          OPENROUTER_API_KEY: ${{ secrets.OPENROUTER_API_KEY }}
           PR_NUMBER: ${{ github.event.pull_request.number }}
         run: python .github/scripts/automerge_gate.py --pr "$PR_NUMBER"
