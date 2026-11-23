@@ -162,12 +162,14 @@ def main(argv=None) -> int:
     files = ap.fetch_pr_files(args.pr, args.repo)
     result = ap.classify(files, policy)
 
+    checks = required_checks(args.repo, policy["base_branch"])
     if args.no_review:
         review, note = None, "本次运行跳过了审查（--no-review）"
+    elif not ap.review_needed(result, pr, policy, checks):
+        review, note = None, "规则或 PR 状态已判定需要人工，未调用 Claude（省钱，结果不会变）"
     else:
         review, note = ar.review_pr(pr["title"], pr["body"], files, policy)
 
-    checks = required_checks(args.repo, policy["base_branch"])
     decision = ap.decide(result, review, pr, policy, required_checks=checks)
 
     armed = ""

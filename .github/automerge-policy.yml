@@ -150,7 +150,11 @@ review_kinds_allowed_for_code: [small_bugfix, copy_style]
 
 review:
   model: claude-opus-5-5
-  effort: high
+  effort: medium
+  # The review can only block, so skip the paid call when the rules or the
+  # PR's GitHub state (draft, fork, conflict, no required checks…) already
+  # force needs_human. Set false to get review comments on every PR.
+  skip_when_needs_human: true
   # Diffs bigger than this are not sent (they would be needs_human on size
   # anyway); the comment says the review was skipped instead of truncating.
   max_diff_chars: 300000

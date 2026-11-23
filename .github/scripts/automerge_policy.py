@@ -200,12 +200,9 @@ def review_is_blocking(review: dict) -> bool:
     )
 
 
-def decide(policy_result: PolicyResult, review: dict | None, pr: dict, policy: dict,
-           *, required_checks: list[str]) -> Decision:
-    """Combine every gate. `review` is None when the review did not run or
-    failed; `pr` carries GitHub state (see automerge_gate.pr_state)."""
-    reasons = list(policy_result.reasons)
-
+def pr_blockers(pr: dict, policy: dict, required_checks: list[str]) -> list[str]:
+    """Reasons from GitHub state alone (no diff, no review)."""
+    reasons = []
     if pr.get("draft"):
         reasons.append("PR 是 draft")
     if pr.get("base") != policy["base_branch"]:
@@ -221,8 +218,35 @@ def decide(policy_result: PolicyResult, review: dict | None, pr: dict, policy: d
     elif mergeable != "MERGEABLE":
         reasons.append(f"GitHub 还没算出能否合并（mergeable={mergeable}）")
 
+    if not required_checks:
+        reasons.append(
+            f"{policy['base_branch']} 没有 required status checks，"
+            "开启 auto-merge 会不等 CI 直接合并"
+        )
+    return reasons
+
+
+def review_needed(policy_result: PolicyResult, pr: dict, policy: dict,
+                  required_checks: list[str]) -> bool:
+    """Only pay for a Claude review when it can still change the outcome:
+    if the rules or GitHub state already force needs_human, it cannot."""
+    if not policy["review"].get("skip_when_needs_human", True):
+        return True
+    return not policy_result.reasons and not pr_blockers(pr, policy, required_checks)
+
+
+def decide(policy_result: PolicyResult, review: dict | None, pr: dict, policy: dict,
+           *, required_checks: list[str]) -> Decision:
+    """Combine every gate. `review` is None when the review did not run
+    (skipped, failed, refused, too large); `pr` carries GitHub state (see
+    automerge_gate.pr_state)."""
+    reasons = list(policy_result.reasons) + pr_blockers(pr, policy, required_checks)
+
     if review is None:
-        reasons.append("Claude 审查没有跑成（缺 key、失败、被拒或 diff 过大）")
+        # Fail closed. When other reasons already block, the review was
+        # skipped on purpose and repeating that here is noise.
+        if not reasons:
+            reasons.append("Claude 审查没有跑成（缺 key、失败、被拒或 diff 过大）")
     else:
         if review_is_blocking(review):
             reasons.append("Claude 审查报告了阻塞问题")
@@ -232,12 +256,6 @@ def decide(policy_result: PolicyResult, review: dict | None, pr: dict, policy: d
                 f"改了代码文件，但审查判定改动类型为 {review.get('change_kind')!r}，"
                 f"不属于 {allowed_kinds}"
             )
-
-    if not required_checks:
-        reasons.append(
-            f"{policy['base_branch']} 没有 required status checks，"
-            "开启 auto-merge 会不等 CI 直接合并"
-        )
 
     # de-dup, keep order
     seen, out = set(), []

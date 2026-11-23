@@ -197,6 +197,27 @@ def test_github_state_needs_human(pr, why):
     assert d.verdict == ap.NEEDS_HUMAN and any(why in x for x in d.reasons), d.reasons
 
 
+def test_review_only_runs_when_it_can_change_the_outcome():
+    docs = classify(f("docs/a.md"))
+    assert ap.review_needed(docs, GOOD_PR, POLICY, ["pytest"])
+    # rules already block → no paid call
+    assert not ap.review_needed(classify(f("migrations/0010.sql", "+SELECT 1;\n")),
+                                GOOD_PR, POLICY, ["pytest"])
+    # GitHub state already blocks → no paid call (fork spam cannot spend money)
+    for pr in ({"cross_repository": True}, {"draft": True}, {"mergeable": "CONFLICTING"}):
+        assert not ap.review_needed(docs, {**GOOD_PR, **pr}, POLICY, ["pytest"])
+    assert not ap.review_needed(docs, GOOD_PR, POLICY, [])
+    # opt-out restores review on every PR
+    always = {**POLICY, "review": {**POLICY["review"], "skip_when_needs_human": False}}
+    assert ap.review_needed(classify(f("migrations/0010.sql", "+SELECT 1;\n")), GOOD_PR, always, [])
+
+
+def test_skipped_review_does_not_add_noise_reason():
+    d = decide(classify(f("migrations/0010.sql", "+SELECT 1;\n")), review=None)
+    assert d.verdict == ap.NEEDS_HUMAN
+    assert not any("没有跑成" in x for x in d.reasons)
+
+
 def test_no_required_checks_refuses_to_arm():
     # Without required checks GitHub would merge immediately, before CI.
     d = decide(classify(f("docs/a.md")), checks=())
