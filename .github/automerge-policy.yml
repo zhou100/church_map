@@ -9,13 +9,13 @@
 # A PR is auto-merged (squash, after required CI) only when ALL hold:
 #   1. no rule in `protected` matches any changed file or changed line;
 #   2. no file is deleted or renamed;
-#   3. additions + deletions <= max_changed_lines;
-#   4. every file is docs / tests / frontend style — or, for any other file,
+#   3. every file is docs / tests / frontend style — or, for any other file,
 #      the Claude review classifies the change as a small bug fix or copy edit;
-#   5. the Claude review reports no blocking issue (no review = needs_human);
-#   6. GitHub reports no merge conflict;
-#   7. main has required status checks, so GitHub auto-merge actually waits
+#   4. the Claude review reports no blocking issue (no review = needs_human);
+#   5. GitHub reports no merge conflict;
+#   6. main has required status checks, so GitHub auto-merge actually waits
 #      for CI instead of merging immediately.
+# PR size is not a rule (owner decision 2026-11-24): what a PR touches decides.
 # Anything else is labelled `needs-review` with the reasons in a comment.
 #
 # Globs: `**` crosses directories, `*` and `?` stay within one path segment.
@@ -26,7 +26,6 @@
 
 version: 1
 
-max_changed_lines: 200        # additions + deletions across the whole PR
 merge_method: squash
 needs_human_label: needs-review
 base_branch: main
@@ -156,8 +155,8 @@ review:
   # PR's GitHub state (draft, fork, conflict, no required checks…) already
   # force needs_human. Set false to get review comments on every PR.
   skip_when_needs_human: true
-  # Diffs bigger than this are not sent (they would be needs_human on size
-  # anyway); the comment says the review was skipped instead of truncating.
+  # Diffs bigger than this are not sent; the comment says the review was
+  # skipped instead of truncating, and no review means needs_human.
   max_diff_chars: 300000
   # Project rules sent to the reviewer as context (read from the base branch).
   context_files: [AGENTS.md, DESIGN.md]

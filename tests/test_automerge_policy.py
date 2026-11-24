@@ -92,11 +92,6 @@ def test_small_jsx_copy_fix_is_auto_when_review_agrees():
     assert decide(r, review={**CLEAN_REVIEW, "change_kind": "copy_style"}).verdict == ap.AUTO
 
 
-def test_exactly_200_lines_is_allowed():
-    r = classify(f("docs/a.md", "", adds=150, dels=50))
-    assert r.changed_lines == 200 and r.verdict == ap.AUTO
-
-
 # ── needs_human: deterministic rules ────────────────────────────────────────
 
 @pytest.mark.parametrize("file,why", [
@@ -134,9 +129,10 @@ def test_rename_needs_human():
     assert any("重命名" in x for x in r.reasons)
 
 
-def test_201_lines_needs_human():
-    r = classify(f("docs/a.md", "", adds=151, dels=50))
-    assert r.verdict == ap.NEEDS_HUMAN and any("201" in x for x in r.reasons)
+def test_size_alone_never_needs_human():
+    """Owner decision 2026-11-24: PR size is not a rule; only what it touches is."""
+    r = classify(f("docs/a.md", "", adds=4000, dels=1000))
+    assert r.changed_lines == 5000 and r.verdict == ap.AUTO and r.reasons == []
 
 
 @pytest.mark.parametrize("path", [

@@ -170,10 +170,6 @@ def classify(files: list[dict], policy: dict) -> PolicyResult:
             categories.setdefault("code", []).append(path)
             code_files.append(path)
 
-    limit = int(policy["max_changed_lines"])
-    if total > limit:
-        hit(f"改动 {total} 行 > {limit} 行上限")
-
     return PolicyResult(
         verdict=NEEDS_HUMAN if reasons else AUTO,
         reasons=reasons,
