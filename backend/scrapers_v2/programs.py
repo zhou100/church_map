@@ -10,6 +10,10 @@ programs they state, and keeps only what the archive itself supports
     giving only addresses in another state or country; if not, no model call
     is made and nothing is shown. When the website is a path naming this
     congregation (a campus of a larger site), only pages under it are read;
+  * the model classifies every passage it lists (prompt v2, which also names
+    the church); only "program" is kept, never outreach, adult groups,
+    ceremonies, advice, volunteer or staff entries, paused or one-time items,
+    or another location's;
   * the excerpt must occur verbatim, exactly once, in the text of the page it
     names; offsets are computed here, never taken from the model;
   * name, ages and schedule must each occur inside that excerpt;
@@ -21,12 +25,14 @@ programs they state, and keeps only what the archive itself supports
   * programs tied to another campus (or, on a page listing several addresses,
     to another address), whose stated year has passed, that sit under a
     calendar date (one event, not a standing program), that are stated as
-    paused or not yet offered, an unnamed sentence about every age ("from kids
-    to seniors"), and a staff title are dropped; "during the service" is
+    paused (or followed by a status item such as "Temporary Postponement") or
+    not offered ("no children's Sunday school this summer"), an unnamed
+    sentence about every age ("from kids to seniors"), a staff title and a name
+    that puts the program for adults are dropped; "during the service" is
     blanked when the excerpt puts the program before or after it.
 
 The rules come from the 2026-11-23 pilot, where 7 of 13 kept programs were
-wrong, and the 2026-11-24 random sample of 200 churches, where 38 of 236 were;
+wrong, and two 2026-11-24 random samples of 200 churches, where 38 of 236 and 51 of 273 were;
 tests/scrapers_v2/test_programs.py keeps each failure as a case.
 
 The stage never touches raw_crawl_artifacts.extract_status, so it cannot
@@ -59,8 +65,9 @@ from backend.scrapers_v2.extract import (
     TransientExtractionError,
     call_llm,
 )
-from backend.scrapers_v2.prompts.programs_v1 import (
+from backend.scrapers_v2.prompts.programs_v2 import (
     AGE_BANDS,
+    CATEGORIES,
     MODEL,
     PROGRAM_TYPES,
     PROMPT_VERSION,
@@ -71,7 +78,7 @@ log = logging.getLogger(__name__)
 
 # Recorded on every row: the prompt that proposed a program and the version of
 # the checks below that kept it. Bump CHECKS_VERSION when a rule changes.
-CHECKS_VERSION = "checks.v4"
+CHECKS_VERSION = "checks.v5"
 EXTRACTOR_VERSION = f"{PROMPT_VERSION}+{CHECKS_VERSION}"
 
 MAX_PAGE_CHARS = 8_000
@@ -343,8 +350,13 @@ _EVENT_ENTRY_LINES = 8
 _EVENT_ENTRY_CHARS = 60
 # Stated as not running now.
 _PAUSED = re.compile(
-    r"\b(on (?:summer |winter )?break|on hiatus|suspended|cancell?ed|postponed|paused|"
+    r"\b(on (?:summer |winter )?break|on hiatus|on hold|suspended|cancell?ed|postpone(?:d|ment)|paused|"
     r"will resume|resumes? (?:in|on|this|next)|not meeting)\b", re.I)
+# A list item that is only a status, right after the program's own item:
+# "Youth Aftershock: Grades 7-12 / Temporary Postponement" (2026-11-24 sample).
+_STATUS_ITEM = re.compile(
+    r"\W*(?:temporar(?:y|ily)\s+|currently\s+)?(?:on hold|postpone\w*|suspended|cancell?ed|paused|"
+    r"on (?:summer |winter )?break|on hiatus|not meeting)\b", re.I)
 # Separators between the items of a list ("Bible Study, Youth Group, Adventure Club").
 _CLAUSE_BREAK = re.compile(r"[,;|•·\n]|\s(?:--|[-–—])\s")
 # An aside that states ages right after a program's name: "Youth Group, grades 6-12".
@@ -366,7 +378,12 @@ _STAFF_TITLE = re.compile(
 # Not offered yet: "We would like to offer children's church" (a call for volunteers).
 _NOT_OFFERED = re.compile(
     r"\b(?:would\s+(?:like|love)\s+to|hope\s+to|hoping\s+to|plan(?:ning)?\s+to|looking\s+to)\s+"
-    r"(?:offer|start|begin|launch|have|provide)\b", re.I)
+    r"(?:offer|start|begin|launch|have|provide)\b"
+    # "There will be no children's Sunday school throughout the summer" (2026-11-24 sample).
+    r"|\bno\s+(?:children'?s\s+|kids'?\s+)?(?:sunday\s+school|nursery|children'?s\s+church|kids'?\s+church|"
+    r"youth\s+group)\b", re.I)
+# A program whose own name puts it for adults: "Adult Sunday School Class".
+_ADULT_NAME = re.compile(r"^\W*(?:adults?|seniors?|men'?s|women'?s|ladies'?|couples?|parents?)\b", re.I)
 # Said to happen before or after the service, so not during it.
 _OUTSIDE_SERVICE = re.compile(
     r"\b(?:before|after|following|prior\s+to)\s+(?:the\s+)?(?:[\w']+\s+){0,2}"
@@ -457,6 +474,15 @@ def is_other_location(text: str, start: int, church: dict) -> bool:
     line = _fold(text[max(0, m.start() - _ADDRESS_LINE_CHARS):m.end()])
     mine = _identity_words(church.get("city")) | (_identity_words(church.get("address")) - _DIRECTIONS)
     return not any(w in line for w in mine)
+
+
+def is_status_next(name: str | None, excerpt: str) -> bool:
+    """The list item right after the program's own one is only a status."""
+    if not name:
+        return False
+    _, b = _clause_span(name, excerpt)
+    brk = _CLAUSE_BREAK.match(_mask_parens(excerpt), b)
+    return bool(brk and _STATUS_ITEM.match(excerpt, brk.end()))
 
 
 def own_ages(name: str | None, ages: str | None, excerpt: str) -> str | None:
@@ -707,6 +733,12 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if not isinstance(item, dict):
             out.drop("bad_shape")
             continue
+        # The model classifies every passage it lists (prompt v2); only a
+        # program this church runs for these ages is kept.
+        category = item.get("category")
+        if category != "program":
+            out.drop(f"category_{category if category in CATEGORIES else 'missing'}")
+            continue
         try:
             n = int(item.get("page"))
         except (TypeError, ValueError):
@@ -748,6 +780,9 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if (not name and _LIFE_SPAN.search(excerpt)) or (name and _STAFF_TITLE.search(name)):
             out.drop("not_a_program")
             continue
+        if name and _ADULT_NAME.search(name):
+            out.drop("adult")
+            continue
         if _NOT_OFFERED.search(clause):
             out.drop("not_offered")
             continue
@@ -759,7 +794,7 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if is_dated(page.text, start, end):
             out.drop("dated_event")
             continue
-        if _PAUSED.search(clause):
+        if _PAUSED.search(clause) or is_status_next(name, page.text[start:end]):
             out.drop("paused")
             continue
         if not all(campus_is_this_church(c, church_words) for c in campuses_named(campus, excerpt)) \
@@ -849,8 +884,13 @@ def _read_pages(r2: r2mod.R2Client, target: dict) -> Gathered:
     return out
 
 
-def model_input(pages: list[Page]) -> str:
-    parts, used = [], 0
+def model_input(pages: list[Page], church: dict | None = None) -> str:
+    """The pages, under a line naming the church, so the model can tell another
+    congregation's or another location's page from this church's (prompt v2)."""
+    c = church or {}
+    head = (f"=== CHURCH === {c.get('name') or ''} | {c.get('city') or ''}, {c.get('state') or ''}"
+            f" | {c.get('address') or ''}")
+    parts, used = [head], 0
     for n, page in enumerate(pages, 1):
         if used >= MAX_INPUT_CHARS:
             break
@@ -906,7 +946,7 @@ async def extract_programs_for_church(
             extractor_version=EXTRACTOR_VERSION, model=None)
         return "no_program_text"
     try:
-        raw = await call(model_input(got.pages), api_key=api_key, client=client,
+        raw = await call(model_input(got.pages, target), api_key=api_key, client=client,
                          model=MODEL, system_prompt=SYSTEM_PROMPT)
     except TransientExtractionError as e:
         log.warning("programs transient failure church=%s: %s", church_id, e)
@@ -963,7 +1003,7 @@ async def run_program_batch(
                 counts["unconfirmed_site"] += 1
             elif got.pages:
                 counts["would_call_model"] += 1
-                counts["input_chars"] += len(model_input(got.pages))
+                counts["input_chars"] += len(model_input(got.pages, t))
             else:
                 counts["no_program_text"] += 1
         return counts
