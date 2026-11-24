@@ -344,7 +344,7 @@ def test_an_answer_of_the_wrong_shape_keeps_old_programs():
 
 def test_dry_run_counts_missing_archives_apart():
     class Repo:
-        async def due_for_program_extraction(self, limit):
+        async def due_for_program_extraction(self, limit, **pick):
             return [{**_target(kids=KIDS_HTML), "church_id": 1}, {**_target(gone=KIDS_HTML), "church_id": 2}]
 
     counts = asyncio.run(mod.run_program_batch(Repo(), _R2({"kids": KIDS_HTML}), limit=5, apply=False))
@@ -419,7 +419,7 @@ def test_an_unconfirmed_site_costs_no_call_and_shows_nothing():
     assert records[0]["status"] == "unconfirmed_site" and records[0]["programs"] == []
 
     class Repo:
-        async def due_for_program_extraction(self, limit):
+        async def due_for_program_extraction(self, limit, **pick):
             return [target]
 
     counts = asyncio.run(mod.run_program_batch(Repo(), _R2({"kids": KIDS_HTML}), limit=5, apply=False))
@@ -484,6 +484,29 @@ def test_a_college_campus_ministry_is_not_another_campus():
                    "campus_stated": "College Campus"})
     assert p["age_bands"] == ["young_adult"] and p["campus_stated"] is None
     assert _pilot({"excerpt": sentence, "name": "G.O.Y.A."})[1] == {"not_kids": 1}  # no age word of its own
+
+
+def test_stated_ages_belong_to_the_programs_own_list_item():
+    # 2026-11-24 pilot, church 742: "all ages" was the list's, not these groups'.
+    sentence = ("We have many ministries including Religious Education (for all ages), the Philoptochos Society, "
+                "G.O.Y.A., HOPE/JOY, Dance Troupes, Choir, Altar Servers, Young Adults, and College Campus "
+                "Students -- lots to share for all ages.")
+    page = _page(1, f"<p>{sentence}</p>".encode(), "homepage")
+
+    def ages(name):
+        checked = check_programs({"programs": [{"page": 1, "excerpt": sentence, "name": name,
+                                                "ages_stated": "all ages"}]}, [page], CHURCH)
+        return checked.programs[0]["ages_stated"]
+
+    assert ages("Young Adults") is None
+    assert ages("College Campus Students") is None
+    assert ages("Religious Education") == "all ages"  # its own parenthesis
+    # An aside opening with ages right after the name is still the program's.
+    line = "Youth Group, grades 6-12, meets Wednesdays at 7 pm, Bible Study, ages 18 and up"
+    assert mod.own_ages("Youth Group", "grades 6-12", line) == "grades 6-12"
+    assert mod.own_ages("Youth Group", "ages 18 and up", line) is None
+    assert mod.own_ages("Kids Club", "ages 4-10", "Kids Club (ages 4-10) - Sundays") == "ages 4-10"
+    assert mod.own_ages(None, "ages 4-10", "Sundays, ages 4-10") == "ages 4-10"  # no name: whole excerpt
 
 
 def test_identity_found_by_the_evaluation_sample():
