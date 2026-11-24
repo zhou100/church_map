@@ -13,7 +13,7 @@ extractor has touched (extracted_at set), this script:
     unknown").
 
 A difference on a church the extractor never touched has some other writer; it
-is counted and left alone. Published Muse congregations (source = 'muse') are the
+is counted and left alone, as is any church in the owner's --exclude list. Published Muse congregations (source = 'muse') are the
 publisher's and are left alone.
 
     PUBLISH_DATABASE_URL=... python -m scripts.restore_denomination plan  --sqlite holyhub.db --out DIR
@@ -77,10 +77,11 @@ def scope_of(denomination, mapping) -> str:
     return mapping.get(denomination.lower(), "in_scope") if denomination else "in_scope"
 
 
-def build(rows, base: dict, mapping: dict) -> tuple[list[dict], dict]:
-    """rows: (church_id, name, city, state, source, denomination, extracted_denomination, extracted_at)."""
+def build(rows, base: dict, mapping: dict, hold_back: frozenset = frozenset()) -> tuple[list[dict], dict]:
+    """rows: (church_id, name, city, state, source, denomination, extracted_denomination, extracted_at).
+    hold_back: church_ids the owner chose to leave for the conflict review (fix plan step 4)."""
     counts = {"production_rows": 0, "muse_skipped": 0, "not_in_baseline": 0, "same": 0,
-              "untouched_by_extractor": 0, "restore": 0, "restore_to_null": 0,
+              "untouched_by_extractor": 0, "held_back": 0, "restore": 0, "restore_to_null": 0,
               "keep_newer_reading": 0, "scope_changes_back": 0}
     plan = []
     for cid, name, city, state, source, denomination, extracted, extracted_at in rows:
@@ -97,6 +98,9 @@ def build(rows, base: dict, mapping: dict) -> tuple[list[dict], dict]:
             continue
         if extracted_at is None:
             counts["untouched_by_extractor"] += 1
+            continue
+        if cid in hold_back:
+            counts["held_back"] += 1
             continue
         counts["restore"] += 1
         counts["restore_to_null"] += old is None
@@ -130,17 +134,26 @@ def write_csv(path: Path, run_id: str, plan: list[dict]) -> str:
     return sha256(path)
 
 
-def make_plan(prod, sqlite_path: Path, out: Path) -> dict:
+def read_hold_back(path: Path | None) -> frozenset:
+    """One church_id per line; blank lines and #-comments are ignored."""
+    if path is None:
+        return frozenset()
+    ids = [line.split("#", 1)[0].strip() for line in path.read_text(encoding="utf-8").splitlines()]
+    return frozenset(int(i) for i in ids if i)
+
+
+def make_plan(prod, sqlite_path: Path, out: Path, hold_back: frozenset = frozenset()) -> dict:
     from scripts import publish_verified as publisher
     publisher.check_visibility(prod)
     base, mapping = baseline(sqlite_path), scope_map()
-    plan, counts = build(read_production(prod), base, mapping)
+    plan, counts = build(read_production(prod), base, mapping, hold_back)
     run_id = "restore-denomination-" + uuid.uuid4().hex[:12]
     run_dir = out / run_id
     run_dir.mkdir(mode=0o700, parents=True)
     csv_sha = write_csv(run_dir / "review.csv", run_id, plan)
     doc = {"run_id": run_id, "review_sha256": csv_sha, "baseline_sha256": sha256(sqlite_path),
-           "planned_at": dt.datetime.now(dt.timezone.utc).isoformat(), "counts": counts, "plan": plan}
+           "planned_at": dt.datetime.now(dt.timezone.utc).isoformat(), "counts": counts,
+           "held_back": sorted(hold_back), "plan": plan}
     path = run_dir / "plan.json"
     with path.open("x", encoding="utf-8") as f:
         os.chmod(path, 0o600)
@@ -215,6 +228,7 @@ def main(argv: list[str] | None = None) -> int:
     p = sub.add_parser("plan", help="read production and write the review file (no writes)")
     p.add_argument("--sqlite", type=Path, required=True, help="the accepted 2026-05 baseline snapshot")
     p.add_argument("--out", type=Path, default=Path.home() / "churchmap_private" / "denomination_restore")
+    p.add_argument("--exclude", type=Path, help="church_ids to hold back for review, one per line")
     a = sub.add_parser("apply", help="write the reviewed plan to production")
     a.add_argument("--sqlite", type=Path, required=True)
     a.add_argument("--run-dir", type=Path, required=True)
@@ -227,7 +241,7 @@ def main(argv: list[str] | None = None) -> int:
     with psycopg.connect(url, autocommit=True, prepare_threshold=None) as prod:
         if args.command == "plan":
             prod.execute("set session characteristics as transaction read only")
-            result = make_plan(prod, args.sqlite, args.out)
+            result = make_plan(prod, args.sqlite, args.out, read_hold_back(args.exclude))
         else:
             result = apply(prod, doc)
     print(json.dumps(result, sort_keys=True))

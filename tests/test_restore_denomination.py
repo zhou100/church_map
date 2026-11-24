@@ -28,12 +28,22 @@ def test_build_restores_only_what_the_extractor_changed():
     plan, counts = rd.build(rows, base, MAP)
     assert [p["church_id"] for p in plan] == [1, 2, 5]
     assert counts | {} == {"production_rows": 7, "muse_skipped": 1, "not_in_baseline": 1, "same": 1,
-                           "untouched_by_extractor": 1, "restore": 3, "restore_to_null": 1,
+                           "untouched_by_extractor": 1, "held_back": 0, "restore": 3, "restore_to_null": 1,
                            "keep_newer_reading": 1, "scope_changes_back": 2}
     by_id = {p["church_id"]: p for p in plan}
     assert by_id[1]["extracted_after"] == "Islam" and by_id[1]["baseline_scope"] == "out_of_scope"
     assert by_id[2]["baseline"] is None and by_id[2]["kind"] == "filled"
     assert by_id[5]["extracted_after"] == "LDS"  # a reading written since 0009 is kept
+    held, held_counts = rd.build(rows, base, MAP, frozenset({1, 3}))
+    assert [p["church_id"] for p in held] == [2, 5]
+    assert held_counts["held_back"] == 1 and held_counts["untouched_by_extractor"] == 1
+
+
+def test_hold_back_file(tmp_path):
+    path = tmp_path / "hold.txt"
+    path.write_text("# step 4 queue\n7027  # synagogue\n\n96132\n")
+    assert rd.read_hold_back(path) == frozenset({7027, 96132})
+    assert rd.read_hold_back(None) == frozenset()
 
 
 # ── Real SQL ───────────────────────────────────────────────────────────────────
