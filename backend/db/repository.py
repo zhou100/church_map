@@ -1161,7 +1161,7 @@ class ProgramRepository:
                  GROUP BY church_id
             )
             SELECT g.church_id, g.artifact_ids, g.kinds, g.urls, g.r2_keys, g.content_hashes,
-                   g.fetched_ats, c.name, c.city, c.address, c.website,
+                   g.fetched_ats, c.name, c.city, c.state, c.address, c.website,
                    {_SITE_SQL.format(col="c.website")} AS site_key
               FROM grouped g
               JOIN churches c ON c.church_id = g.church_id

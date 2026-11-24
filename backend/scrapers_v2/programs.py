@@ -6,8 +6,10 @@ programs they state, and keeps only what the archive itself supports
 (docs/plans/crawler_visit_facts_plan.md, PR 4 and appendix A):
 
   * the site must be tied to this church record (site_is_this_church): not a
-    denomination site shared by many records, and naming this church; if not,
-    no model call is made and nothing is shown;
+    denomination site shared by many records, naming this church, and not
+    giving only addresses in another state or country; if not, no model call
+    is made and nothing is shown. When the website is a path naming this
+    congregation (a campus of a larger site), only pages under it are read;
   * the excerpt must occur verbatim, exactly once, in the text of the page it
     names; offsets are computed here, never taken from the model;
   * name, ages and schedule must each occur inside that excerpt;
@@ -16,12 +18,16 @@ programs they state, and keeps only what the archive itself supports
     6-12", "during the service", preschool, ...); a program named only "Kids"
     keeps no age band;
   * young adults stay a separate band, so a college group is never a youth group;
-  * programs tied to another campus, whose stated year has passed, that sit
-    under a calendar date (one event, not a standing program) or that are
-    stated as paused are dropped.
+  * programs tied to another campus (or, on a page listing several addresses,
+    to another address), whose stated year has passed, that sit under a
+    calendar date (one event, not a standing program), that are stated as
+    paused or not yet offered, an unnamed sentence about every age ("from kids
+    to seniors"), and a staff title are dropped; "during the service" is
+    blanked when the excerpt puts the program before or after it.
 
 The rules come from the 2026-11-23 pilot, where 7 of 13 kept programs were
-wrong; tests/scrapers_v2/test_programs.py keeps each failure as a case.
+wrong, and the 2026-11-24 random sample of 200 churches, where 38 of 236 were;
+tests/scrapers_v2/test_programs.py keeps each failure as a case.
 
 The stage never touches raw_crawl_artifacts.extract_status, so it cannot
 enqueue or starve website_v3. Its own state is church_program_extractions: a
@@ -40,6 +46,7 @@ import unicodedata
 from dataclasses import dataclass, field
 from datetime import datetime
 from typing import Any, Awaitable, Callable
+from urllib.parse import urlsplit
 
 import httpx
 from lxml import html as lxml_html
@@ -64,7 +71,7 @@ log = logging.getLogger(__name__)
 
 # Recorded on every row: the prompt that proposed a program and the version of
 # the checks below that kept it. Bump CHECKS_VERSION when a rule changes.
-CHECKS_VERSION = "checks.v3"
+CHECKS_VERSION = "checks.v4"
 EXTRACTOR_VERSION = f"{PROMPT_VERSION}+{CHECKS_VERSION}"
 
 MAX_PAGE_CHARS = 8_000
@@ -179,6 +186,18 @@ _GRADE_RANGE = re.compile(
     rf"|{_GRADE_LEVEL}{_ORD}{_RANGE}{_GRADE_LEVEL}{_ORD}\s*grades?)\b",
     re.I,
 )
+# A range from a word to a grade: "PreK-5th", "birth through 5th grade",
+# "infants through 6th grade", "preschool through fifth grade". 2026-11-24
+# sample: these claimed only the bands of their two ends, never the middle.
+_SPELLED_GRADE = {w: n for n, w in enumerate(
+    "first second third fourth fifth sixth seventh eighth ninth tenth eleventh twelfth".split(), 1)}
+_WORD_START = (r"(birth|newborns?|infants?|babies|nursery|toddlers?|pre-?school(?:ers)?|pre-?k|tk|"
+               r"k|kindergarten)")
+_WORD_GRADE_RANGE = re.compile(
+    rf"\b{_WORD_START}{_RANGE}(?:(\d{{1,2}})(?:st|nd|rd|th)|(\d{{1,2}})(?=\s*grade)|"
+    rf"({'|'.join(_SPELLED_GRADE)}))\b",
+    re.I,
+)
 _ONE_GRADE = re.compile(r"\b(\d{1,2})(?:st|nd|rd|th)\s*grade(?:rs?)?\b", re.I)
 
 _BAND_WORDS = {
@@ -197,6 +216,10 @@ _BAND_WORDS = {
 
 def _grade(value: str) -> int:
     v = value.lower().replace("-", "")
+    if v in _SPELLED_GRADE:
+        return _SPELLED_GRADE[v]
+    if re.fullmatch(r"birth|newborns?|infants?|babies|nursery|toddlers?|preschool(?:ers)?", v):
+        return -2
     if v in ("tk", "prek"):
         return -1
     if v in ("k", "kindergarten"):
@@ -251,6 +274,8 @@ def stated_age_bands(text: str) -> set[str]:
         out |= _bands_for_grades(_grade(a), _grade(b))
     for m in _ONE_GRADE.finditer(text):
         out |= _bands_for_grades(int(m.group(1)), int(m.group(1)))
+    for m in _WORD_GRADE_RANGE.finditer(text):
+        out |= _bands_for_grades(_grade(m.group(1)), _grade(next(g for g in m.groups()[1:] if g)))
     return out
 
 
@@ -301,7 +326,7 @@ _YEAR = re.compile(r"\b(20\d\d)\b")
 _MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
           r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)")
 _DATE = re.compile(
-    rf"\b{_MONTH}\.?\s+(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)?\b(?!\s*(?::|am\b|pm\b|\d))"
+    rf"\b{_MONTH}\.?\s+(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)?\b(?![ \t]*(?::|am\b|pm\b|\d))"
     rf"|\b(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTH}\b",
     re.I)
 # How far before the excerpt a date still heads it ("MAY\n10\nSUN\n" + entry).
@@ -328,6 +353,27 @@ _AGES_LEAD = re.compile(
     r"pre-?k\b|k\s*[-–]|kindergarten\b|elementary\b|middle\b|high school\b)", re.I)
 
 
+# A sentence about every age, not a program: "From kids to seniors, ...",
+# "programs for every stage of life - from infants to seniors" (2026-11-24
+# sample). Only for an unnamed program: a named one keeps its own words.
+_LIFE_SPAN = re.compile(
+    r"\b(?:kids|children|infants|babies|nursery|youth|toddlers)(?:\s+(?:and|&)\s+\w+)?\s+(?:to|through)\s+"
+    r"(?:adults|seniors|grandparents)\b|\bevery\s+(?:age\s+and\s+)?(?:life\s+)?stage\b|"
+    r"\ball\s+ages\s+and\s+stages\b", re.I)
+# A staff title, not a program: "Assistant Pastor & Youth Pastors".
+_STAFF_TITLE = re.compile(
+    r"\b(?:pastors?|directors?|coordinators?|superintendents?|ministers?|leaders?)\s*$", re.I)
+# Not offered yet: "We would like to offer children's church" (a call for volunteers).
+_NOT_OFFERED = re.compile(
+    r"\b(?:would\s+(?:like|love)\s+to|hope\s+to|hoping\s+to|plan(?:ning)?\s+to|looking\s+to)\s+"
+    r"(?:offer|start|begin|launch|have|provide)\b", re.I)
+# Said to happen before or after the service, so not during it.
+_OUTSIDE_SERVICE = re.compile(
+    r"\b(?:before|after|following|prior\s+to)\s+(?:the\s+)?(?:[\w']+\s+){0,2}"
+    r"(?:service|worship|mass|liturgy)\b", re.I)
+_DURING = re.compile(r"\b(?:during|same\s+time)\b", re.I)
+
+
 def is_dated(text: str, start: int, end: int) -> bool:
     """A calendar date inside the excerpt, or just before it in the same block."""
     before = text[max(0, start - _DATE_LOOKBACK):start]
@@ -345,6 +391,22 @@ def is_dated(text: str, start: int, end: int) -> bool:
     return len(between) <= _EVENT_ENTRY_LINES and all(len(line) <= _EVENT_ENTRY_CHARS for line in between)
 
 
+def _mask_parens(text: str) -> str:
+    """`text` with what is inside parentheses blanked to letters, same length: a
+    separator there is part of the item ("Sunday School (September - May):
+    Suspended" is one item, 2026-11-24 sample)."""
+    out, depth = [], 0
+    for ch in text:
+        if ch == "(":
+            depth += 1
+        elif ch == ")" and depth:
+            depth -= 1
+        elif depth and not ch.isalnum():
+            ch = "x"
+        out.append(ch)
+    return "".join(out)
+
+
 def _clause_span(name: str | None, excerpt: str) -> tuple[int, int]:
     """Where the list item that names the program starts and ends in `excerpt`;
     the whole excerpt when there is no name or it is not found."""
@@ -353,8 +415,9 @@ def _clause_span(name: str | None, excerpt: str) -> tuple[int, int]:
     at = excerpt.lower().find(name.lower())
     if at < 0:
         return 0, len(excerpt)
-    cuts = [m.end() for m in _CLAUSE_BREAK.finditer(excerpt, 0, at)]
-    nxt = _CLAUSE_BREAK.search(excerpt, at + len(name))
+    masked = _mask_parens(excerpt)
+    cuts = [m.end() for m in _CLAUSE_BREAK.finditer(masked, 0, at)]
+    nxt = _CLAUSE_BREAK.search(masked, at + len(name))
     return (cuts[-1] if cuts else 0), (nxt.start() if nxt else len(excerpt))
 
 
@@ -363,6 +426,37 @@ def own_clause(name: str | None, excerpt: str) -> str:
     in the same list does not make "Adventure Club" a children's program."""
     a, b = _clause_span(name, excerpt)
     return excerpt[a:b]
+
+
+# A postal code after a US state or an Australian state: "NY 10030", "QLD, 4305".
+# Named states only, so "VBS 2026" is not an address.
+_US_STATES = ("AL AK AZ AR CA CO CT DE DC FL GA HI ID IL IN IA KS KY LA ME MD MA MI MN MS MO MT NE NV NH NJ "
+              "NM NY NC ND OH OK OR PA RI SC SD TN TX UT VT VA WA WV WI WY PR").split()
+_US_POSTCODE = re.compile(rf"\b({'|'.join(_US_STATES)}),?\s+\d{{5}}(?:-\d{{4}})?\b")
+_AU_POSTCODE = re.compile(r"\b(?:NSW|QLD|VIC|TAS|ACT|NT|SA|WA),?\s+\d{4}\b")
+_POSTCODE = re.compile(f"{_US_POSTCODE.pattern}|{_AU_POSTCODE.pattern}")
+# A Canadian postal code: "M1S 3K7".
+_POSTCODE_CA = re.compile(r"\b[ABCEGHJ-NPRSTVXY]\d[A-Z]\s?\d[A-Z]\d\b")
+# A page with this many addresses lists several places (citipointechurch.com
+# lists every location, each with its own service note, 2026-11-24 sample).
+DIRECTORY_ADDRESSES = 3
+_ADDRESS_LINE_CHARS = 150
+
+
+def is_other_location(text: str, start: int, church: dict) -> bool:
+    """On a page that lists several addresses, the excerpt belongs to the
+    address above it; it is this church's only if that address line names the
+    church's city or street. An excerpt above every address is the page's own."""
+    codes = list(_POSTCODE.finditer(text))
+    if len({m.group(0).replace(",", "") for m in codes}) < DIRECTORY_ADDRESSES:
+        return False
+    before = [m for m in codes if m.end() <= start]
+    if not before:
+        return False
+    m = before[-1]
+    line = _fold(text[max(0, m.start() - _ADDRESS_LINE_CHARS):m.end()])
+    mine = _identity_words(church.get("city")) | (_identity_words(church.get("address")) - _DIRECTIONS)
+    return not any(w in line for w in mine)
 
 
 def own_ages(name: str | None, ages: str | None, excerpt: str) -> str | None:
@@ -495,12 +589,46 @@ def site_is_this_church(church: dict, texts: list[str]) -> bool:
     city_joined = "".join(re.findall(r"[a-z0-9]+", _fold(church.get("city"))))
     street_ok = bool(street) and all(map(on_site, street))
     city_ok = (bool(city) and all(map(on_site, city))) or (len(city_joined) >= 5 and city_joined in site)
+    # Neither this record's city nor its street is on the site, and every
+    # address the site gives is in another state or country: it is another
+    # congregation with the same name (abyssinian.org, New York, for a
+    # Nashville record; 2026-11-24 sample). The state, not the city: records
+    # often name a neighbouring town (Pine Ridge for a Naples church).
+    state = (church.get("state") or "").strip().upper()
+    if not (city_ok or street_ok) and state in _US_STATES:
+        us = {m.group(1) for t in texts for m in _US_POSTCODE.finditer(t)}
+        abroad = any(_AU_POSTCODE.search(t) or _POSTCODE_CA.search(t) for t in texts)
+        if (us and state not in us) or (not us and abroad):
+            return False
     if name:
         found = [w for w in name if named(w)]
         if len(found) == len(name):
             return not name <= _COMMON_NAME_WORDS or city_ok or street_ok
         return bool(found) and street_ok
     return city_ok
+
+
+def _host_path(url: str | None) -> tuple[str, str]:
+    u = urlsplit(url if url and "://" in url else f"http://{url or ''}")
+    segs = [x for x in u.path.split("/") if x]
+    return (u.hostname or "").removeprefix("www."), "/".join(segs).lower()
+
+
+def in_site_scope(church: dict, url: str) -> bool:
+    """When the record's website is a path that names this congregation or its
+    city ("crosschurch.com/chapel-on-the-creeks/", ".../locations/tempe"), only
+    pages under that path are its own; a sibling path is another campus or the
+    parent body (2026-11-24 sample: /pinnacle/ pages shown for Chapel on the
+    Creeks). A path like "/home" or "/contact" names nothing, and the whole
+    site stays in scope."""
+    host, path = _host_path(church.get("website"))
+    if path and "." in path.rsplit("/", 1)[-1]:
+        path = path.rsplit("/", 1)[0] if "/" in path else ""
+    words = {w for w in _identity_words(church.get("name")) | _identity_words(church.get("city")) if len(w) >= 4}
+    if not path or not any(w in _fold(path) for w in words):
+        return True
+    page_host, page_path = _host_path(url)
+    return page_host != host or page_path == path or page_path.startswith(path + "/")
 
 
 def campus_is_this_church(campus: str, church_words: set[str]) -> bool:
@@ -617,6 +745,12 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if not (_KIDS_WORDS.search(clause) or (ages and stated_age_bands(ages))):
             out.drop("not_kids")
             continue
+        if (not name and _LIFE_SPAN.search(excerpt)) or (name and _STAFF_TITLE.search(name)):
+            out.drop("not_a_program")
+            continue
+        if _NOT_OFFERED.search(clause):
+            out.drop("not_offered")
+            continue
 
         years = [int(y) for y in _YEAR.findall(" ".join(filter(None, [schedule, excerpt])))]
         if years and max(years) < page.fetched_at.year:
@@ -628,7 +762,8 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if _PAUSED.search(clause):
             out.drop("paused")
             continue
-        if not all(campus_is_this_church(c, church_words) for c in campuses_named(campus, excerpt)):
+        if not all(campus_is_this_church(c, church_words) for c in campuses_named(campus, excerpt)) \
+                or is_other_location(page.text, start, church):
             out.drop("other_campus")
             continue
 
@@ -638,6 +773,8 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         bands = (proposed & supported_age_bands(own_words)) | stated_age_bands(ages or "")
         program_type = item.get("type") if item.get("type") in PROGRAM_TYPES else None
         if program_type and not supports_type(program_type, excerpt):
+            program_type = None
+        if program_type == "during_service" and _OUTSIDE_SERVICE.search(excerpt) and not _DURING.search(excerpt):
             program_type = None
 
         key = (page.artifact_id, start) if not name else (name.lower(), program_type, tuple(sorted(bands)))
@@ -679,6 +816,7 @@ class Gathered:
     pages: list[Page]
     unreadable: int = 0
     missing: int = 0
+    out_of_scope: int = 0
     # Text of every page read, with or without program words: the homepage
     # footer or contact page is where a site names its church and street.
     texts: list[str] = field(default_factory=list)
@@ -691,6 +829,9 @@ def _read_pages(r2: r2mod.R2Client, target: dict) -> Gathered:
         target["artifact_ids"], target["kinds"], target["urls"], target["r2_keys"],
         target["content_hashes"], target["fetched_ats"],
     ):
+        if not in_site_scope(target, url):
+            out.out_of_scope += 1
+            continue
         try:
             raw = r2.get_html(key)
         except r2mod.R2NotFound:
