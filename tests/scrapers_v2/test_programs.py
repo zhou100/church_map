@@ -356,8 +356,8 @@ def test_dry_run_counts_missing_archives_apart():
 # synthetic page with the same shape as a real failure (or a real success that
 # the fix must keep).
 
-def _church(name, city="Fort Myers", address="", website="https://example.org/", shared=1):
-    return {"church_id": 9, "name": name, "city": city, "address": address,
+def _church(name, city="Fort Myers", address="", website="https://example.org/", shared=1, state="FL"):
+    return {"church_id": 9, "name": name, "city": city, "state": state, "address": address,
             "website": website, "site_shared_by": shared}
 
 
@@ -528,3 +528,119 @@ def test_identity_found_by_the_evaluation_sample():
                                            website="https://gracewayaustin.org/"), ["GracewayATX"])
     assert mod.site_is_this_church(_church("United Methodist Church", city="Le Roy",
                                            website="http://leroyum.org/"), ["Pine River Parish"])
+
+
+# ----- 2026-11-24 random sample (seed eval-20261124): 38 of 236 programs wrong.
+# Each case is shaped on a real wrong (or right) program from that sample.
+
+def test_a_site_whose_every_address_is_in_another_state_is_another_church():
+    abyssinian = _church("Abyssinian Baptist Church", city="Nashville", state="TN", website="https://www.abyssinian.org/")
+    page = "Aby Kidz is our Children and Youth Ministry. Find us / 132 Odell Clark Place, / New York, NY 10030"
+    assert not mod.site_is_this_church(abyssinian, [page])
+    # A neighbouring town in the same state is fine: records often name one.
+    naples = _church("C3 Church Naples", city="Pine Ridge", website="https://c3naples.org")
+    assert mod.site_is_this_church(naples, ["C3 Church Naples, 1234 Main St, Naples, FL 34102"])
+    assert mod.site_is_this_church({**abyssinian, "city": "New York", "state": "NY"}, [page])
+    canada = _church("Good News Missionary Baptist Church", city="San Diego", state="CA",
+                     website="http://goodnewschurch.com/")
+    assert not mod.site_is_this_church(canada, ["Good News Church / 476 Clarke Road / London, ON N5V 2C7"])
+    vbs = _church("Abyssinian Baptist Church", city="Nashville", state="TN")
+    assert mod.site_is_this_church(vbs, ["Abyssinian Baptist Church. VBS 2026 for kids!"])  # not an address
+
+
+def test_a_campus_path_reads_only_its_own_pages():
+    creeks = {**_church("Chapel on the Creeks", city="Rogers", state="AR"),
+              "website": "https://www.crosschurch.com/chapel-on-the-creeks/"}
+    assert mod.in_site_scope(creeks, "https://www.crosschurch.com/chapel-on-the-creeks/kids")
+    assert mod.in_site_scope(creeks, "https://crosschurch.com/chapel-on-the-creeks")
+    assert not mod.in_site_scope(creeks, "https://www.crosschurch.com/pinnacle/ministries/")
+    # A path that names nothing ("/home", a file) keeps the whole site.
+    home = {**_church("Grace Church"), "website": "https://example.org/home"}
+    assert mod.in_site_scope(home, "https://example.org/pages/plan-your-visit")
+    asp = {**_church("West Houston Christadelphians", city="Houston"), "website": "http://www.theonehope.org/westhouston.asp"}
+    assert mod.in_site_scope(asp, "http://www.theonehope.org/sunday-school.asp")
+
+    target = {**creeks, "artifact_ids": [1, 2], "kinds": ["homepage", "kids"],
+              "urls": ["https://www.crosschurch.com/chapel-on-the-creeks/", "https://www.crosschurch.com/pinnacle/ministries/"],
+              "r2_keys": ["a", "b"], "content_hashes": ["h1", "h2"], "fetched_ats": [WHEN, WHEN]}
+
+    class R2:
+        def get_html(self, key):
+            return b"<p>Cross Kids Preschool is the Preschool Ministry of Cross Church.</p>"
+
+    got = mod._read_pages(R2(), target)
+    assert [p.url for p in got.pages] == [target["urls"][0]] and got.out_of_scope == 1 and len(got.texts) == 1
+
+
+LOCATIONS_HTML = b"""<html><body>
+<p>11 Henzell Road, Caboolture QLD 4510</p><p>Caboolture</p><p>Sun 9:00am</p>
+<p>A service with a family vibe. Kids Programs are available.</p>
+<p>56 Hunter Street, Brassall QLD, 4305</p><p>Ipswich</p><p>Sun 9:00am</p>
+<p>A service with a family vibe. Full Kids program is available during this service.</p>
+<p>5657 McWhinney Blvd, Loveland, CO 80538</p><p>Loveland</p><p>Sun 8:00am</p>
+<p>No Kids Ministry at this service. Sun 10:00am: Kids Church for ages 4-10 during the service.</p>
+</body></html>"""
+
+
+def test_on_a_page_of_locations_an_excerpt_belongs_to_the_address_above_it():
+    loveland = _church("Citipointe Church", city="Loveland", address="McWhinney Boulevard", state="CO")
+    page = _page(1, LOCATIONS_HTML, "homepage")
+    ipswich = check_programs({"programs": [{"page": 1, "excerpt": "Full Kids program is available during this service."}]},
+                             [page], loveland)
+    assert ipswich.programs == [] and ipswich.dropped == {"other_campus": 1}
+    own = check_programs({"programs": [{"page": 1, "excerpt": "Kids Church for ages 4-10 during the service."}]},
+                         [page], loveland)
+    assert len(own.programs) == 1
+
+
+def _one_page(html, item, church=CHURCH):
+    checked = check_programs({"programs": [{"page": 1, **item}]}, [_page(1, html)], church)
+    return (checked.programs[0] if checked.programs else None), checked.dropped
+
+
+def test_paused_inside_parentheses_and_a_date_on_the_next_line_are_caught():
+    p, dropped = _one_page(b"<p>Sunday School (September - May): Suspended</p><p>Sunday Service: 10 AM</p>",
+                           {"excerpt": "Sunday School (September - May): Suspended", "name": "Sunday School"})
+    assert p is None and dropped == {"paused": 1}
+    p, dropped = _one_page(b"<p>Upcoming Events</p><p>Missions Sunday School</p><p>Jun 7</p><p>9:30 am</p>",
+                           {"excerpt": "Missions Sunday School\nJun 7\n9:30 am", "name": "Missions Sunday School"})
+    assert p is None and dropped == {"dated_event": 1}
+    p, _ = _one_page(b"<p>Kids Club meets Sundays at 9:30 am</p>", {"excerpt": "Kids Club meets Sundays at 9:30 am"})
+    assert p is not None  # a time is not a date
+
+
+def test_slogans_staff_titles_and_wishes_are_not_programs():
+    p, dropped = _one_page(b"<p>From kids to seniors, Arlington Baptist has a place for people in every life stage.</p>",
+                           {"excerpt": "From kids to seniors, Arlington Baptist has a place for people in every life stage."})
+    assert p is None and dropped == {"not_a_program": 1}
+    p, dropped = _one_page(b"<p>Bro. Anthony and Sis Murillo / Assistant Pastor &amp; Youth Pastors</p>",
+                           {"excerpt": "Assistant Pastor & Youth Pastors", "name": "Youth Pastors"})
+    assert p is None and dropped == {"not_a_program": 1}
+    p, dropped = _one_page(b"<p>We would like to offer children's church, freeing families with kids to attend.</p>",
+                           {"excerpt": "We would like to offer children's church, freeing families with kids to attend.",
+                            "name": "children's church"})
+    assert p is None and dropped == {"not_offered": 1}
+    p, _ = _one_page(b"<p>Youth Group meets Wednesdays for middle and high school students.</p>",
+                     {"excerpt": "Youth Group meets Wednesdays for middle and high school students.", "name": "Youth Group"})
+    assert p is not None  # "Group", not a staff title
+
+
+def test_sunday_school_before_or_after_the_service_is_not_during_it():
+    before = "We have Sunday School classes for all ages on Sunday mornings before the morning worship service."
+    p, _ = _one_page(f"<p>{before}</p>".encode(), {"excerpt": before, "name": "Sunday School", "type": "during_service"})
+    assert p["program_type"] is None
+    during = "Sunday School is for all youth (pre-K through 5th grade) and is at the same time as worship."
+    p, _ = _one_page(f"<p>{during}</p>".encode(), {"excerpt": during, "name": "Sunday School", "type": "during_service"})
+    assert p["program_type"] == "during_service"
+    both = "Children's Church: during the 10:00 am worship service, after the children's sermon."
+    p, _ = _one_page(f"<p>{both}</p>".encode(), {"excerpt": both, "name": "Children's Church", "type": "during_service"})
+    assert p["program_type"] == "during_service"
+
+
+def test_a_range_from_a_word_to_a_grade_covers_the_bands_between():
+    assert mod.stated_age_bands("PreK-5th") == {"preschool", "children"}
+    assert mod.stated_age_bands("Birth-5th Grade") == {"preschool", "children"}
+    assert mod.stated_age_bands("infants through 6th grade") == {"preschool", "children", "youth"}
+    assert mod.stated_age_bands("preschool through fifth grade") == {"preschool", "children"}
+    assert mod.stated_age_bands("kindergarten through sixth grade") == {"children", "youth"}
+    assert mod.stated_age_bands("K-5") == set()  # no grade word: could be anything

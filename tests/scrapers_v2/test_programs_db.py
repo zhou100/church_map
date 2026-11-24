@@ -272,6 +272,7 @@ def test_due_rows_carry_the_website_and_how_many_records_share_it():
         assert {got[c]["site_shared_by"] for c in ids} == {len(variants)}
         assert (got[other]["site_shared_by"], got[query]["site_shared_by"], got[blank]["site_shared_by"]) == (1, 1, 0)
         assert got[ids[0]]["website"] == variants[0]
+        assert got[ids[0]]["state"] == "ZZ"  # the identity check compares states
     run(body)
 
 
