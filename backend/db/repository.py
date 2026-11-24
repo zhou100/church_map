@@ -1088,6 +1088,16 @@ class CrawlRepository:
 PROGRAM_KINDS = ["kids", "youth", "childcare", "ministries", "homepage", "services", "contact"]
 
 
+# A website as a comparable key: lower case, no scheme, no leading "www.", no
+# fragment, no trailing "/" or "?". The path and query stay, so two pages on a
+# shared host (sites.google.com/view/a, umc.org/...?id=1) are different sites.
+# NULL for an empty website.
+_SITE_SQL = (
+    "NULLIF(RTRIM(REGEXP_REPLACE(REGEXP_REPLACE(REGEXP_REPLACE(LOWER(BTRIM({col})),"
+    " '^[a-z]+://', ''), '^www\\.', ''), '#.*$', ''), '/?'), '')"
+)
+
+
 class ProgramRepository:
     """SQL for backend/scrapers_v2/programs.py. Reads raw_crawl_artifacts but
     never writes it: the website_v3 queue (extract_status) is not this stage's."""
@@ -1142,7 +1152,8 @@ class ProgramRepository:
                  GROUP BY church_id
             )
             SELECT g.church_id, g.artifact_ids, g.kinds, g.urls, g.r2_keys, g.content_hashes,
-                   g.fetched_ats, c.name, c.city, c.address
+                   g.fetched_ats, c.name, c.city, c.address, c.website,
+                   {_SITE_SQL.format(col="c.website")} AS site_key
               FROM grouped g
               JOIN churches c ON c.church_id = g.church_id
               LEFT JOIN church_program_extractions e ON e.church_id = g.church_id
@@ -1153,7 +1164,28 @@ class ProgramRepository:
         """
         async with self.con.cursor(row_factory=dict_row) as cur:
             await cur.execute(sql, {"kinds": PROGRAM_KINDS, "limit": limit})
-            return await cur.fetchall()
+            rows = await cur.fetchall()
+            # How many church records (any scope) list each due row's website: a
+            # site shared by many (jw.org, lds.org) is a denomination's, not this
+            # congregation's. One scan of churches, apart from the query above:
+            # joined, its row estimate made Postgres re-run the regexes per pair.
+            keys = sorted({r["site_key"] for r in rows if r["site_key"]})
+            shared: dict[str, int] = {}
+            if keys:
+                await cur.execute(
+                    f"""
+                    SELECT site, COUNT(*) AS n
+                      FROM (SELECT {_SITE_SQL.format(col="website")} AS site FROM churches) s
+                     WHERE site = ANY(%s)
+                     GROUP BY site
+                    """,
+                    (keys,),
+                )
+                shared = {r["site"]: r["n"] for r in await cur.fetchall()}
+            for r in rows:
+                key = r.pop("site_key")
+                r["site_shared_by"] = shared.get(key, 0) if key else 0
+            return rows
 
     async def record_program_extraction(
         self,

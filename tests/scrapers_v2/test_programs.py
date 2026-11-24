@@ -235,7 +235,7 @@ def test_pages_without_program_words_cost_no_model_call():
         calls.append(1)
         return {"programs": []}
 
-    plain = b"<p>Sunday worship at 10am. All are welcome. Parking behind the building.</p>"
+    plain = b"<p>Grace Church, Fresno: Sunday worship at 10am. All are welcome. Parking behind the building.</p>"
     outcome, records = _run(_target(home=plain), _R2({"home": plain}), call)
     assert outcome == "no_program_text" and calls == []
     assert records[0]["status"] == "no_program_text" and records[0]["programs"] == []
@@ -261,7 +261,7 @@ def test_model_answer_is_checked_and_recorded_with_sorted_inputs():
     rec = records[0]
     assert rec["input_ids"] == [10, 11] and rec["status"] == "ok"
     assert len(rec["programs"]) == 1 and rec["dropped"] == {"not_found": 1}
-    assert rec["extractor_version"] == mod.PROMPT_VERSION
+    assert rec["extractor_version"] == mod.EXTRACTOR_VERSION and mod.PROMPT_VERSION in rec["extractor_version"]
 
 
 def test_transient_failures_write_nothing_and_bad_answers_keep_old_programs():
@@ -349,3 +349,159 @@ def test_dry_run_counts_missing_archives_apart():
 
     counts = asyncio.run(mod.run_program_batch(Repo(), _R2({"kids": KIDS_HTML}), limit=5, apply=False))
     assert (counts["would_call_model"], counts["missing_archive"], counts["no_program_text"]) == (1, 1, 0)
+
+
+# ----- 2026-11-23 pilot: every kept program checked against its page ------------------
+# 13 programs were kept for 20 churches; 7 were wrong. Each case below is a
+# synthetic page with the same shape as a real failure (or a real success that
+# the fix must keep).
+
+def _church(name, city="Fort Myers", address="", website="https://example.org/", shared=1):
+    return {"church_id": 9, "name": name, "city": city, "address": address,
+            "website": website, "site_shared_by": shared}
+
+
+def test_a_site_listed_by_many_records_is_not_this_congregations():
+    # jw.org (39 records), lds.org: the denomination's site names every congregation's name words.
+    church = _church("The Church of Jesus Christ of Latter-day Saints", city="Culiacan",
+                     website="https://www.lds.org", shared=mod.SHARED_SITE_LIMIT)
+    page = "The Church of Jesus Christ of Latter-day Saints, Culiacán. Classes for children, youth, and adults."
+    assert not mod.site_is_this_church(church, [page])
+    assert mod.site_is_this_church({**church, "site_shared_by": 1}, [page])  # only the share blocks it
+
+
+def test_another_parish_with_a_shared_name_word_is_not_this_church():
+    # Two "Saint Francis Xavier" records point at St. Francis de Sales's site.
+    church = _church("Saint Francis Xavier Church", city="Miami", website="http://saintfrancisonthebeach.com/")
+    page = "Catechesis at St. Francis de Sales, Miami Beach, for students in 1st - 12th grade."
+    assert not mod.site_is_this_church(church, [page])
+    assert mod.site_is_this_church(church, [page.replace("de Sales", "Xavier")])
+
+
+def test_a_street_corroborates_a_name_word_but_never_stands_alone():
+    church = _church("Annunciation of the Virgin Mary Greek Orthodox Church", address="Cypress Lake Drive")
+    home = "Annunciation Greek Orthodox Church · 8210 Cypress Lake Drive · Fort Myers"
+    assert mod.site_is_this_church(church, [home])                       # one name word + street
+    guest = _church("The Porch", address="Main Road")
+    host = "Manna Fellowship Church meets at 12 Main Road. Kids church every Sunday."
+    assert not mod.site_is_this_church(guest, [host])                    # street alone: maybe a guest
+
+
+def test_generic_names_need_the_city_and_short_forms_match():
+    assert mod.site_is_this_church(_church("First United Methodist Church", city="Brownsville"),
+                                   ["FUMC in Brownsville, TX"])
+    assert not mod.site_is_this_church(_church("First United Methodist Church", city="Brownsville"),
+                                       ["FUMC Harlingen"])
+    assert mod.site_is_this_church(_church("Mount Pisgah AME Church"), ["Mt. Pisgah A.M.E."])
+    assert mod.site_is_this_church(_church("Saint Johns Lutheran Church"), ["St. John Lutheran, Fort Myers"])
+    # "John" alone is in 1.2% of church names: without the city it says nothing.
+    assert not mod.site_is_this_church(_church("Saint Johns Lutheran Church"), ["St. John Lutheran"])
+    # Only in the domain: a short word must start it.
+    assert mod.site_is_this_church(_church("Ivy Memorial Baptist Church",
+                                           website="http://www.ivymemorialbaptistchurch.com/"), ["Welcome"])
+    # A Head Start page of a community agency listed as a church's website.
+    assert not mod.site_is_this_church(
+        _church("Plainview Church", city="Oklahoma City",
+                website="https://www.caaofokc.org/services/children-youth/head-start/"),
+        ["Head Start serves children ages 3-5 in Oklahoma City."])
+
+
+def test_an_unconfirmed_site_costs_no_call_and_shows_nothing():
+    calls = []
+
+    async def call(*a, **k):
+        calls.append(1)
+        return {"programs": []}
+
+    target = {**_target(kids=KIDS_HTML), "name": "Calvary Chapel Windsor", "site_shared_by": 1}
+    outcome, records = _run(target, _R2({"kids": KIDS_HTML}), call)
+    assert outcome == "unconfirmed_site" and calls == []
+    assert records[0]["status"] == "unconfirmed_site" and records[0]["programs"] == []
+
+    class Repo:
+        async def due_for_program_extraction(self, limit):
+            return [target]
+
+    counts = asyncio.run(mod.run_program_batch(Repo(), _R2({"kids": KIDS_HTML}), limit=5, apply=False))
+    assert (counts["unconfirmed_site"], counts["would_call_model"]) == (1, 0)
+
+
+EVENTS_HTML = b"""<html><body>
+<h2>Upcoming Events</h2>
+<p>MAY</p><p>10</p><p>SUN</p>
+<p>Mothers' Day</p><p>Sunday School</p><p>9:30 AM to 10:30 AM</p>
+<p>Traditional Worship</p><p>11:00 AM to 12:00 PM</p>
+<p>United Methodist Youth Fellowship</p><p>1:00 PM to 3:00 PM</p>
+<h2>Service Times</h2>
+<p>Sunday: 9:00 am Prayer Together &amp; Faith Kids. 10:00 am Worship Service &amp; Faith Kids</p>
+<p>Wednesday: 6:30 pm Wednesdays in the Word, Faith Students Theology Class, Adventure Club (currently on summer break)</p>
+<p>We have many ministries including Religious Education (for all ages), G.O.Y.A., HOPE/JOY, Young Adults, and College Campus Students.</p>
+</body></html>"""
+
+
+def _pilot(item):
+    page = _page(1, EVENTS_HTML, "homepage")
+    checked = check_programs({"programs": [{"page": 1, **item}]}, [page], CHURCH)
+    return (checked.programs[0] if checked.programs else None), checked.dropped
+
+
+def test_entries_of_a_dated_event_list_are_not_standing_programs():
+    p, dropped = _pilot({"excerpt": "Mothers' Day\nSunday School\n9:30 AM to 10:30 AM", "name": "Sunday School"})
+    assert p is None and dropped == {"dated_event": 1}
+    # Further down the same day's list, the date is no longer next to it.
+    p, dropped = _pilot({"excerpt": "United Methodist Youth Fellowship\n1:00 PM to 3:00 PM",
+                         "name": "United Methodist Youth Fellowship"})
+    assert p is None and dropped == {"dated_event": 1}
+    # Below the next heading, the weekly schedule is not part of that event.
+    p, dropped = _pilot({"excerpt": "Sunday: 9:00 am Prayer Together & Faith Kids", "name": "Faith Kids"})
+    assert p is not None and dropped == {}
+    text = page_text(b"<p>Join us May 10 for a picnic.</p><p>" + b"x " * 40 +
+                     b"</p><p>Our nursery is open during both services for infants.</p>")
+    start = text.index("Our nursery")
+    assert not mod.is_dated(text, start, len(text))  # a date in an earlier sentence does not head it
+
+
+def test_a_list_item_needs_its_own_kids_words_and_must_be_running():
+    line = ("Wednesday: 6:30 pm Wednesdays in the Word, Faith Students Theology Class, "
+            "Adventure Club (currently on summer break)")
+    p, dropped = _pilot({"excerpt": line, "name": "Adventure Club"})
+    assert p is None and dropped == {"not_kids": 1}  # "Students" belongs to the item before it
+    p, dropped = _pilot({"excerpt": line, "name": "Faith Students Theology Class", "age_bands": ["youth"]})
+    assert p is not None and p["age_bands"] == ["youth"]
+    p, dropped = _pilot({"excerpt": line, "name": "Kids Adventure Club (currently on summer break)"})
+    assert dropped in ({"not_kids": 1}, {"paused": 1})  # name not on the page, or paused
+    paused = check_programs({"programs": [{"page": 1, "excerpt": "Kids Club is currently on summer break until fall."}]},
+                            [_page(1, b"<p>Kids Club is currently on summer break until fall.</p>")], CHURCH)
+    assert paused.dropped == {"paused": 1}
+
+
+def test_a_college_campus_ministry_is_not_another_campus():
+    sentence = ("We have many ministries including Religious Education (for all ages), G.O.Y.A., HOPE/JOY, "
+                "Young Adults, and College Campus Students.")
+    p, dropped = _pilot({"excerpt": sentence, "name": "Religious Education"})
+    assert p is not None and dropped == {}  # was other_campus
+    p, _ = _pilot({"excerpt": sentence, "name": "College Campus Students", "age_bands": ["youth", "young_adult"],
+                   "campus_stated": "College Campus"})
+    assert p["age_bands"] == ["young_adult"] and p["campus_stated"] is None
+    assert _pilot({"excerpt": sentence, "name": "G.O.Y.A."})[1] == {"not_kids": 1}  # no age word of its own
+
+
+def test_identity_found_by_the_evaluation_sample():
+    # Common words only: "Calvary" is in 1.2% of church names. A Calvary Chapel
+    # site is not Calvary Lutheran's unless it shows that church's city or street.
+    assert not mod.site_is_this_church(_church("Calvary Lutheran Church", city="Las Vegas"),
+                                       ["Calvary Chapel Green Valley, Henderson"])
+    assert mod.site_is_this_church(_church("Velocity Christian Church", city="Henrico"),
+                                   ["Welcome to Velocity Church"])       # rare word: enough
+    # Denominations written short on their own sites.
+    assert mod.site_is_this_church(_church("Sherwood Forest Freewill Baptist Church", city="New Bern"),
+                                   ["Sherwood Forest FWB"])
+    assert mod.site_is_this_church(_church("Brethren in Christ Church", city="Manheim",
+                                           website="https://manheimbic.org/"), ["Quest (Infant-4th)"])
+    # Spelling and domains that join words.
+    assert mod.site_is_this_church(_church("Our Saviors Lutheran Church", city="Long Beach"),
+                                   ["Our Saviour's Lutheran Church"])
+    assert mod.site_is_this_church(_church("Grace Way Church Austin", city="Austin",
+                                           website="https://gracewayaustin.org/"), ["GracewayATX"])
+    assert mod.site_is_this_church(_church("United Methodist Church", city="Le Roy",
+                                           website="http://leroyum.org/"), ["Pine River Parish"])

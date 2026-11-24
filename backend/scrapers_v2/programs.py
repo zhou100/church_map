@@ -5,14 +5,23 @@ website_v3 pages that often carry the same links), asks the model which
 programs they state, and keeps only what the archive itself supports
 (docs/plans/crawler_visit_facts_plan.md, PR 4 and appendix A):
 
+  * the site must be tied to this church record (site_is_this_church): not a
+    denomination site shared by many records, and naming this church; if not,
+    no model call is made and nothing is shown;
   * the excerpt must occur verbatim, exactly once, in the text of the page it
     names; offsets are computed here, never taken from the model;
   * name, ages and schedule must each occur inside that excerpt;
-  * a type or age band survives only if the program's own words carry it
-    (nursery, "grades 6-12", "during the service", preschool, ...); a
-    program named only "Kids" keeps no age band;
+  * the program's own list item must carry a kids word or stated ages, and a
+    type or age band survives only if the words carry it (nursery, "grades
+    6-12", "during the service", preschool, ...); a program named only "Kids"
+    keeps no age band;
   * young adults stay a separate band, so a college group is never a youth group;
-  * programs tied to another campus, or whose stated year has passed, are dropped.
+  * programs tied to another campus, whose stated year has passed, that sit
+    under a calendar date (one event, not a standing program) or that are
+    stated as paused are dropped.
+
+The rules come from the 2026-11-23 pilot, where 7 of 13 kept programs were
+wrong; tests/scrapers_v2/test_programs.py keeps each failure as a case.
 
 The stage never touches raw_crawl_artifacts.extract_status, so it cannot
 enqueue or starve website_v3. Its own state is church_program_extractions: a
@@ -52,6 +61,11 @@ from backend.scrapers_v2.prompts.programs_v1 import (
 )
 
 log = logging.getLogger(__name__)
+
+# Recorded on every row: the prompt that proposed a program and the version of
+# the checks below that kept it. Bump CHECKS_VERSION when a rule changes.
+CHECKS_VERSION = "checks.v2"
+EXTRACTOR_VERSION = f"{PROMPT_VERSION}+{CHECKS_VERSION}"
 
 MAX_PAGE_CHARS = 8_000
 MAX_INPUT_CHARS = 24_000
@@ -175,7 +189,7 @@ _BAND_WORDS = {
         r"\b(?<!pre-)(?<!pre)(?<!transitional )(kindergarten|elementary|grade school)\b", re.I),
     "youth": re.compile(
         r"\b(youth|teens?|teenagers?|middle school(?:ers?)?|junior high|jr\.? high|high school(?:ers?)?|"
-        r"sr\.? high|senior high)\b|(?<!college )(?<!university )(?<!grad )\bstudents?\b", re.I),
+        r"sr\.? high|senior high)\b|(?<!college )(?<!university )(?<!grad )(?<!campus )\bstudents?\b", re.I),
     "young_adult": re.compile(
         r"\b(young adults?|college|university|collegiate|twenty-?somethings|20s)\b", re.I),
 }
@@ -280,6 +294,64 @@ def supports_type(program_type: str, text: str) -> bool:
 
 
 _YEAR = re.compile(r"\b(20\d\d)\b")
+# A calendar date ("MAY 10", "Nov. 3", "10 June"): the excerpt is one dated
+# occurrence, such as an "Upcoming Events" entry, not a standing program. A
+# year is often missing, so the year check above cannot tell it is past
+# (2026-11-23 pilot: a May 10 Mother's Day Sunday School, shown in November).
+_MONTH = (r"(?:jan(?:uary)?|feb(?:ruary)?|mar(?:ch)?|apr(?:il)?|may|june?|july?|aug(?:ust)?|"
+          r"sep(?:t(?:ember)?)?|oct(?:ober)?|nov(?:ember)?|dec(?:ember)?)")
+_DATE = re.compile(
+    rf"\b{_MONTH}\.?\s+(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)?\b(?!\s*(?::|am\b|pm\b|\d))"
+    rf"|\b(?:[12]\d|3[01]|0?[1-9])(?:st|nd|rd|th)?\s+(?:of\s+)?{_MONTH}\b",
+    re.I)
+# How far before the excerpt a date still heads it ("MAY\n10\nSUN\n" + entry).
+_DATE_LOOKBACK = 40
+# Under an events heading, every entry until the excerpt belongs to the date
+# above it ("Upcoming Events / MAY 10 / ... / Youth Fellowship 1:00 PM").
+_EVENTS_HEADING = re.compile(r"^(?:upcoming |coming |future )?(?:events|calendar|this week|happenings)\b",
+                             re.I | re.M)
+_EVENTS_LOOKBACK = 400
+# An events list is short lines under each date. More lines than this, or a
+# longer line, between the date and the excerpt means the list has ended
+# (page text keeps no headings, so "Service Times" below it looks the same).
+_EVENT_ENTRY_LINES = 8
+_EVENT_ENTRY_CHARS = 60
+# Stated as not running now.
+_PAUSED = re.compile(
+    r"\b(on (?:summer |winter )?break|on hiatus|suspended|cancell?ed|postponed|paused|"
+    r"will resume|resumes? (?:in|on|this|next)|not meeting)\b", re.I)
+# Separators between the items of a list ("Bible Study, Youth Group, Adventure Club").
+_CLAUSE_BREAK = re.compile(r"[,;|•·\n]|\s[-–—]\s")
+
+
+def is_dated(text: str, start: int, end: int) -> bool:
+    """A calendar date inside the excerpt, or just before it in the same block."""
+    before = text[max(0, start - _DATE_LOOKBACK):start]
+    before = re.split(r"[.!?]\s", before)[-1]
+    if _DATE.search(before + "\n" + text[start:end]):
+        return True
+    window = text[max(0, start - _EVENTS_LOOKBACK):start]
+    headings = list(_EVENTS_HEADING.finditer(window))
+    if not headings:
+        return False
+    dates = list(_DATE.finditer(window, headings[-1].end()))
+    if not dates:
+        return False
+    between = window[dates[-1].end():].split("\n")[1:-1]
+    return len(between) <= _EVENT_ENTRY_LINES and all(len(line) <= _EVENT_ENTRY_CHARS for line in between)
+
+
+def own_clause(name: str | None, excerpt: str) -> str:
+    """The list item of `excerpt` that names the program: a kids word elsewhere
+    in the same list does not make "Adventure Club" a children's program."""
+    if not name:
+        return excerpt
+    at = excerpt.lower().find(name.lower())
+    if at < 0:
+        return excerpt
+    cuts = [m.end() for m in _CLAUSE_BREAK.finditer(excerpt, 0, at)]
+    nxt = _CLAUSE_BREAK.search(excerpt, at + len(name))
+    return excerpt[(cuts[-1] if cuts else 0):(nxt.start() if nxt else len(excerpt))]
 # Words that name no particular campus. Directions, "main", "downtown" and
 # street names do tell campuses apart, so they are not in this list.
 _CAMPUS_GENERIC = {"campus", "campuses", "church", "location", "site", "with", "from",
@@ -298,6 +370,102 @@ def _tokens(*values: str | None) -> set[str]:
     return words
 
 
+# ----- is this website this church's? ---------------------------------------------
+
+# A website listed by this many church records or more is a denomination's or a
+# directory's (jw.org, lds.org: 2026-11-23 pilot), not one congregation's.
+SHARED_SITE_LIMIT = 10
+# Name words that do not tell one congregation from another: church types,
+# denominations (often abbreviated on the site: AME, SDA, UMC) and fillers.
+_NAME_GENERIC = frozenset("""
+    church churches the and saint saints iglesia parish parroquia congregation ministries
+    ministry inc community fellowship chapel center centre temple assembly assemblies mission
+    capilla baptist lutheran methodist episcopal african presbyterian pentecostal adventist
+    seventh catholic roman christian apostolic evangelical orthodox greek congregational united
+    reformed nazarene gospel full bible holy christ jesus lord lords first second third kingdom
+    hall jehovah jehovahs witnesses latter missionary independent memorial evangelistic
+    interdenominational nondenominational international worship family house street avenue
+    road drive boulevard lane highway our his her new san los las del des god sts
+    ame sda umc cogic pca lcms elca ucc coc upc fwb freewill brethren mennonite wesleyan
+""".split())
+# The 80 most frequent distinctive name words (as _identity_words returns
+# them), each in at least 0.25% of the 134,377 church records on 2026-11-23.
+# A name made only of these ("Mount Zion", "Grace") is shared by many
+# congregations, so finding it on a site does not say which one the site is.
+_COMMON_NAME_WORDS = frozenset("""
+    mount grove hill zion pleasant creek bethel faith day hope john grace calvary trinity union
+    paul spring life valley oak tabernacle mary free olive greater salem holiness rock ridge west
+    antioch pine park bethlehem peter liberty jame north friendship view lake central little east
+    primitive good old city bethany joseph shiloh lady macedonia south mark star pilgrim luke
+    branch living emmanuel mountain river cedar covenant victory height ebenezer immanuel carmel
+    heart home white light fairview providence andrew point prayer shepherd
+""".split())
+_DIRECTIONS = frozenset("north south east west calle court place parkway way suite".split())
+# A word on the site may be the short form: "Mt. Zion", "St. John's", "Ft. Myers".
+_SHORT_FORM = {"mount": "mt", "saint": "st", "fort": "ft"}
+
+
+_SPELLING = re.compile(r"(savi|neighb)our")
+
+
+def _fold(text: str | None) -> str:
+    """ASCII, lower case, one spelling ("Saviour's" on a "Savior's" record)."""
+    text = unicodedata.normalize("NFKD", text or "").encode("ascii", "ignore").decode().lower()
+    return _SPELLING.sub(r"\1or", text)
+
+
+def _stem(word: str) -> str:
+    return word[:-1] if len(word) > 4 and word.endswith("s") and not word.endswith("ss") else word
+
+
+def _identity_words(text: str | None) -> set[str]:
+    return {_stem(w) for w in re.findall(r"[a-z]{3,}", _fold(text))
+            if w not in _NAME_GENERIC and _stem(w) not in _NAME_GENERIC}
+
+
+def site_is_this_church(church: dict, texts: list[str]) -> bool:
+    """Whether the archived site can be tied to this church record, from the
+    record's own name and address. Every distinctive word of the name must be
+    on the site (or in its address), or at least one of them together with the
+    street. A name made only of common words ("Grace", "Mount Zion") belongs to
+    many congregations, so it needs the city or street as well; one made only
+    of generic words
+    ("First Baptist Church") needs the city. A shared street alone is not
+    enough: another congregation may meet in the same building. Unconfirmed is not "wrong": it means no program from this
+    site is shown for this record."""
+    if (church.get("site_shared_by") or 0) >= SHARED_SITE_LIMIT:
+        return False
+    words = {_stem(w) for t in texts for w in re.findall(r"[a-z]{2,}", _fold(t))}
+    site = re.sub(r"[^a-z0-9]", "", re.sub(r"^[a-z]+://(www\.)?", "", _fold(church.get("website")).strip()))
+
+    def on_site(word: str) -> bool:
+        short = _SHORT_FORM.get(word)
+        # A short word inside a domain is a match only at its start
+        # ("ivymemorialbaptistchurch.com"), not anywhere ("ann" in "annunciation").
+        return (word in words or (len(word) >= 4 and word in site) or site.startswith(word)
+                or (short is not None and (short in words or short in site)))
+
+    # A domain often joins words: "gracewayaustin.org", "leroyum.org".
+    raw_name = re.findall(r"[a-z0-9]+", _fold(church.get("name")))
+    joined = {a + b for a, b in zip(raw_name, raw_name[1:]) if len(a + b) >= 6 and a + b in site}
+
+    def named(word: str) -> bool:
+        return on_site(word) or any(word in j for j in joined)
+
+    name = _identity_words(church.get("name"))
+    street = _identity_words(church.get("address")) - _DIRECTIONS
+    city = _identity_words(church.get("city"))
+    city_joined = "".join(re.findall(r"[a-z0-9]+", _fold(church.get("city"))))
+    street_ok = bool(street) and all(map(on_site, street))
+    city_ok = (bool(city) and all(map(on_site, city))) or (len(city_joined) >= 5 and city_joined in site)
+    if name:
+        found = [w for w in name if named(w)]
+        if len(found) == len(name):
+            return not name <= _COMMON_NAME_WORDS or city_ok or street_ok
+        return bool(found) and street_ok
+    return city_ok
+
+
 def campus_is_this_church(campus: str, church_words: set[str]) -> bool:
     """A stated campus is this church's only if every word that identifies it
     is in this church's name, city or address. Sharing the church name is not
@@ -307,8 +475,23 @@ def campus_is_this_church(campus: str, church_words: set[str]) -> bool:
     return _tokens(campus) <= church_words
 
 
+# "College Campus Students", "University Campus Ministry", "Campus Crusade": a
+# ministry to students on a school campus, not a campus of this church
+# (2026-11-23 pilot: it dropped every program listed beside it).
+_SCHOOL_CAMPUS = re.compile(r"\b(college|university|school|seminary)\b", re.I)
+_CAMPUS_MINISTRY = re.compile(
+    r"\s+(ministry|ministries|students?|outreach|fellowship|crusade|life|groups?)\b", re.I)
+
+
+def is_church_campus(phrase: str, after: str = "") -> bool:
+    return not (_SCHOOL_CAMPUS.search(phrase) or _CAMPUS_MINISTRY.match(after))
+
+
 def campuses_named(campus: str | None, excerpt: str) -> list[str]:
-    return [campus] if campus else [m.group(0) for m in _CAMPUS_IN_TEXT.finditer(excerpt)]
+    if campus:
+        return [campus] if is_church_campus(campus) else []
+    return [m.group(0) for m in _CAMPUS_IN_TEXT.finditer(excerpt)
+            if is_church_campus(m.group(0), excerpt[m.end():])]
 
 
 # ----- the model's answer, checked against the archive -----------------------------
@@ -388,10 +571,25 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         ages = _contains(item.get("ages_stated"), excerpt)
         schedule = _contains(item.get("schedule_stated"), excerpt)
         campus = _contains(item.get("campus_stated"), excerpt)
+        if campus and not is_church_campus(campus):
+            campus = None
+
+        # The program's own words must make it a kids/youth program; with no
+        # stated name, the whole excerpt is its own words.
+        clause = own_clause(name, page.text[start:end])
+        if not (_KIDS_WORDS.search(clause) or (ages and stated_age_bands(ages))):
+            out.drop("not_kids")
+            continue
 
         years = [int(y) for y in _YEAR.findall(" ".join(filter(None, [schedule, excerpt])))]
         if years and max(years) < page.fetched_at.year:
             out.drop("stale")
+            continue
+        if is_dated(page.text, start, end):
+            out.drop("dated_event")
+            continue
+        if _PAUSED.search(clause):
+            out.drop("paused")
             continue
         if not all(campus_is_this_church(c, church_words) for c in campuses_named(campus, excerpt)):
             out.drop("other_campus")
@@ -444,6 +642,9 @@ class Gathered:
     pages: list[Page]
     unreadable: int = 0
     missing: int = 0
+    # Text of every page read, with or without program words: the homepage
+    # footer or contact page is where a site names its church and street.
+    texts: list[str] = field(default_factory=list)
 
 
 def _read_pages(r2: r2mod.R2Client, target: dict) -> Gathered:
@@ -463,6 +664,7 @@ def _read_pages(r2: r2mod.R2Client, target: dict) -> Gathered:
             out.unreadable += 1
             continue
         text = page_text(raw)
+        out.texts.append(text)
         if text and _KIDS_WORDS.search(text):
             out.pages.append(Page(artifact_id, kind, url, key, chash, fetched_at,
                                   hashlib.sha256(raw).hexdigest(), text))
@@ -489,9 +691,9 @@ async def extract_programs_for_church(
     api_key: str | None = None,
     client: httpx.AsyncClient | None = None,
 ) -> str:
-    """Returns the outcome: ok, no_program_text, error, missing_archive or
-    transient. Only ok and no_program_text replace earlier programs; every
-    other outcome keeps them. Transient writes nothing, so the church stays due
+    """Returns the outcome: ok, no_program_text, unconfirmed_site, error,
+    missing_archive or transient. Only ok, no_program_text and unconfirmed_site
+    replace earlier programs; every other outcome keeps them. Transient writes nothing, so the church stays due
     for the next run."""
     church_id = target["church_id"]
     input_ids = sorted(target["artifact_ids"])
@@ -507,15 +709,23 @@ async def extract_programs_for_church(
         await repo.record_program_extraction(
             church_id, [], status="error", programs=None,
             error_detail=f"archived page missing from R2: {got.missing} of {len(input_ids)}",
-            pages_read=0, dropped={}, extractor_version=PROMPT_VERSION, model=None)
+            pages_read=0, dropped={}, extractor_version=EXTRACTOR_VERSION, model=None)
         return "missing_archive"
+    if not site_is_this_church(target, got.texts):
+        # Not tied to this record (a denomination-wide site, another parish's
+        # site): no call, and nothing from it is shown for this church.
+        await repo.record_program_extraction(
+            church_id, input_ids, status="unconfirmed_site", programs=[],
+            pages_read=len(input_ids), dropped={},
+            extractor_version=EXTRACTOR_VERSION, model=None)
+        return "unconfirmed_site"
     if not got.pages:
         # Nothing on these pages is about children or youth: no call, no cost.
         # Earlier programs are cleared: the pages that stated them have changed.
         await repo.record_program_extraction(
             church_id, input_ids, status="no_program_text", programs=[],
             pages_read=len(input_ids), dropped={},
-            extractor_version=PROMPT_VERSION, model=None)
+            extractor_version=EXTRACTOR_VERSION, model=None)
         return "no_program_text"
     try:
         raw = await call(model_input(got.pages), api_key=api_key, client=client,
@@ -532,13 +742,13 @@ async def extract_programs_for_church(
         # Same input, same model: not re-called until the pages change.
         await repo.record_program_extraction(
             church_id, input_ids, status="error", programs=None, error_detail=error[:500],
-            pages_read=len(got.pages), dropped={}, extractor_version=PROMPT_VERSION, model=MODEL)
+            pages_read=len(got.pages), dropped={}, extractor_version=EXTRACTOR_VERSION, model=MODEL)
         return "error"
     checked = check_programs(raw, got.pages, target)
     await repo.record_program_extraction(
         church_id, input_ids, status="ok", programs=checked.programs,
         pages_read=len(got.pages), dropped=checked.dropped,
-        extractor_version=PROMPT_VERSION, model=MODEL)
+        extractor_version=EXTRACTOR_VERSION, model=MODEL)
     return "ok"
 
 
@@ -554,7 +764,7 @@ async def run_program_batch(
     from R2 only. Apply: extract each, one transaction per church. Counts only;
     nothing here prints page text, so the output is safe for a public log."""
     targets = await repo.due_for_program_extraction(limit=limit)
-    counts = {"due": len(targets), "ok": 0, "no_program_text": 0, "error": 0,
+    counts = {"due": len(targets), "ok": 0, "no_program_text": 0, "unconfirmed_site": 0, "error": 0,
               "missing_archive": 0, "transient": 0,
               "programs_kept": 0, "would_call_model": 0, "input_chars": 0}
     if not apply:
@@ -564,6 +774,8 @@ async def run_program_batch(
                 counts["transient"] += 1
             elif got.missing:
                 counts["missing_archive"] += 1
+            elif not site_is_this_church(t, got.texts):
+                counts["unconfirmed_site"] += 1
             elif got.pages:
                 counts["would_call_model"] += 1
                 counts["input_chars"] += len(model_input(got.pages))

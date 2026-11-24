@@ -253,3 +253,39 @@ def test_end_to_end_missing_archive_and_bad_answer_keep_programs():
                               " WHERE church_id = %s", (cid,))
             assert await cur.fetchone() == ("error", 1)
     run(body)
+
+
+def test_due_rows_carry_the_website_and_how_many_records_share_it():
+    """2026-11-23 pilot: jw.org / lds.org are listed by many records. The count
+    folds scheme, www, case, fragment and trailing slash, but keeps the path and
+    query, so pages on one host (sites.google.com/view/a) stay separate sites."""
+    async def body(con, crawl, programs, _):
+        variants = ["https://www.shared-prog.test/", "http://shared-prog.test", "shared-prog.test/",
+                    "HTTPS://WWW.SHARED-PROG.TEST#top", "https://shared-prog.test/?"]
+        ids = [await church(con, f"prog-share-{i}", website=w) for i, w in enumerate(variants)]
+        other = await church(con, "prog-share-path", website="https://shared-prog.test/view/other")
+        query = await church(con, "prog-share-query", website="https://shared-prog.test/?id=2")
+        blank = await church(con, "prog-share-blank", website="  ")
+        for cid in ids + [other, query, blank]:
+            await page(crawl, cid, "homepage", f"h{cid}")
+        got = await due(programs, set(ids + [other, query, blank]))
+        assert {got[c]["site_shared_by"] for c in ids} == {len(variants)}
+        assert (got[other]["site_shared_by"], got[query]["site_shared_by"], got[blank]["site_shared_by"]) == (1, 1, 0)
+        assert got[ids[0]]["website"] == variants[0]
+    run(body)
+
+
+def test_unconfirmed_site_is_a_recorded_outcome():
+    import psycopg
+
+    async def body(con, crawl, programs, _):
+        cid = await church(con, "prog-f")
+        await page(crawl, cid, "homepage", "home1")
+        t = (await due(programs, {cid}))[cid]
+        await done(programs, t, status="unconfirmed_site")
+        assert await due(programs, {cid}) == {}  # not retried until the pages change
+        async with con.transaction():
+            with pytest.raises(psycopg.errors.CheckViolation):
+                async with con.transaction():
+                    await done(programs, t, status="bogus")
+    run(body)
