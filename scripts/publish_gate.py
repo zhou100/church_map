@@ -120,6 +120,30 @@ def evaluate(plan, run_results, as_of_date, publish_log, health, *, now=None):
     return {'rows': decisions, 'summary': summary, 'run_reasons': sorted(global_reasons)}
 
 
+def plain(value):
+    """JSON-safe value whose str() matches the diff CSV's (publish_verified._text)."""
+    import datetime as dt
+    from decimal import Decimal
+    if isinstance(value, (dt.datetime, dt.date)):
+        return value.isoformat()
+    if isinstance(value, Decimal):
+        return float(value)
+    return value
+
+
+def digest_of(path):
+    from scripts.muse_state_store import digest
+    return digest(path.read_bytes())
+
+
+def write_plan(path, run_id, diff_sha256, plan):
+    from scripts.muse_shadow import write_json
+    write_json(path, {'run_id': run_id, 'diff_sha256': diff_sha256, 'plan': [
+        {'kind': p['kind'], 'subject': p['subject'], 'church_id': p['church_id'],
+         'changes': [[f, a, plain(o), plain(n)] for f, a, o, n in p['changes']],
+         'row': {k: plain(v) for k, v in p['row'].items()}} for p in plan]})
+
+
 def fetch_health(base_url):
     """Bounded GET; never forward credentials or follow redirects."""
     import requests
@@ -170,6 +194,9 @@ def dry_run(directory, receipt_path, results_path):
             logs = cur.execute('SELECT id, action FROM public.publish_log ORDER BY id').fetchall()
     run_id = 'pub-' + uuid.uuid4().hex
     diff = publisher.write_diff(plan, run_id, directory)
+    # The exact reviewed plan, mart rows and sources included, so an owner-approved
+    # subset can be applied later without rebuilding the marts (scripts/publish_approved.py).
+    write_plan(directory / 'plan.json', run_id, digest_of(diff), plan)
     health = fetch_health(os.environ.get('BACKEND_URL', ''))
     observed_at = datetime.now(timezone.utc)
     decision = evaluate(plan, results, receipt.get('as_of_date'), logs, health, now=observed_at)
