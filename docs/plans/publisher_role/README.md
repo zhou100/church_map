@@ -53,6 +53,11 @@ no DDL, and no unrelated application access. PUBLIC privileges are checked,
 not silently revoked from other users. Existing `churchmap_snapshot.churches`
 remains intact; no table or dependent view is replaced.
 
+A role provisioned before migration 0009 lacks the `extracted_denomination` column
+grant that `scripts/restore_denomination.py` needs (it keeps the website reading
+there when it restores the directory value). Add it once in SQL Editor:
+`GRANT UPDATE (extracted_denomination) ON public.churches TO churchmap_publisher;`
+
 Provision LOGIN as for the [snapshot reader](../supabase_isolation/README.md):
 generate a random password and its SCRAM-SHA-256 verifier locally, retain the
 password in the password manager, and execute `ALTER ROLE churchmap_publisher LOGIN PASSWORD '<verifier>'`

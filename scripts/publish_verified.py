@@ -64,6 +64,8 @@ NEW_FIELDS = ["name", "denomination", "address", "city", "state", "zip_code", "p
 # A written fact -> the mart columns holding where it was stated.
 SOURCES = {"address": "address", "phone": "phone", "service_times": "service", "kids_program": "kids"}
 FACTS = set(CHURCH_FIELDS) - {"scope_status", "display_tradition"}
+# --revert also undoes scripts/restore_denomination.py, which logs this column too.
+REVERT_TYPES = COLUMNS | {"extracted_denomination": "text"}
 
 
 def _blank(value) -> bool:
@@ -301,7 +303,7 @@ def revert(prod, run_id: str) -> dict:
                 cur.execute("delete from churches where church_id = %s and source = 'muse'", (church_id,))
                 counts["deleted"] += 1
             else:
-                cur.execute(f"update churches set {field} = %s::{COLUMNS[field]} where church_id = %s", (old, church_id))
+                cur.execute(f"update churches set {field} = %s::{REVERT_TYPES[field]} where church_id = %s", (old, church_id))
                 counts["restored"] += 1
         cur.execute("delete from church_fact_sources where run_id = %s", (run_id,))
         cur.execute("insert into publish_log (run_id, church_id, field, action) values (%s, 0, '*', 'revert')", (run_id,))
