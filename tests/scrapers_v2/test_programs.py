@@ -93,7 +93,7 @@ def test_locate_is_exact_unique_and_offsets_are_ours():
 # ----- what survives ------------------------------------------------------------------
 
 def test_supported_program_keeps_bands_type_and_stated_fields():
-    p, dropped = _one({"page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
+    p, dropped = _one({"category": "program", "page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
                        "name": "nursery", "type": "during_service", "age_bands": ["preschool"],
                        "ages_stated": "infants through age 3", "schedule_stated": "during both services"})
     assert dropped == {}
@@ -109,14 +109,14 @@ def test_supported_program_keeps_bands_type_and_stated_fields():
 
 def test_kids_without_ages_keeps_no_band():
     # The model guesses "children"; the page states no ages or grades.
-    p, _ = _one({"page": 1, "excerpt": "Our Kids Ministry helps every child know Jesus and make friends.",
+    p, _ = _one({"category": "program", "page": 1, "excerpt": "Our Kids Ministry helps every child know Jesus and make friends.",
                  "name": "Kids Ministry", "type": "during_service", "age_bands": ["children", "preschool"]})
     assert p["age_bands"] == []
     assert p["program_type"] is None   # nothing says when it meets
 
 
 def test_college_group_is_young_adult_never_youth():
-    p, _ = _one({"page": 1, "excerpt": "College students and young adults gather Thursdays at 7:30pm for dinner.",
+    p, _ = _one({"category": "program", "page": 1, "excerpt": "College students and young adults gather Thursdays at 7:30pm for dinner.",
                  "name": "College students and young adults", "type": "other",
                  "age_bands": ["youth", "young_adult"], "schedule_stated": "Thursdays at 7:30pm"})
     assert p["age_bands"] == ["young_adult"]
@@ -124,33 +124,33 @@ def test_college_group_is_young_adult_never_youth():
 
 
 def test_explicit_grades_add_their_band_even_if_the_model_left_it_out():
-    p, _ = _one({"page": 1, "excerpt": "Students in grades 6-12 meet Wednesdays at 7pm in the Youth Room.",
+    p, _ = _one({"category": "program", "page": 1, "excerpt": "Students in grades 6-12 meet Wednesdays at 7pm in the Youth Room.",
                  "name": "Students", "type": "other", "age_bands": [], "ages_stated": "grades 6-12"})
     assert p["age_bands"] == ["youth"]
 
 
 def test_weekday_preschool_is_weekday_care_and_sunday_claims_are_dropped():
-    p, _ = _one({"page": 2, "excerpt": "Grace Preschool serves children ages 2-5, Monday through Friday, 7am-6pm.",
+    p, _ = _one({"category": "program", "page": 2, "excerpt": "Grace Preschool serves children ages 2-5, Monday through Friday, 7am-6pm.",
                  "name": "Grace Preschool", "type": "weekday_care", "age_bands": ["preschool", "children"],
                  "ages_stated": "ages 2-5", "schedule_stated": "Monday through Friday, 7am-6pm"})
     assert p["program_type"] == "weekday_care"
     assert p["age_bands"] == ["preschool"]  # "ages 2-5" is before kindergarten: not a K-5 claim
     # The same preschool claimed as during-service care has no words for it.
-    p, _ = _one({"page": 2, "excerpt": "Grace Preschool serves children ages 2-5, Monday through Friday, 7am-6pm.",
+    p, _ = _one({"category": "program", "page": 2, "excerpt": "Grace Preschool serves children ages 2-5, Monday through Friday, 7am-6pm.",
                  "name": "Grace Preschool", "type": "during_service", "age_bands": ["preschool"]})
     assert p["program_type"] is None
 
 
 def test_unsupported_wrong_page_stale_and_other_campus_are_dropped():
     cases = [
-        ({"page": 1, "excerpt": "Our nursery is open on Saturdays for infants and toddlers."}, "not_found"),
-        ({"page": 2, "excerpt": "Our nursery is open during both services for infants through age 3."}, "not_found"),
-        ({"page": 9, "excerpt": "Our nursery is open during both services for infants through age 3."}, "bad_page"),
-        ({"page": 1, "excerpt": "Kids"}, "too_short"),
-        ({"page": 1, "excerpt": "Vacation Bible School 2024 runs June 10-14 for ages 4 to 11."}, "stale"),
-        ({"page": 1, "excerpt": "At our Riverside campus, kids in grades 1-5 meet Sundays at 9am.",
+        ({"category": "program", "page": 1, "excerpt": "Our nursery is open on Saturdays for infants and toddlers."}, "not_found"),
+        ({"category": "program", "page": 2, "excerpt": "Our nursery is open during both services for infants through age 3."}, "not_found"),
+        ({"category": "program", "page": 9, "excerpt": "Our nursery is open during both services for infants through age 3."}, "bad_page"),
+        ({"category": "program", "page": 1, "excerpt": "Kids"}, "too_short"),
+        ({"category": "program", "page": 1, "excerpt": "Vacation Bible School 2024 runs June 10-14 for ages 4 to 11."}, "stale"),
+        ({"category": "program", "page": 1, "excerpt": "At our Riverside campus, kids in grades 1-5 meet Sundays at 9am.",
           "campus_stated": "Riverside campus"}, "other_campus"),
-        ({"page": 1, "excerpt": "Grace Church · 123 Main St, Fresno CA · Nursery available"}, None),
+        ({"category": "program", "page": 1, "excerpt": "Grace Church · 123 Main St, Fresno CA · Nursery available"}, None),
     ]
     for item, reason in cases:
         p, dropped = _one(item)
@@ -161,7 +161,7 @@ def test_unsupported_wrong_page_stale_and_other_campus_are_dropped():
 
 
 def test_stated_fields_outside_the_excerpt_are_blanked():
-    p, _ = _one({"page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
+    p, _ = _one({"category": "program", "page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
                  "name": "Little Lambs Nursery", "ages_stated": "0-36 months", "schedule_stated": "Sundays 9am"})
     assert (p["name_stated"], p["ages_stated"], p["schedule_stated"]) == (None, None, None)
     assert p["age_bands"] == []  # no proposed band, and "0-36 months" is not on the page
@@ -169,7 +169,7 @@ def test_stated_fields_outside_the_excerpt_are_blanked():
 
 def test_adult_only_and_malformed_answers_are_dropped():
     checked = check_programs({"programs": [
-        {"page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.", "type": "bogus",
+        {"category": "program", "page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.", "type": "bogus",
          "age_bands": "preschool"},
         "not a dict",
     ]}, PAGES, CHURCH)
@@ -180,13 +180,13 @@ def test_adult_only_and_malformed_answers_are_dropped():
     assert check_programs({"programs": []}, PAGES, CHURCH).programs == []
     text = page_text(b"<p>Women's Bible Study meets Tuesdays at 10am in the fellowship hall.</p>")
     adult = Page(1, "homepage", "https://grace.example.org/", "k", None, WHEN, "x", text)
-    checked = check_programs({"programs": [{"page": 1, "excerpt": "Women's Bible Study meets Tuesdays at 10am"}]},
+    checked = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": "Women's Bible Study meets Tuesdays at 10am"}]},
                              [adult], CHURCH)
     assert checked.programs == [] and checked.dropped == {"not_kids": 1}
 
 
 def test_repeated_program_is_kept_once():
-    item = {"page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
+    item = {"category": "program", "page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
             "name": "nursery", "type": "during_service", "age_bands": ["preschool"]}
     checked = check_programs({"programs": [item, dict(item)]}, PAGES, CHURCH)
     assert len(checked.programs) == 1 and checked.dropped == {"duplicate": 1}
@@ -247,16 +247,18 @@ def test_model_answer_is_checked_and_recorded_with_sorted_inputs():
     async def call(text, **kw):
         seen.update(text=text, **kw)
         return {"programs": [
-            {"page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
+            {"category": "program", "page": 1, "excerpt": "Our nursery is open during both services for infants through age 3.",
              "type": "during_service", "age_bands": ["preschool"]},
-            {"page": 1, "excerpt": "This sentence is not on the page about kids at all."},
+            {"category": "program", "page": 1, "excerpt": "This sentence is not on the page about kids at all."},
         ]}
 
     outcome, records = _run(_target(kids=KIDS_HTML, home=b"<p>Welcome</p>"),
                             _R2({"kids": KIDS_HTML, "home": b"<p>Welcome</p>"}), call)
     assert outcome == "ok"
     assert seen["model"] == mod.MODEL and seen["system_prompt"] == mod.SYSTEM_PROMPT
-    assert seen["text"].startswith("=== PAGE 1 (kids) https://grace.example.org/kids ===")
+    # Prompt v2: the church is named first, so the model can tell another congregation's page.
+    assert seen["text"].startswith("=== CHURCH === Grace Church | Fresno, ")
+    assert "\n\n=== PAGE 1 (kids) https://grace.example.org/kids ===\n" in seen["text"]
     assert "Welcome" not in seen["text"]  # a page without program words is not sent
     rec = records[0]
     assert rec["input_ids"] == [10, 11] and rec["status"] == "ok"
@@ -285,7 +287,7 @@ SOUTH = "Grace Church South Campus offers kids in grades 1-5 a Sunday program."
 
 def _campus_case(church, excerpt, campus=None):
     html = f"<html><body><p>{excerpt}</p></body></html>".encode()
-    item = {"page": 1, "excerpt": excerpt, "type": "during_service", "age_bands": ["children"]}
+    item = {"category": "program", "page": 1, "excerpt": excerpt, "type": "during_service", "age_bands": ["children"]}
     if campus:
         item["campus_stated"] = campus
     checked = check_programs({"programs": [item]}, [_page(1, html)], church)
@@ -441,7 +443,7 @@ EVENTS_HTML = b"""<html><body>
 
 def _pilot(item):
     page = _page(1, EVENTS_HTML, "homepage")
-    checked = check_programs({"programs": [{"page": 1, **item}]}, [page], CHURCH)
+    checked = check_programs({"programs": [{"category": "program", "page": 1, **item}]}, [page], CHURCH)
     return (checked.programs[0] if checked.programs else None), checked.dropped
 
 
@@ -470,7 +472,7 @@ def test_a_list_item_needs_its_own_kids_words_and_must_be_running():
     assert p is not None and p["age_bands"] == ["youth"]
     p, dropped = _pilot({"excerpt": line, "name": "Kids Adventure Club (currently on summer break)"})
     assert dropped in ({"not_kids": 1}, {"paused": 1})  # name not on the page, or paused
-    paused = check_programs({"programs": [{"page": 1, "excerpt": "Kids Club is currently on summer break until fall."}]},
+    paused = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": "Kids Club is currently on summer break until fall."}]},
                             [_page(1, b"<p>Kids Club is currently on summer break until fall.</p>")], CHURCH)
     assert paused.dropped == {"paused": 1}
 
@@ -494,7 +496,7 @@ def test_stated_ages_belong_to_the_programs_own_list_item():
     page = _page(1, f"<p>{sentence}</p>".encode(), "homepage")
 
     def ages(name):
-        checked = check_programs({"programs": [{"page": 1, "excerpt": sentence, "name": name,
+        checked = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": sentence, "name": name,
                                                 "ages_stated": "all ages"}]}, [page], CHURCH)
         return checked.programs[0]["ages_stated"]
 
@@ -585,16 +587,16 @@ LOCATIONS_HTML = b"""<html><body>
 def test_on_a_page_of_locations_an_excerpt_belongs_to_the_address_above_it():
     loveland = _church("Citipointe Church", city="Loveland", address="McWhinney Boulevard", state="CO")
     page = _page(1, LOCATIONS_HTML, "homepage")
-    ipswich = check_programs({"programs": [{"page": 1, "excerpt": "Full Kids program is available during this service."}]},
+    ipswich = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": "Full Kids program is available during this service."}]},
                              [page], loveland)
     assert ipswich.programs == [] and ipswich.dropped == {"other_campus": 1}
-    own = check_programs({"programs": [{"page": 1, "excerpt": "Kids Church for ages 4-10 during the service."}]},
+    own = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": "Kids Church for ages 4-10 during the service."}]},
                          [page], loveland)
     assert len(own.programs) == 1
 
 
 def _one_page(html, item, church=CHURCH):
-    checked = check_programs({"programs": [{"page": 1, **item}]}, [_page(1, html)], church)
+    checked = check_programs({"programs": [{"category": "program", "page": 1, **item}]}, [_page(1, html)], church)
     return (checked.programs[0] if checked.programs else None), checked.dropped
 
 
@@ -644,3 +646,45 @@ def test_a_range_from_a_word_to_a_grade_covers_the_bands_between():
     assert mod.stated_age_bands("preschool through fifth grade") == {"preschool", "children"}
     assert mod.stated_age_bands("kindergarten through sixth grade") == {"children", "youth"}
     assert mod.stated_age_bands("K-5") == set()  # no grade word: could be anything
+
+
+# ----- 2026-11-24 second sample (seed eval-20261124b): 51 of 273 wrong, mostly
+# passages v1 listed despite "skip" instructions. Prompt v2 classifies them.
+
+def test_only_passages_the_model_calls_a_program_are_kept():
+    nursery = "Our nursery is open during both services for infants through age 3."
+    page = _page(1, KIDS_HTML)
+    for category in ("outreach", "adult", "ceremony", "advice", "volunteer_or_staff", "not_running",
+                     "one_time_event", "other_location", "other"):
+        checked = check_programs({"programs": [{"page": 1, "excerpt": nursery, "category": category}]}, [page], CHURCH)
+        assert checked.programs == [] and checked.dropped == {f"category_{category}": 1}
+    for category in (None, "bogus"):
+        checked = check_programs({"programs": [{"page": 1, "excerpt": nursery, "category": category}]}, [page], CHURCH)
+        assert checked.dropped == {"category_missing": 1}  # no free pass for an answer without the field
+
+
+def test_postponed_on_hold_no_sunday_school_and_adult_names_are_dropped():
+    p, dropped = _one_page(b"<p>Teens</p><p>Youth Aftershock: Grades 7-12</p><p>Temporary Postponement</p>",
+                           {"excerpt": "Youth Aftershock: Grades 7-12\nTemporary Postponement", "name": "Youth Aftershock"})
+    assert p is None and dropped == {"paused": 1}
+    p, dropped = _one_page(b"<p>Kids in the Upper Room / After worship / Nursery available for parents / On Hold for Winter</p>",
+                           {"excerpt": "Kids in the Upper Room / After worship / Nursery available for parents / On Hold for Winter",
+                            "name": "Kids in the Upper Room"})
+    assert p is None and dropped == {"paused": 1}
+    p, dropped = _one_page(b"<p>There will be no children's Sunday school throughout the summer.</p>",
+                           {"excerpt": "There will be no children's Sunday school throughout the summer.",
+                            "name": "children's Sunday school"})
+    assert p is None and dropped == {"not_offered": 1}
+    p, dropped = _one_page(b"<p>Sundays @ 9:00 AM Adult Sunday School Class for kids' parents.</p>",
+                           {"excerpt": "Sundays @ 9:00 AM Adult Sunday School Class for kids' parents.",
+                            "name": "Adult Sunday School Class"})
+    assert p is None and dropped == {"adult": 1}
+    p, _ = _one_page(b"<p>Nursery provided during the service for infants and toddlers.</p>",
+                     {"excerpt": "Nursery provided during the service for infants and toddlers.", "name": "Nursery"})
+    assert p is not None  # "no" only counts when it negates the program
+
+
+def test_the_model_is_told_which_church_it_is_reading():
+    target = {"name": "Midway Church", "city": "Columbus", "state": "GA", "address": None}
+    text = mod.model_input([_page(1, KIDS_HTML)], target)
+    assert text.splitlines()[0] == "=== CHURCH === Midway Church | Columbus, GA | "
