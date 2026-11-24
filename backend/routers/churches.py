@@ -51,6 +51,9 @@ def _row_to_church(row: dict, *, include_dims: bool = False) -> dict:
         "city": row.get("city"),
         "state": row.get("state"),
         "denomination": row.get("denomination"),
+        # The extractor's reading of the website: a website claim, never a
+        # directory or verified fact (AGENTS evidence classes).
+        "extracted_denomination": row.get("extracted_denomination"),
         "service_times": row.get("service_times"),
         "latitude": row.get("latitude"),
         "longitude": row.get("longitude"),
@@ -204,6 +207,7 @@ def _row_to_prerender_church(row: dict) -> dict:
         "city": row.get("city"),
         "state": row.get("state"),
         "denomination": row.get("denomination"),
+        "extracted_denomination": row.get("extracted_denomination"),
         "website": row.get("website") or None,
         "phone": row.get("phone") or None,
         "website_summary": row.get("website_summary") or None,

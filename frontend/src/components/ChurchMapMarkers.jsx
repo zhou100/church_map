@@ -3,6 +3,8 @@ import { Marker, Popup, useMapEvents } from 'react-leaflet'
 import L from 'leaflet'
 import { churchMarkerIcon } from './mapMarker'
 import { clusterMapPoints, samePoint, stackPage } from './mapClusters'
+import DenominationLabel from './DenominationLabel'
+import { denominationLabel } from '../churchProfile'
 
 // Listings that share one map point (or still overlap at full zoom), a few
 // at a time: a stack can hold dozens of directory rows.
@@ -85,7 +87,7 @@ export default function ChurchMapMarkers({ churches, hoveredId, selectedId, onHo
         {stack ? <StackPopup group={group} exact={exact} onSelect={onSelect} /> : <div className="map-popup">
           <strong>{first.name}</strong>
           <span>{[first.city, first.state].filter(Boolean).join(', ')}</span>
-          {first.denomination && <span className="popup-denom">{first.denomination}</span>}
+          {denominationLabel(first) && <span className="popup-denom"><DenominationLabel church={first} /></span>}
           <a className="popup-link" href={`/church/${first.id}`}>View church</a>
         </div>}
       </Popup>}

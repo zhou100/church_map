@@ -4,6 +4,7 @@ import { test } from 'node:test'
 import {
   churchLanguages,
   cityLanguageChips,
+  denominationLabel,
   fitReason,
   fitScore,
   fitSignals,
@@ -365,4 +366,19 @@ test('a server-ranked page claims city-wide absence only if no row on it matched
   // With nothing matching anywhere on the page, the ranking does speak for the city.
   const unmatched = Array.from({ length: 20 }, (_, i) => church({ name: `C ${i}`, website_summary: 'A parish.' }))
   assert.match(zeroMatchSentence(unmatched, spanishKids, { city: 'Fresno', limit: 20, ranked: true }), /None of the churches we have details on in Fresno/)
+})
+
+test('the directory denomination wins; a website reading is only a marked fallback', () => {
+  const listing = { denomination: 'Christian Reformed', extracted_denomination: 'Unitarian Universalist' }
+  assert.deepEqual(denominationLabel(listing), { text: 'Christian Reformed', fromWebsite: false })
+  assert.deepEqual(denominationLabel({ extracted_denomination: 'Presbyterian' }),
+    { text: 'Presbyterian', fromWebsite: true })
+  assert.equal(denominationLabel({}), null)
+})
+
+test('a website reading never decides whether a listing is a church', () => {
+  // Church 96132: the directory says Christian Reformed; its website is a Unitarian congregation's.
+  assert.equal(isChurch({ denomination: 'Christian Reformed', extracted_denomination: 'Unitarian Universalist' }), true)
+  // Unknown stays unknown: a reading alone does not turn a listing into "not a church".
+  assert.equal(isChurch({ denomination: null, extracted_denomination: 'Jewish' }), true)
 })

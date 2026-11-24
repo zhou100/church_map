@@ -2,6 +2,7 @@ import { memo } from 'react'
 import { Link } from 'react-router-dom'
 import Icon from './Icon'
 import { languageSignals, programHighlights } from '../churchProfile'
+import DenominationLabel from './DenominationLabel'
 
 const DENOM_COLORS = {
   baptist:     '#9A3412',
@@ -60,7 +61,7 @@ function CardBody({ church, showDistance, showLocation, fitReason }) {
   return (
     <div className="card-body">
       <h3>{church.name}</h3>
-      <p className="card-denom">{church.denomination || 'Church'}</p>
+      <p className="card-denom"><DenominationLabel church={church} fallback="Church" /></p>
       {showLocation && (church.city || church.state) && (
         <p className="card-location">
           {[church.city, church.state].filter(Boolean).join(', ')}

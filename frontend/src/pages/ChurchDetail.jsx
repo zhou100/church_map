@@ -13,6 +13,8 @@ import { churchMarkerIcon } from '../components/mapMarker'
 import 'leaflet/dist/leaflet.css'
 import { enrichChurch, getChurch, getReviews, getSimilarChurches } from '../api/client'
 import { buildChurchSeo } from '../seo/church'
+import DenominationLabel from '../components/DenominationLabel'
+import { denominationLabel } from '../churchProfile'
 
 function Stars({ rating }) {
   if (rating == null) return <span className="stars">—</span>
@@ -149,7 +151,7 @@ export default function ChurchDetail() {
 
             <div className="detail-header">
               <h1>{church.name}</h1>
-              {church.denomination && <p className="denom">{church.denomination}</p>}
+              {denominationLabel(church) && <p className="denom"><DenominationLabel church={church} /></p>}
               {(church.address || church.city) && (
                 <p className="address">
                   {[church.address, church.city, church.state].filter(Boolean).join(', ')}

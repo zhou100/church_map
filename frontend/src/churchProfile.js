@@ -35,6 +35,15 @@ const NOT_A_CHURCH_PATTERN = new RegExp(`(^|[^a-z])(${NOT_A_CHURCH.join('|')})`)
 // D-1 keeps Messianic Jewish congregations in scope; 'jewish' alone would not.
 const MESSIANIC = /messianic|jews for jesus|hebrew christian/
 
+// The label to show for a church's tradition. The directory's denomination
+// (or a verified one) comes first; the extractor's reading of the church's own
+// website is only a website claim, shown as such and never used by isChurch.
+export function denominationLabel(church) {
+  if (church?.denomination) return { text: church.denomination, fromWebsite: false }
+  if (church?.extracted_denomination) return { text: church.extracted_denomination, fromWebsite: true }
+  return null
+}
+
 export function isChurch(church) {
   const denomination = (church.denomination || '').toLowerCase()
   return MESSIANIC.test(denomination) || !NOT_A_CHURCH_PATTERN.test(denomination)
