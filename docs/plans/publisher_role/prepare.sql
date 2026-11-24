@@ -41,7 +41,8 @@ GRANT USAGE ON SCHEMA public TO churchmap_publisher;
 GRANT SELECT, INSERT, DELETE ON public.churches TO churchmap_publisher;
 GRANT UPDATE (name, denomination, address, city, state, zip_code, phone,
   service_times, service_languages, kids_program, website, facebook_url,
-  latitude, longitude, scope_status, display_tradition, verified_at, verified_by)
+  latitude, longitude, scope_status, display_tradition, verified_at, verified_by,
+  extracted_denomination)
   ON public.churches TO churchmap_publisher;
 GRANT SELECT, INSERT, UPDATE, DELETE ON public.church_fact_sources TO churchmap_publisher;
 GRANT SELECT, INSERT ON public.publish_log TO churchmap_publisher;
@@ -103,7 +104,7 @@ BEGIN
     AND a.attnum > 0 AND NOT a.attisdropped AND a.attname NOT IN
     ('name','denomination','address','city','state','zip_code','phone','service_times',
      'service_languages','kids_program','website','facebook_url','latitude','longitude',
-     'scope_status','display_tradition','verified_at','verified_by')
+     'scope_status','display_tradition','verified_at','verified_by','extracted_denomination')
   LOOP
     IF has_column_privilege('churchmap_publisher','public.churches',obj.attname,'UPDATE') THEN
       RAISE EXCEPTION 'Inherited non-publisher column update privilege';
