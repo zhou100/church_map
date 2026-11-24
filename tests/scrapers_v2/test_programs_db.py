@@ -289,3 +289,42 @@ def test_unconfirmed_site_is_a_recorded_outcome():
                 async with con.transaction():
                     await done(programs, t, status="bogus")
     run(body)
+
+
+def test_church_ids_reread_written_rows_and_a_seed_samples_the_due_set():
+    """A rule fix re-reads named churches even though their pages did not
+    change; an evaluation sample is a seeded shuffle of the due set only."""
+    from backend.scrapers_v2 import programs as mod
+    from backend.scrapers_v2.r2 import R2NotFound
+
+    class R2:
+        def get_html(self, key):
+            raise R2NotFound(key)
+
+    async def body(con, crawl, programs, churches):
+        done_id = await church(con, "prog-reread-done")
+        await page(crawl, done_id, "homepage", "reread1")
+        await done(programs, (await due(programs, {done_id}))[done_id])
+        hidden = await church(con, "prog-reread-hidden", scope_status="out_of_scope")
+        await page(crawl, hidden, "homepage", "reread2")
+        fresh = [await church(con, f"prog-sample-{i}") for i in range(6)]
+        for i, cid in enumerate(fresh):
+            await page(crawl, cid, "homepage", f"sample{i}")
+
+        assert done_id not in await due(programs, {done_id})
+        rows = await programs.due_for_program_extraction(limit=10, church_ids=[done_id, hidden, fresh[0]])
+        assert sorted(r["church_id"] for r in rows) == sorted([done_id, fresh[0]])  # never hidden ones
+        assert "site_shared_by" in rows[0] and rows[0]["artifact_ids"]
+
+        async def sample(seed):
+            got = await programs.due_for_program_extraction(limit=10_000, sample_seed=seed)
+            return [r["church_id"] for r in got if r["church_id"] in fresh or r["church_id"] == done_id]
+
+        a, b, c = await sample("s1"), await sample("s1"), await sample("s2")
+        assert a == b and sorted(a) == sorted(fresh)  # reproducible, due rows only
+        assert a != c or len(fresh) < 2
+
+        counts = await mod.run_program_batch(programs, R2(), limit=5, apply=False,
+                                             church_ids=[done_id])
+        assert counts["due"] == 1 and counts["missing_archive"] == 1
+    run(body)

@@ -64,7 +64,7 @@ log = logging.getLogger(__name__)
 
 # Recorded on every row: the prompt that proposed a program and the version of
 # the checks below that kept it. Bump CHECKS_VERSION when a rule changes.
-CHECKS_VERSION = "checks.v2"
+CHECKS_VERSION = "checks.v3"
 EXTRACTOR_VERSION = f"{PROMPT_VERSION}+{CHECKS_VERSION}"
 
 MAX_PAGE_CHARS = 8_000
@@ -321,7 +321,11 @@ _PAUSED = re.compile(
     r"\b(on (?:summer |winter )?break|on hiatus|suspended|cancell?ed|postponed|paused|"
     r"will resume|resumes? (?:in|on|this|next)|not meeting)\b", re.I)
 # Separators between the items of a list ("Bible Study, Youth Group, Adventure Club").
-_CLAUSE_BREAK = re.compile(r"[,;|•·\n]|\s[-–—]\s")
+_CLAUSE_BREAK = re.compile(r"[,;|•·\n]|\s(?:--|[-–—])\s")
+# An aside that states ages right after a program's name: "Youth Group, grades 6-12".
+_AGES_LEAD = re.compile(
+    r"\(?\s*(?:for\s+)?(?:ages?\b|grades?\b|\d|birth\b|newborns?\b|infants?\b|toddlers?\b|"
+    r"pre-?k\b|k\s*[-–]|kindergarten\b|elementary\b|middle\b|high school\b)", re.I)
 
 
 def is_dated(text: str, start: int, end: int) -> bool:
@@ -341,17 +345,50 @@ def is_dated(text: str, start: int, end: int) -> bool:
     return len(between) <= _EVENT_ENTRY_LINES and all(len(line) <= _EVENT_ENTRY_CHARS for line in between)
 
 
+def _clause_span(name: str | None, excerpt: str) -> tuple[int, int]:
+    """Where the list item that names the program starts and ends in `excerpt`;
+    the whole excerpt when there is no name or it is not found."""
+    if not name:
+        return 0, len(excerpt)
+    at = excerpt.lower().find(name.lower())
+    if at < 0:
+        return 0, len(excerpt)
+    cuts = [m.end() for m in _CLAUSE_BREAK.finditer(excerpt, 0, at)]
+    nxt = _CLAUSE_BREAK.search(excerpt, at + len(name))
+    return (cuts[-1] if cuts else 0), (nxt.start() if nxt else len(excerpt))
+
+
 def own_clause(name: str | None, excerpt: str) -> str:
     """The list item of `excerpt` that names the program: a kids word elsewhere
     in the same list does not make "Adventure Club" a children's program."""
-    if not name:
-        return excerpt
-    at = excerpt.lower().find(name.lower())
-    if at < 0:
-        return excerpt
-    cuts = [m.end() for m in _CLAUSE_BREAK.finditer(excerpt, 0, at)]
-    nxt = _CLAUSE_BREAK.search(excerpt, at + len(name))
-    return excerpt[(cuts[-1] if cuts else 0):(nxt.start() if nxt else len(excerpt))]
+    a, b = _clause_span(name, excerpt)
+    return excerpt[a:b]
+
+
+def own_ages(name: str | None, ages: str | None, excerpt: str) -> str | None:
+    """The stated ages, if they start in the program's own list item or in an
+    aside that opens with ages right after it ("Youth Group, grades 6-12").
+    2026-11-24 pilot: "... Young Adults, and College Campus Students -- lots to
+    share for all ages" gave both groups "all ages", a phrase about the list."""
+    if not ages:
+        return None
+    a, b = _clause_span(name, excerpt)
+    end = b
+    brk = _CLAUSE_BREAK.match(excerpt, b)
+    if brk:
+        after = _CLAUSE_BREAK.search(excerpt, brk.end())
+        aside_end = after.start() if after else len(excerpt)
+        if _AGES_LEAD.match(excerpt, brk.end()):
+            end = aside_end
+    flat, want = excerpt.replace("\n", " ").lower(), ages.lower()
+    at = flat.find(want)
+    while at >= 0:
+        if a <= at < end:
+            return ages
+        at = flat.find(want, at + 1)
+    return None
+
+
 # Words that name no particular campus. Directions, "main", "downtown" and
 # street names do tell campuses apart, so they are not in this list.
 _CAMPUS_GENERIC = {"campus", "campuses", "church", "location", "site", "with", "from",
@@ -568,7 +605,7 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
             continue
 
         name = _contains(item.get("name"), excerpt)
-        ages = _contains(item.get("ages_stated"), excerpt)
+        ages = own_ages(name, _contains(item.get("ages_stated"), excerpt), page.text[start:end])
         schedule = _contains(item.get("schedule_stated"), excerpt)
         campus = _contains(item.get("campus_stated"), excerpt)
         if campus and not is_church_campus(campus):
@@ -759,11 +796,18 @@ async def run_program_batch(
     limit: int,
     apply: bool,
     call: LLMCall = call_llm,
+    church_ids: list[int] | None = None,
+    sample_seed: str | None = None,
 ) -> dict:
     """Dry run (default): how many due churches would cost a model call, read
     from R2 only. Apply: extract each, one transaction per church. Counts only;
-    nothing here prints page text, so the output is safe for a public log."""
-    targets = await repo.due_for_program_extraction(limit=limit)
+    nothing here prints page text, so the output is safe for a public log.
+
+    `church_ids` re-reads exactly those churches, due or not (a rule fix for
+    rows already written); `sample_seed` picks the due churches in a seeded
+    random order instead of oldest first (an evaluation sample)."""
+    targets = await repo.due_for_program_extraction(limit=limit, church_ids=church_ids,
+                                                    sample_seed=sample_seed)
     counts = {"due": len(targets), "ok": 0, "no_program_text": 0, "unconfirmed_site": 0, "error": 0,
               "missing_archive": 0, "transient": 0,
               "programs_kept": 0, "would_call_model": 0, "input_chars": 0}

@@ -1105,9 +1105,17 @@ class ProgramRepository:
     def __init__(self, con: AsyncConnection):
         self.con = con
 
-    async def due_for_program_extraction(self, limit: int) -> list[dict]:
+    async def due_for_program_extraction(
+        self, limit: int, *, church_ids: list[int] | None = None, sample_seed: str | None = None,
+    ) -> list[dict]:
         """Visible churches whose current archived page set differs from the set
         the last program extraction read (or that were never extracted).
+
+        `church_ids` selects exactly those visible churches with archived pages,
+        whether due or not, so a fixed rule can re-read rows already written.
+        `sample_seed` orders the due churches by md5(id || seed): a reproducible
+        random sample of the due set, where the default order (never tried
+        first, then by id) follows how the import numbered churches.
 
         The current set comes from the church's latest successful homepage crawl:
         every PROGRAM_KINDS URL attempted within a day of it, each at its latest
@@ -1121,6 +1129,7 @@ class ProgramRepository:
                 SELECT church_id, MAX(fetched_at) AS at
                   FROM raw_crawl_artifacts
                  WHERE kind = 'homepage' AND http_status = 200 AND r2_key IS NOT NULL
+                       {"AND church_id = ANY(%(ids)s)" if church_ids is not None else ""}
                  GROUP BY church_id
             ),
             current_urls AS (
@@ -1158,12 +1167,15 @@ class ProgramRepository:
               JOIN churches c ON c.church_id = g.church_id
               LEFT JOIN church_program_extractions e ON e.church_id = g.church_id
              WHERE {VISIBLE}
-               AND (e.church_id IS NULL OR e.input_artifact_ids IS DISTINCT FROM g.input_ids)
-             ORDER BY e.extracted_at ASC NULLS FIRST, g.church_id
+               {"" if church_ids is not None else
+                "AND (e.church_id IS NULL OR e.input_artifact_ids IS DISTINCT FROM g.input_ids)"}
+             ORDER BY {"MD5(g.church_id::text || %(seed)s)" if sample_seed is not None else
+                       "e.extracted_at ASC NULLS FIRST, g.church_id"}
              LIMIT %(limit)s
         """
+        params = {"kinds": PROGRAM_KINDS, "limit": limit, "ids": church_ids, "seed": sample_seed}
         async with self.con.cursor(row_factory=dict_row) as cur:
-            await cur.execute(sql, {"kinds": PROGRAM_KINDS, "limit": limit})
+            await cur.execute(sql, params)
             rows = await cur.fetchall()
             # How many church records (any scope) list each due row's website: a
             # site shared by many (jw.org, lds.org) is a denomination's, not this
