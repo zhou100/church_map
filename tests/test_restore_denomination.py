@@ -56,6 +56,7 @@ def prod(tmp_path):
     url = os.environ["DATABASE_URL"]
     assert "test" in url
     con = psycopg.connect(url, autocommit=True)
+    last_log = con.execute("select coalesce(max(id), 0) from publish_log").fetchone()[0]
     rows = [("Restore masjid", "osm", "Islam", None, T), ("Restore grace", "osm", "Non-denominational", None, T),
             ("Restore other writer", "osm", "Southern Baptist", None, None),
             ("Restore muse", "muse", "Catholic", None, T),
@@ -72,7 +73,8 @@ def prod(tmp_path):
     try:
         yield con, url, ids, sqlite_path, tmp_path / "private"
     finally:
-        con.execute("delete from publish_log where church_id = any(%s)", (ids,))
+        # Includes revert's own marker row (church_id 0).
+        con.execute("delete from publish_log where id > %s", (last_log,))
         con.execute("delete from churches where church_id = any(%s)", (ids,))
         con.close()
 

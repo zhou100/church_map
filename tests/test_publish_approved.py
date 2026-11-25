@@ -30,9 +30,20 @@ def test_run_level_reasons_do_not_move_a_row_out_of_a_section():
     assert pa.section(decision("x", run | {"low_match_confidence"}), run) == "B"
 
 
-def test_updates_and_scope_writes_are_never_approvable_here():
-    assert pa.section(decision("1", kind="update"), RUN) is None
-    assert pa.section(decision("x", changes=[["scope_status", "fill", None, "out_of_scope"]]), RUN) is None
+def test_only_two_kinds_of_update_are_approvable():
+    def update(subject, changes, reasons=()):
+        return decision(subject, reasons, kind="update", changes=changes)
+    denomination = [["denomination", "replace", "Roman Catholic", "Catholic"]]
+    scope = [["scope_status", "fill", None, "out_of_scope"]]
+    assert pa.section(update("M-1", denomination, ["replace"]), RUN) == "D"   # Muse row (candidate ref)
+    assert pa.section(update("1", scope), RUN) == "E"                       # directory row (church_id)
+    assert pa.section(update("1", denomination, ["replace"]), RUN) is None  # directory denomination
+    assert pa.section(update("M-1", scope), RUN) is None
+    assert pa.section(update("1", [["scope_status", "replace", "pending", "out_of_scope"]], ["replace"]), RUN) is None
+    assert pa.section(update("M-1", denomination + [["phone", "fill", None, "1"]], ["replace"]), RUN) is None
+    assert pa.section(update("M-1", [["latitude", "replace", 1.0, 2.0]], ["replace"]), RUN) is None
+    # Inserts still never carry a D-1 field.
+    assert pa.section(decision("x", changes=scope), RUN) is None
 
 
 # ── Real SQL: the full path from a gate dry run to production rows ─────────────
@@ -53,20 +64,25 @@ def reviewed_run(tmp_path, monkeypatch):
     url = _url()
     with psycopg.connect(url, autocommit=True) as con:
         con.execute("CREATE SCHEMA analytics")
+        last_log = con.execute("SELECT coalesce(max(id), 0) FROM publish_log").fetchone()[0]
         directory_id = con.execute("INSERT INTO churches (name, source) VALUES ('Approved fixture directory', 'osm') "
                                    "RETURNING church_id").fetchone()[0]
+        con.execute("INSERT INTO churches (name, source, external_id, denomination, address, city, state, zip_code, "
+                    "latitude, longitude) VALUES ('Epsilon Parish', 'muse', 'ap-d', 'Roman Catholic', '5 E St', "
+                    "'Town', 'CA', '94000', 37.5, -122.1)")
         try:
             con.execute("CREATE TABLE analytics.mart_publish_churches (church_id bigint, scope_status text)")
             con.execute("INSERT INTO analytics.mart_publish_churches VALUES (%s, 'out_of_scope')", (directory_id,))
-            con.execute("CREATE TABLE analytics.mart_publish_new (external_id text, name text, address text, city text, "
-                        "state text, zip_code text, latitude double precision, longitude double precision, "
-                        "checked_at timestamptz, status_source_url text, status_source_type text)")
+            con.execute("CREATE TABLE analytics.mart_publish_new (external_id text, name text, denomination text, "
+                        "address text, city text, state text, zip_code text, latitude double precision, "
+                        "longitude double precision, checked_at timestamptz, status_source_url text, "
+                        "status_source_type text)")
             new = [("ap-a", "Alpha Church", "1 A St"), ("ap-b", "Beta Church", "2 B St"),
                    ("ap-c1", "Gamma Church", "3 C St"), ("ap-c2", "Delta Church", "3 C St")]
-            for ref, name, address in new:
-                con.execute("INSERT INTO analytics.mart_publish_new VALUES (%s, %s, %s, 'Town', 'CA', '94000', "
+            for ref, name, address in new + [("ap-d", "Epsilon Parish", "5 E St")]:
+                con.execute("INSERT INTO analytics.mart_publish_new VALUES (%s, %s, %s, %s, 'Town', 'CA', '94000', "
                             "37.5, -122.1, '2026-11-20T18:00:00Z', 'https://example.org/' || %s, 'website')",
-                            (ref, name, address, ref))
+                            (ref, name, "Catholic" if ref == "ap-d" else None, address, ref))
             con.execute("CREATE TABLE analytics.stg_muse_results (church_id bigint, personal_phone_withheld text)")
             con.execute("CREATE TABLE analytics.stg_muse_candidates (candidate_id text, possible_match_church_id bigint, "
                         "possible_match_candidate_id text, match_confidence text, personal_phone_withheld text)")
@@ -87,14 +103,19 @@ def reviewed_run(tmp_path, monkeypatch):
             con.execute("DROP SCHEMA analytics CASCADE")
             con.execute("DELETE FROM church_fact_sources WHERE church_id IN "
                         "(SELECT church_id FROM churches WHERE external_id LIKE 'ap-%%')")
-            con.execute("DELETE FROM publish_log WHERE run_id IN "
-                        "(SELECT DISTINCT run_id FROM publish_log WHERE new_value LIKE 'ap-%%') OR run_id = 'other-run'")
+            con.execute("DELETE FROM publish_log WHERE id > %s", (last_log,))
             con.execute("DELETE FROM churches WHERE external_id LIKE 'ap-%%' OR church_id = %s", (directory_id,))
 
 
 def _muse(con):
+    """The congregations this fixture publishes (ap-d was published before the run)."""
     return dict(con.execute("SELECT external_id, name FROM churches WHERE source = 'muse' "
-                            "AND external_id LIKE 'ap-%%'").fetchall())
+                            "AND external_id LIKE 'ap-%%' AND external_id <> 'ap-d'").fetchall())
+
+
+def _updated(con, directory_id):
+    return (con.execute("SELECT denomination, verified_by FROM churches WHERE external_id = 'ap-d'").fetchone(),
+            con.execute("SELECT scope_status FROM churches WHERE church_id = %s", (directory_id,)).fetchone()[0])
 
 
 def test_publishes_exactly_the_approved_sections_and_reverts(reviewed_run):
@@ -102,7 +123,7 @@ def test_publishes_exactly_the_approved_sections_and_reverts(reviewed_run):
     con, url, directory, directory_id = reviewed_run
     assert pa.approve(directory, {"A", "C"})["approved"] == 3
     checked = pa.apply_approved(directory, url, write=False, max_age_hours=96)
-    assert checked["to_insert"] == 3 and _muse(con) == {}
+    assert checked["to_write"] == 3 and _muse(con) == {}
     done = pa.apply_approved(directory, url, write=True, max_age_hours=96)
     assert done["inserted"] == 3
     assert _muse(con) == {"ap-a": "Alpha Church", "ap-c1": "Gamma Church", "ap-c2": "Delta Church"}
@@ -111,11 +132,11 @@ def test_publishes_exactly_the_approved_sections_and_reverts(reviewed_run):
     assert row == (dt.datetime(2026, 11, 20, 18, tzinfo=dt.timezone.utc), "muse+recheck", 37.5)
     assert con.execute("SELECT count(*) FROM church_fact_sources WHERE run_id = %s AND field = 'active'",
                        (run_id,)).fetchone()[0] == 3
-    # The D-1 write and the unapproved B row were not touched.
-    assert con.execute("SELECT scope_status FROM churches WHERE church_id = %s", (directory_id,)).fetchone()[0] is None
+    # The D-1 write, the denomination update and the unapproved B row were not touched.
+    assert _updated(con, directory_id) == (("Roman Catholic", None), None)
     # A resumed apply finds nothing left to do.
     again = pa.apply_approved(directory, url, write=True, max_age_hours=96)
-    assert again["already_inserted"] == 3 and again["to_insert"] == 0
+    assert again["already_done"] == 3 and again["to_write"] == 0
     import psycopg
     with psycopg.connect(url, autocommit=True) as prod:
         assert publisher.revert(prod, run_id)["deleted"] == 3
@@ -184,3 +205,43 @@ def test_refuses_a_congregation_another_run_published(reviewed_run):
     con.execute("INSERT INTO churches (name, source, external_id) VALUES ('Alpha Church', 'muse', 'ap-a')")
     with pytest.raises(SystemExit, match="another run"):
         pa.apply_approved(directory, url, write=True, max_age_hours=96)
+
+
+def test_publishes_approved_updates_and_reverts(reviewed_run):
+    import psycopg
+    from scripts import publish_verified as publisher
+    con, url, directory, directory_id = reviewed_run
+    approval = pa.approve(directory, {"D", "E"})
+    assert (approval["D"], approval["E"], approval["approved"]) == (1, 1, 2)
+    done = pa.apply_approved(directory, url, write=True, max_age_hours=96)
+    assert done["updated"] == 2 and _muse(con) == {}
+    assert _updated(con, directory_id) == (("Catholic", "muse+recheck"), "out_of_scope")
+    again = pa.apply_approved(directory, url, write=True, max_age_hours=96)
+    assert again["already_done"] == 2 and again["to_write"] == 0
+    run_id = json.loads((directory / "run.json").read_text())["run_id"]
+    with psycopg.connect(url, autocommit=True) as prod:
+        publisher.revert(prod, run_id)
+    assert _updated(con, directory_id) == (("Roman Catholic", None), None)
+
+
+def test_excluded_subjects_stay_out(reviewed_run):
+    con, url, directory, directory_id = reviewed_run
+    approval = pa.approve(directory, {"E"}, frozenset({str(directory_id)}))
+    assert approval["approved"] == 0 and approval["excluded"] == 1
+    assert pa.apply_approved(directory, url, write=True, max_age_hours=96)["to_write"] == 0
+    assert _updated(con, directory_id)[1] is None
+
+
+def test_exclusion_must_name_a_row_of_an_approved_section(reviewed_run):
+    _, _, directory, _ = reviewed_run
+    with pytest.raises(SystemExit, match="not in an approved section"):
+        pa.approve(directory, {"E"}, frozenset({"ap-a"}))
+
+
+def test_update_refused_when_production_moved_on(reviewed_run):
+    con, url, directory, directory_id = reviewed_run
+    pa.approve(directory, {"D", "E"})
+    con.execute("UPDATE churches SET denomination = 'Hand edited' WHERE external_id = 'ap-d'")
+    with pytest.raises(SystemExit, match="changed since the review"):
+        pa.apply_approved(directory, url, write=True, max_age_hours=96)
+    assert _updated(con, directory_id) == (("Hand edited", None), None)
