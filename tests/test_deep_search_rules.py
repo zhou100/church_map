@@ -37,9 +37,14 @@ def test_unresolved_needs_the_activity_line():
     assert errors(notes="Homepage undated. " + FULL) == []
 
 
-def test_every_key_must_be_recorded():
+def test_every_site_key_must_be_recorded():
     msgs = errors(notes="activity checked: events=none; news=none; bulletin=none")
-    assert msgs and "sermons" in msgs[0] and "facebook" in msgs[0]
+    assert msgs and "sermons" in msgs[0] and "facebook" not in msgs[0]
+
+
+def test_facebook_is_optional_from_brief_v37():
+    assert errors(notes="activity checked: events=none; news=none; sermons=none; bulletin=none; "
+                        "newest date seen=none") == []
 
 
 @pytest.mark.parametrize("excerpt", ["Sunday, September 14, 2026 · Fall Kickoff Picnic",

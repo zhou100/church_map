@@ -28,7 +28,8 @@ MANIFEST = HERE / "peninsula_seed_v1.csv"
 
 PACKAGE_TASK_RE = re.compile(r"^WP\d{4}$")  # work packages from the shared Drive queue
 DEEP_SEARCH_FROM = 11  # brief v3.3 section A (required deeper search) applies from WP0011
-ACTIVITY_KEYS = ("events", "news", "sermons", "bulletin", "facebook")
+# Brief v3.7: Facebook is optional (A2), so `facebook=` is no longer a required key.
+ACTIVITY_KEYS = ("events", "news", "sermons", "bulletin")
 ACTIVITY_LINE_RE = re.compile(r"activity checked:(.*)", re.I)
 # Digits use (?<!\d)/(?!\d), not \b: a CJK character before a digit is not a word boundary.
 DATE_RE = re.compile(r"(?<!\d)20\d\d(?!\d)|\b(jan|feb|mar|apr|may|jun|jul|aug|sep|sept|oct|nov|dec)[a-z]*\.?\s+\d{1,2}(?!\d)"
