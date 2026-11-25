@@ -11,6 +11,8 @@ import asyncio
 import hashlib
 from datetime import datetime, timezone
 
+import pytest
+
 from backend.scrapers_v2 import programs as mod
 from backend.scrapers_v2.extract import ExtractionError, TransientExtractionError
 from backend.scrapers_v2.programs import Page, check_programs, locate, page_text
@@ -354,6 +356,16 @@ def test_dry_run_counts_missing_archives_apart():
 
 
 # ----- 2026-11-23 pilot: every kept program checked against its page ------------------
+
+
+@pytest.fixture(autouse=True)
+def _names_optional(monkeypatch, request):
+    """Most cases below test one rule each with unnamed items; the named-only
+    display rule (REQUIRE_NAME, pre-registered 2026-11-25) has its own tests."""
+    if not request.node.name.startswith("test_named_only"):
+        monkeypatch.setattr(mod, "REQUIRE_NAME", False)
+
+
 # 13 programs were kept for 20 churches; 7 were wrong. Each case below is a
 # synthetic page with the same shape as a real failure (or a real success that
 # the fix must keep).
@@ -688,3 +700,47 @@ def test_the_model_is_told_which_church_it_is_reading():
     target = {"name": "Midway Church", "city": "Columbus", "state": "GA", "address": None}
     text = mod.model_input([_page(1, KIDS_HTML)], target)
     assert text.splitlines()[0] == "=== CHURCH === Midway Church | Columbus, GA | "
+
+
+# ----- 2026-11-25 third sample (seed eval-20261124c): 24 of 252 wrong under v2.
+
+def test_named_only_keeps_a_named_program_and_drops_an_unnamed_one():
+    assert mod.REQUIRE_NAME is True
+    page = _page(1, KIDS_HTML)
+    nursery = "Our nursery is open during both services for infants through age 3."
+    named = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": nursery, "name": "nursery"}]},
+                           [page], CHURCH)
+    assert len(named.programs) == 1
+    unnamed = check_programs({"programs": [{"category": "program", "page": 1, "excerpt": nursery}]}, [page], CHURCH)
+    assert unnamed.programs == [] and unnamed.dropped == {"unnamed": 1}
+    stale = check_programs({"programs": [{"category": "program", "page": 1,
+                                          "excerpt": "Vacation Bible School 2024 runs June 10-14 for ages 4 to 11."}]},
+                           [page], CHURCH)
+    assert stale.dropped == {"stale": 1}  # the other rules still report their own reason
+
+
+def test_a_government_website_is_never_a_congregations_own():
+    parks = _church("Hermitage Community Church", city="Nashville", state="TN",
+                    website="https://www.nashville.gov/departments/parks/community-centers-and-recreation")
+    assert not mod.site_is_this_church(parks, ["Hermitage Community Church, Nashville. Youth tennis clinics."])
+    base = _church("Hermitage Community Church", city="Nashville", state="TN", website="https://hermitagecc.org/")
+    assert mod.site_is_this_church(base, ["Hermitage Community Church, Nashville. Youth group Wednesdays."])
+
+
+def test_coming_soon_without_a_meeting_time_is_not_offered():
+    p, dropped = _one_page(b"<p>Youth Ministry / (Dates and time coming soon!) / Hillside Youth Group is about friendship with Jesus.</p>",
+                           {"excerpt": "Youth Ministry / (Dates and time coming soon!) / Hillside Youth Group is about friendship with Jesus.",
+                            "name": "Hillside Youth Group"})
+    assert p is None and dropped == {"not_offered": 1}
+    p, _ = _one_page(b"<p>Kids Church meets Sundays at 10am. New fall classes coming soon!</p>",
+                     {"excerpt": "Kids Church meets Sundays at 10am. New fall classes coming soon!", "name": "Kids Church"})
+    assert p is not None  # it meets now; only something new is coming
+
+
+def test_v3_categories_are_dropped_by_name():
+    page = _page(1, KIDS_HTML)
+    nursery = "Our nursery is open during both services for infants through age 3."
+    for category in ("form_or_newsletter", "testimonial"):
+        checked = check_programs({"programs": [{"page": 1, "excerpt": nursery, "category": category, "name": "nursery"}]},
+                                 [page], CHURCH)
+        assert checked.dropped == {f"category_{category}": 1}

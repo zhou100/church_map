@@ -6,14 +6,16 @@ programs they state, and keeps only what the archive itself supports
 (docs/plans/crawler_visit_facts_plan.md, PR 4 and appendix A):
 
   * the site must be tied to this church record (site_is_this_church): not a
-    denomination site shared by many records, naming this church, and not
-    giving only addresses in another state or country; if not, no model call
+    denomination site shared by many records, not a government site, naming
+    this church, and not giving only addresses in another state or country; if not, no model call
     is made and nothing is shown. When the website is a path naming this
     congregation (a campus of a larger site), only pages under it are read;
-  * the model classifies every passage it lists (prompt v2, which also names
+  * the model classifies every passage it lists (prompt v3, which also names
     the church); only "program" is kept, never outreach, adult groups,
-    ceremonies, advice, volunteer or staff entries, paused or one-time items,
-    or another location's;
+    ceremonies, advice, volunteer or staff entries, forms and newsletters,
+    testimonials, paused, "coming soon" or one-time items, or another
+    location's; and only a program the page names (REQUIRE_NAME, a display
+    rule pre-registered for the next random sample);
   * the excerpt must occur verbatim, exactly once, in the text of the page it
     names; offsets are computed here, never taken from the model;
   * name, ages and schedule must each occur inside that excerpt;
@@ -32,7 +34,7 @@ programs they state, and keeps only what the archive itself supports
     blanked when the excerpt puts the program before or after it.
 
 The rules come from the 2026-11-23 pilot, where 7 of 13 kept programs were
-wrong, and two 2026-11-24 random samples of 200 churches, where 38 of 236 and 51 of 273 were;
+wrong, and three random samples of 200 churches (2026-11-24/25), where 38 of 236, 51 of 273 and 24 of 252 were;
 tests/scrapers_v2/test_programs.py keeps each failure as a case.
 
 The stage never touches raw_crawl_artifacts.extract_status, so it cannot
@@ -65,7 +67,7 @@ from backend.scrapers_v2.extract import (
     TransientExtractionError,
     call_llm,
 )
-from backend.scrapers_v2.prompts.programs_v2 import (
+from backend.scrapers_v2.prompts.programs_v3 import (
     AGE_BANDS,
     CATEGORIES,
     MODEL,
@@ -78,7 +80,7 @@ log = logging.getLogger(__name__)
 
 # Recorded on every row: the prompt that proposed a program and the version of
 # the checks below that kept it. Bump CHECKS_VERSION when a rule changes.
-CHECKS_VERSION = "checks.v5"
+CHECKS_VERSION = "checks.v6"
 EXTRACTOR_VERSION = f"{PROMPT_VERSION}+{CHECKS_VERSION}"
 
 MAX_PAGE_CHARS = 8_000
@@ -382,6 +384,15 @@ _NOT_OFFERED = re.compile(
     # "There will be no children's Sunday school throughout the summer" (2026-11-24 sample).
     r"|\bno\s+(?:children'?s\s+|kids'?\s+)?(?:sunday\s+school|nursery|children'?s\s+church|kids'?\s+church|"
     r"youth\s+group)\b", re.I)
+# Not running yet: "Youth Ministry (Dates and time coming soon!)", "More Information
+# Coming Soon!" (2026-11-25 sample). Only when the excerpt gives no meeting time.
+_COMING_SOON = re.compile(r"\bcoming\s+soon\b", re.I)
+_MEETS = re.compile(r"\b(?:\d{1,2}(?::\d\d)?\s*(?:am|pm|a\.m\.|p\.m\.)|sundays?|mondays?|tuesdays?|"
+                    r"wednesdays?|thursdays?|fridays?|saturdays?)\b", re.I)
+# Pre-registered on 2026-11-25 for the next random sample: show only programs the
+# page names. In the third sample, unnamed ones were 17% wrong against 7% for
+# named ones; that split was found after the fact, so the next sample tests it.
+REQUIRE_NAME = True
 # A program whose own name puts it for adults: "Adult Sunday School Class".
 _ADULT_NAME = re.compile(r"^\W*(?:adults?|seniors?|men'?s|women'?s|ladies'?|couples?|parents?)\b", re.I)
 # Said to happen before or after the service, so not during it.
@@ -592,6 +603,10 @@ def site_is_this_church(church: dict, texts: list[str]) -> bool:
     site is shown for this record."""
     if (church.get("site_shared_by") or 0) >= SHARED_SITE_LIMIT:
         return False
+    # A government or military site is never a congregation's own: a record
+    # whose website is a city parks page showed its tennis clinics (2026-11-25).
+    if re.search(r"\.(?:gov|mil)$", _host_path(church.get("website"))[0]):
+        return False
     words = {_stem(w) for t in texts for w in re.findall(r"[a-z]{2,}", _fold(t))}
     site = re.sub(r"[^a-z0-9]", "", re.sub(r"^[a-z]+://(www\.)?", "", _fold(church.get("website")).strip()))
 
@@ -783,6 +798,9 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if name and _ADULT_NAME.search(name):
             out.drop("adult")
             continue
+        if _COMING_SOON.search(excerpt) and not schedule and not _MEETS.search(excerpt):
+            out.drop("not_offered")
+            continue
         if _NOT_OFFERED.search(clause):
             out.drop("not_offered")
             continue
@@ -812,6 +830,10 @@ def check_programs(obj: Any, pages: list[Page], church: dict) -> Checked:
         if program_type == "during_service" and _OUTSIDE_SERVICE.search(excerpt) and not _DURING.search(excerpt):
             program_type = None
 
+        # Last, so every other rule still reports its own reason.
+        if REQUIRE_NAME and not name:
+            out.drop("unnamed")
+            continue
         key = (page.artifact_id, start) if not name else (name.lower(), program_type, tuple(sorted(bands)))
         if key in seen:
             out.drop("duplicate")
