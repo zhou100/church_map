@@ -433,6 +433,109 @@ def cmd_new_service_fixes(args) -> int:
     return 0
 
 
+VERIFY_HANDLING = {"full", "scope_check_only", "labeled_minimal"}
+# build_seeds.MANIFEST_COLS: build_manifest reads outbox/WP-xxxx/manifest.csv into muse_manifest.
+MANIFEST_COLS = ["church_id", "name", "known_city", "state", "latitude", "longitude", "known_street",
+                 "known_website", "known_phone", "osm_ref", "denomination_hint", "gaps", "handling", "batch"]
+VERIFY_INPUT_COLS = ["church_id", "handling", "name", "city", "state", "known_street", "known_website",
+                     "directory_denomination", "website_reading", "why"]
+
+VERIFY_TASK = """# {wp_id} — verify directory records: {title}
+
+**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+{note}
+## What
+
+These {n} records are already in our directory, and we are not sure **what each one is**: which congregation the record names, whether it meets today, and whether it is a Christian congregation (D-1). Some are hidden from the map and may not belong there; some are shown and may not belong there. Your `entity_type` and `status` decide it, so each needs a source.
+
+`verify_input.csv` says, per row, how deep to go (`handling`) and why the row is here (`why`). `directory_denomination` is what our directory says; `website_reading` is what our crawler read on the listed website. **Neither is evidence**: either can be wrong, and the listed website can belong to a different congregation.
+
+| `handling` | Rows | What to do |
+|---|---:|---|
+| `full` | {n_full} | Identity first: find the congregation this record names (name, city, the address where it meets) and its own site or Page. Then `entity_type`, `status` with a dated source (section A), and the facts you can source. If the listed website is another congregation's, say so in `notes` and give the right `official_url`, or leave it blank. Name the tradition the congregation states about itself in `notes` (for example `own site: "a Messianic Jewish congregation"`). |
+| `scope_check_only` | {n_scope} | Set `entity_type` and `status` only, citing the page that shows what it is in `status_source_url` / `status_excerpt`, then move on (N8). |
+| `labeled_minimal` | {n_min} | Confirm the place exists and meets (`status`); don't search for service details. |
+
+`entity_type`, as always, describes the entity the record names: `congregation`, `non_christian`, `religious_house`, `business`, or `unknown` when sources don't settle it (say why in `notes`).
+
+## Input
+
+| File | Rows | sha256 |
+|---|---:|---|
+| `outbox/{wp_id}/verify_input.csv` | {n} | `{sha}` |
+| `outbox/{wp_id}/manifest.csv` | {n} | `{manifest_sha}` |
+
+## Output (in `returns/{wp_id}/`)
+
+| File | Contents |
+|---|---|
+| `results.csv` | `results_TEMPLATE_v3.csv` columns; **exactly one row per input `church_id`**; no other rows |
+| `run_log.md` | D9 manifest; counts by `entity_type` and by `status`; records whose listed website belongs to another congregation; blocked sites; hard rows |
+| `DONE.md` | written last; see `README_FOR_MUSE.md` |
+
+## Check before delivering
+
+```bash
+python3 reference/validate_returns.py ALL returns/{wp_id}/results.csv - --redo --manifest outbox/{wp_id}/manifest.csv
+```
+
+Zero `ERROR` lines is required. We also check that every input `church_id` has exactly one row.
+"""
+
+
+def verify_rows(picks: list[dict], db: Path) -> tuple[list[dict], list[dict]]:
+    """(verify_input rows, manifest rows) for the picked church_ids, from the directory snapshot."""
+    con = sqlite3.connect(f"file:{db}?mode=ro", uri=True)
+    try:
+        known = {str(r[0]): r for r in con.execute(
+            "select church_id, name, city, state, latitude, longitude, address, website, phone, source, external_id, "
+            "denomination "
+            "from churches where church_id in (%s)" % ",".join("?" * len(picks)), [p["church_id"] for p in picks])}
+    finally:
+        con.close()
+    inputs, manifest = [], []
+    for p in picks:
+        cid, handling = p["church_id"], p["handling"]
+        if handling not in VERIFY_HANDLING:
+            raise SystemExit(f"{cid}: handling must be one of {sorted(VERIFY_HANDLING)}")
+        if cid not in known:
+            raise SystemExit(f"{cid}: not in the directory snapshot")
+        _, name, city, state, lat, lon, street, website, phone, source, external_id, denomination = known[cid]
+        inputs.append({"church_id": cid, "handling": handling, "name": name, "city": city or "", "state": state or "",
+                       "known_street": street or "", "known_website": website or "",
+                       "directory_denomination": p.get("directory_denomination", denomination or ""),
+                       "website_reading": p.get("website_reading", ""), "why": p.get("why", "")})
+        manifest.append({"church_id": cid, "name": name, "known_city": city or "", "state": state or "",
+                         "latitude": "" if lat is None else lat, "longitude": "" if lon is None else lon,
+                         "known_street": street or "", "known_website": website or "",
+                         "known_phone": phone or "", "osm_ref": f"{source}:{external_id}" if external_id else "",
+                         "denomination_hint": denomination or "", "gaps": "", "handling": handling})
+    return inputs, manifest
+
+
+def cmd_new_verify(args) -> int:
+    picks = read_csv(Path(args.rows))
+    ids = [p["church_id"] for p in picks]
+    if not picks or len(ids) != len(set(ids)):
+        raise SystemExit("--rows needs one row per church_id (columns: church_id, handling, why, ...)")
+    inputs, manifest = verify_rows(picks, Path(args.db))
+    wp_id = next_wp_id()
+    pkg = OUTBOX / wp_id
+    pkg.mkdir(parents=True)
+    write_csv(pkg / "verify_input.csv", VERIFY_INPUT_COLS, inputs)
+    batch = wp_id.replace("-", "")
+    write_csv(pkg / "manifest.csv", MANIFEST_COLS, [{**m, "batch": batch} for m in manifest])
+    count = lambda h: sum(r["handling"] == h for r in inputs)
+    (pkg / "TASK.md").write_text(VERIFY_TASK.format(
+        wp_id=wp_id, title=args.title, n=len(inputs), n_full=count("full"), n_scope=count("scope_check_only"),
+        n_min=count("labeled_minimal"), sha=sha256(pkg / "verify_input.csv"),
+        manifest_sha=sha256(pkg / "manifest.csv"),
+        note=f"\n## Why this package\n\n{args.note}\n" if args.note else ""), encoding="utf-8")
+    print(f"{wp_id}: {args.title}; {len(inputs)} records -> {pkg}")
+    print(f"review {pkg / 'TASK.md'}, then: python3 muse_handoff/drive_sync.py publish {wp_id}")
+    return 0
+
+
 RECHECK_INPUT_COLS = ["candidate_ref", "origin_task", "candidate_name", "current_name_native", "denomination_stated",
                       "city", "zip", "official_url", "facebook_page_url", "fb_last_post_date", "status_source_url",
                       "street_address", "address_is_worship_location", "phone", "service_times_verbatim",
@@ -1056,6 +1159,12 @@ def main(argv: list[str] | None = None) -> int:
     p.add_argument("--ids", required=True, help="comma-separated church_ids and candidate refs")
     p.add_argument("--note", default="", help="a 'Why these rows' paragraph for TASK.md")
     p.set_defaults(fn=cmd_new_service_fixes)
+    p = sub.add_parser("new-verify", help="ask Muse what these directory records are (results.csv per church_id)")
+    p.add_argument("--title", required=True)
+    p.add_argument("--rows", required=True, help="CSV: church_id, handling, why[, directory_denomination, website_reading]")
+    p.add_argument("--db", default=str(ROOT / "holyhub.db"), help="local directory snapshot (read only)")
+    p.add_argument("--note", default="", help="a 'Why this package' paragraph for TASK.md")
+    p.set_defaults(fn=cmd_new_verify)
     p = sub.add_parser("new-recheck", help="ask Muse to re-check every unresolved new congregation (brief section A)")
     p.add_argument("--title", required=True)
     p.add_argument("--size", type=int, default=100, help="congregations per package")

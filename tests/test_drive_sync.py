@@ -767,3 +767,55 @@ def test_a_log_that_never_names_a_directory_has_no_sweep(tmp_path):
     log = tmp_path / "run_log.md"
     log.write_text("- Riverside: 5 congregations reported from web search.\n", encoding="utf-8")
     assert ds.check_sweep(log) == "no 'churchfinder / oursweb' sweep report"
+
+
+# --- verification packages (what a directory record is) --------------------------------
+
+def _directory(path):
+    con = sqlite3.connect(path)
+    con.execute("create table churches (church_id integer, name text, city text, state text, latitude real, "
+                "longitude real, address text, website text, phone text, source text, external_id text, "
+                "denomination text)")
+    con.executemany("insert into churches values (?,?,?,?,?,?,?,?,?,?,?,?)", [
+        (96132, "Prairie Lane CRC", "Omaha", "NE", 41.2, -96.0, "1 Main St", "http://2uomaha.org", "", "osm", "n1",
+         "Christian Reformed"),
+        (631, "Temple Beth Shalom", "Town", "FL", None, None, None, None, None, "osm", "n2", "Reform")])
+    con.commit()
+    con.close()
+
+
+def test_new_verify_writes_input_manifest_and_task(tmp_path, queue):
+    _directory(tmp_path / "dir.db")
+    ds.write_csv(tmp_path / "rows.csv", ["church_id", "handling", "why", "website_reading"], [
+        dict(church_id="96132", handling="full", why="listed website may be another congregation's",
+             website_reading="Unitarian Universalist"),
+        dict(church_id="631", handling="scope_check_only", why="tradition", website_reading="Reform Judaism")])
+    args = type("A", (), dict(title="identity and scope", rows=str(tmp_path / "rows.csv"),
+                              db=str(tmp_path / "dir.db"), note="Owner request 2026-11-25."))
+    ds.cmd_new_verify(args)  # WP-0001 is taken in status.csv
+    pkg = ds.OUTBOX / "WP-0002"
+    inputs = ds.read_csv(pkg / "verify_input.csv")
+    assert [(r["church_id"], r["handling"], r["directory_denomination"], r["website_reading"]) for r in inputs] == [
+        ("96132", "full", "Christian Reformed", "Unitarian Universalist"), ("631", "scope_check_only", "Reform", "Reform Judaism")]
+    manifest = ds.read_csv(pkg / "manifest.csv")
+    assert list(manifest[0]) == bs.MANIFEST_COLS  # build_seeds reads it into muse_manifest
+    assert [(m["church_id"], m["handling"], m["batch"], m["osm_ref"]) for m in manifest] == [
+        ("96132", "full", "WP0002", "osm:n1"), ("631", "scope_check_only", "WP0002", "osm:n2")]
+    task = (pkg / "TASK.md").read_text()
+    assert "| `full` | 1 |" in task and "| `scope_check_only` | 1 |" in task and "| `labeled_minimal` | 0 |" in task
+    assert _sha(pkg / "verify_input.csv") in task and _sha(pkg / "manifest.csv") in task
+    assert "--manifest outbox/WP-0002/manifest.csv" in task and "Owner request 2026-11-25." in task
+
+
+@pytest.mark.parametrize("rows, message", [
+    ([dict(church_id="631", handling="deep")], "handling"),
+    ([dict(church_id="7", handling="full")], "not in the directory"),
+    ([dict(church_id="631", handling="full")] * 2, "one row per church_id"),
+])
+def test_new_verify_refuses_bad_rows(tmp_path, queue, rows, message):
+    _directory(tmp_path / "dir.db")
+    ds.write_csv(tmp_path / "rows.csv", ["church_id", "handling"], rows)
+    args = type("A", (), dict(title="t", rows=str(tmp_path / "rows.csv"), db=str(tmp_path / "dir.db"), note=""))
+    with pytest.raises(SystemExit, match=message):
+        ds.cmd_new_verify(args)
+    assert not (ds.OUTBOX / "WP-0002").exists()
