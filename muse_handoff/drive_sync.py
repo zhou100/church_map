@@ -187,11 +187,11 @@ def known_congregations(state: str, cities: list[str], db: Path, seeds: Path) ->
 
 DISCOVERY_TASK = """# {wp_id} — find congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.7) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
-Find Christian congregations that meet in the cities below and are **not** in `known_congregations.csv`. **A row we can use has dated activity within 12 months, an address, and a way to reach the church.** Search each one as brief section A requires (events, news, sermons, bulletin, Facebook Page) before marking it `unresolved` or leaving a fact blank. The caps are maximums, not targets.
+Find Christian congregations that meet in the cities below and are **not** in `known_congregations.csv`. **A row we can use has dated activity within 12 months, an address, and a way to reach the church.** Search each one as brief section A requires (events, news, sermons, bulletin; Facebook when it helps) before marking it `unresolved` or leaving a fact blank. The caps are maximums, not targets.
 
 - **Start from the church directories (S5, D12):** for every city, go through the churchfinder.com city page and the church.oursweb.net results (**every page**), skip the congregations already known, and research **every** new one (section A) until the city's cap is reached; depth (A6) never means stopping below it. Then search the web for what they missed. Directory finds have `found_via = church_directory` and `lead: <listing URL>` in `notes`; never cite a directory as a source.
 - Report every language the church states (N5).
@@ -260,7 +260,7 @@ def cmd_new_discovery(args) -> int:
 
 LEADS_TASK = """# {wp_id} — check leads: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.7) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
@@ -339,7 +339,7 @@ FIX_INPUT_COLS = ["subject_type", "subject_id", "name", "city", "official_url", 
 
 SERVICE_FIX_TASK = """# {wp_id} — re-quote service times: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.7) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 {note}
 ## What
 
@@ -442,7 +442,7 @@ VERIFY_INPUT_COLS = ["church_id", "handling", "name", "city", "state", "known_st
 
 VERIFY_TASK = """# {wp_id} — verify directory records: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.7) applies in full. How to pick up and deliver: `README_FOR_MUSE.md`.
 {note}
 ## What
 
@@ -543,13 +543,13 @@ RECHECK_INPUT_COLS = ["candidate_ref", "origin_task", "candidate_name", "current
 
 RECHECK_TASK = """# {wp_id} — re-check unresolved congregations: {title}
 
-**Rules:** `reference/BRIEF_v3.md` (v3.6) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
+**Rules:** `reference/BRIEF_v3.md` (v3.7) applies in full, **section A above all**. How to pick up and deliver: `README_FOR_MUSE.md`.
 
 ## What
 
 You reported these {n} congregations earlier with `status = unresolved`, almost always because the homepage you fetched carried no date. That keeps them off the map. Re-check each one with the full section A search:
 
-1. **Activity (A1–A3):** open the church's events, news, sermons/media and bulletin pages, and its **Facebook Page** (newest posts, events, About; search Facebook by name and city if no Page is known). Find a date tied to its activity within 12 months, cite that page in `status_source_url`, and copy the date into `status_excerpt`.
+1. **Activity (A1–A3):** open the church's events, news, sermons/media and bulletin pages; its Facebook Page (newest posts, events, About) when the site shows nothing dated (A2 is optional from v3.7). Find a date tied to its activity within 12 months, cite that page in `status_source_url`, and copy the date into `status_excerpt`.
 2. **Missing facts (A5):** from the same pages, fill what is blank: the street address where it meets (`address_is_worship_location`), service times and languages, children's program, office phone.
 3. **Keep what was right:** re-cite every fact you keep, with its own source URL and a verbatim excerpt (the input shows our current values, without excerpts). Blank a fact only if its source no longer states it, and say so in `notes`.
 4. **Still nothing dated:** `status = unresolved`, with the `activity checked:` line in `notes` (A4). If you find that it closed, merged, or moved away, keep it `unresolved` and say so in `notes`.

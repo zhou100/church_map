@@ -617,7 +617,7 @@ def test_only_discovery_packages_from_wp0020_are_held_to_the_sweep(tmp_path, mon
 def test_the_discovery_template_asks_for_the_sweep():
     text = ds.DISCOVERY_TASK.format(wp_id="WP-0099", task="WP0099", title="t", city_rows="| A | 1 |", known_n=1,
                                     known_sha="x", note="")
-    assert "(v3.6)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
+    assert "(v3.7)" in text and "churchfinder.com" in text and "church.oursweb.net" in text
     assert "churchfinder: listed N" in text and "church_directory" in text
     assert "unresearched U" in text and "every page" in text
 

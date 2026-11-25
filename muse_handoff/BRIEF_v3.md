@@ -2,6 +2,12 @@
 
 **This file replaces `BRIEF_v2.md` and `BRIEF_FB_pass.md`.** It holds every rule in one place. Rules that are new in v3 are marked **[v3]**.
 
+> **v3.7 (2026-11-25). Facebook is optional; applies to WP-0049, WP-0050 and every later package.** Marked **[v3.7]**:
+> - Our own crawler now reads the websites of congregations that have one, so the deep search no longer has to include Facebook. **A2 is optional**: open the church's Facebook Page when it helps (a site with no dated activity, a congregation with no site), not as a required step.
+> - `unresolved` still needs the full **site** search first (A1: events, news, sermons, bulletin). The `activity checked:` line keeps its four site keys; `facebook=` is now optional (A4).
+> - Facebook facts you do report follow F1–F6 as before; Facebook activity we already have expires 12 months after its post date.
+> - Church directories stay locate-only (S5).
+>
 > **v3.6 (2026-10-28, after WP-0042). Finish the directory sweep; applies to WP-0042's fix and from WP-0043.** Marked **[v3.6]**:
 > - In WP-0042, the churchfinder pages of 18 cities listed about 250 congregations. 2 were already known, and 23 were reported: about one per city. The other listings were never researched. **A6 is about the quality of each row. It is never a reason to leave directory listings unresearched.** Below a city's cap, research every new listing (D12) and report it, as `unresolved` if nothing dated turns up.
 > - Read **every page** of a directory's results. A count of exactly 20 is usually only the first page.
@@ -111,20 +117,20 @@ Every row, discovery or verification, goes through this search. It is required, 
   - **sermons**: sermons, messages, media, podcast, watch, livestream (the newest sermon date);
   - **bulletin**: weekly bulletin or worship folder (PDFs count, including ones on the parish's bulletin host such as ecatholic or discovermass);
   - **visit**: plan your visit, contact, about, ministries, children/kids/family.
-- **A2. The church's Facebook Page** (F1), always, whether or not the site links one. If the site links none, search Facebook for the church name and city. Open the Page's own newest posts, its events, and its About section. If you can't open Facebook at all, say so in `run_log.md` once and in each row's A4 note (`facebook=no access`).
+- **A2. The church's Facebook Page** (F1). **[v3.7] Optional.** Open it when it helps: the site has no dated activity, or the congregation has no site. Then read the Page's own newest posts, its events, and its About section; if the site links no Page, search Facebook for the church name and city.
 - **A3. Dated evidence** means a date tied to the congregation's activity: an event date, a sermon date, a bulletin date, a post date, a "posted on" or "updated" date on a news item. Not a copyright footer year, not a date in a URL alone. It must be within 12 months of `checked_at`. Cite that exact page as `status_source_url` and copy the date into `status_excerpt` verbatim (for example `Sunday, September 14, 2026 · Fall Kickoff Picnic`).
   - **[v3.5]** The excerpt is text a reader sees on the page. Never a metadata timestamp (JSON-LD `datePublished`, `<meta>` tags, sitemap `lastmod`, anything like `2026-09-18T19:18:23`); never a prefix you added such as `Published:`.
   - **[v3.5]** Cite the stable page: the event's own page, the post, the sermon page, the bulletin PDF. A homepage's "upcoming" box changes weekly, so a date on it is often gone when we check.
   - **[v3.5]** Video channels (YouTube, Vimeo) are leads, not citations: find the same sermon on the church's own site, or the Facebook post. The validator rejects a video URL in `status_source_url`.
-- **A4. `unresolved` only after A1 and A2 found nothing dated within 12 months.** Then `notes` must contain this line, with the URL you opened or `none` when the site has no such page:
-  `activity checked: events=<url|none>; news=<url|none>; sermons=<url|none>; bulletin=<url|none>; facebook=<url|none|no access>; newest date seen=<date|none>`
-  The validator rejects an `unresolved` row without it, or with any of the five keys missing.
+- **A4. `unresolved` only after A1 found nothing dated within 12 months** (and A2, if you opened Facebook). Then `notes` must contain this line, with the URL you opened or `none` when the site has no such page:
+  `activity checked: events=<url|none>; news=<url|none>; sermons=<url|none>; bulletin=<url|none>; newest date seen=<date|none>`
+  **[v3.7]** Add `facebook=<url|none>` when you opened Facebook. The validator rejects an `unresolved` row without the line, or with any of the four site keys missing.
 - **A5. The same pages fill missing facts.** Before leaving the address, service times, or children's program blank, look on the visit/contact page, the bulletin masthead, the Facebook About section and pinned posts, and the kids/family ministry page. An address seen only on a map or directory site is a lead (S rules): use it to find the church's own statement of it.
 - **A6. Depth over count.** The per-city caps are maximums, not targets. One row with dated activity, an address, and service times is worth more than three rows with only a name and a homepage. Budget about 8 minutes per discovered congregation. **[v3.6]** Depth applies to each row you research. It does not let you stop below the cap: every new directory listing is researched (D12).
 
 ## Facebook (F)
 
-- **F1.** **[v3.3] Use** the linked Facebook account Yujun authorized (required by A2), **read-only and public content only**: a Page's intro/About section, the Page's own posts, and public events created by the Page.
+- **F1.** **[v3.3] Use** the linked Facebook account Yujun authorized (**[v3.7]** optional, A2), **read-only and public content only**: a Page's intro/About section, the Page's own posts, and public events created by the Page.
   - Never use friends-only content, private or closed groups, personal profiles, comments, reactions, follower or member lists, or Messenger.
   - If you can't tell whether something is public, skip it.
 - **F2.** No actions as the account: no likes, follows, joins, messages, comments, RSVPs, invites, or settings changes. Contact no one.
